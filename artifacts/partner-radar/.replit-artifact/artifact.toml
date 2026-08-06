@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "DRUID Partner Radar Lite"
+description = "A partner lead-generation and visibility tool for DRUID's Head of Channels and regional PAMs. Surfaces evidence-backed partner prospect cards, lets PAMs accept/reject/defer them, and feeds KPI tables for the Head of Channels. Phase 0 mockup with seeded data and mocked integrations."
+version = "1.0.0"
+id = "artifacts/partner-radar"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20965
+
+[services.development]
+run = "pnpm --filter @workspace/partner-radar run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/partner-radar", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/partner-radar/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20965"
+BASE_PATH = "/"

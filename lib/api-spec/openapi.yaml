@@ -3,20 +3,34 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: DRUID Partner Radar Lite API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: users
+    description: User management
+  - name: territories
+    description: Territory management
+  - name: prospects
+    description: Partner prospect operations
+  - name: scan-configs
+    description: Scan configuration management
+  - name: scan-runs
+    description: Scan run operations
+  - name: kpis
+    description: KPI and head-of-channels metrics
+  - name: campaigns
+    description: Campaign list management
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +38,320 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  /territories:
+    get:
+      operationId: listTerritories
+      tags: [territories]
+      summary: List all territories
+      responses:
+        "200":
+          description: List of territories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Territory"
+
+  /prospects:
+    get:
+      operationId: listProspects
+      tags: [prospects]
+      summary: List partner prospects with optional filters
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: pam_user_id
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: priority
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: partner_type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: signal_type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of prospects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prospect"
+
+  /prospects/{id}:
+    get:
+      operationId: getProspect
+      tags: [prospects]
+      summary: Get a single prospect with signals
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Prospect detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectDetail"
+        "404":
+          description: Not found
+
+  /prospects/{id}/decision:
+    post:
+      operationId: makeProspectDecision
+      tags: [prospects]
+      summary: Accept, reject, or defer a prospect
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectDecisionInput"
+      responses:
+        "200":
+          description: Updated prospect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prospect"
+        "404":
+          description: Not found
+
+  /prospects/{id}/hubspot:
+    post:
+      operationId: pushProspectToHubspot
+      tags: [prospects]
+      summary: Push an accepted prospect to HubSpot (mock)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: HubSpot push result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HubspotPushResult"
+        "400":
+          description: Prospect not accepted
+        "404":
+          description: Not found
+
+  /scan-configs:
+    get:
+      operationId: listScanConfigs
+      tags: [scan-configs]
+      summary: List all scan configurations
+      responses:
+        "200":
+          description: List of scan configurations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScanConfig"
+
+  /scan-configs/{id}:
+    get:
+      operationId: getScanConfig
+      tags: [scan-configs]
+      summary: Get a scan configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Scan configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanConfig"
+        "404":
+          description: Not found
+    put:
+      operationId: updateScanConfig
+      tags: [scan-configs]
+      summary: Update a scan configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanConfigInput"
+      responses:
+        "200":
+          description: Updated scan configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanConfig"
+        "404":
+          description: Not found
+
+  /scans/run:
+    post:
+      operationId: runScan
+      tags: [scan-runs]
+      summary: Run a scan (mock mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanRunInput"
+      responses:
+        "200":
+          description: Scan result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanRunResult"
+
+  /kpis/head-of-channels:
+    get:
+      operationId: getHeadOfChannelsKpis
+      tags: [kpis]
+      summary: Get KPI tables for the Head of Channels view
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: period
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: KPI data for the three tables
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeadOfChannelsKpis"
+
+  /campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List campaign lists
+      responses:
+        "200":
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a new campaign list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignInput"
+      responses:
+        "201":
+          description: Created campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [campaigns]
+      summary: Get a campaign with its prospects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignDetail"
+        "404":
+          description: Not found
+
+  /prospects/stats/summary:
+    get:
+      operationId: getProspectStats
+      tags: [prospects]
+      summary: Get prospect statistics grouped by territory and status
+      responses:
+        "200":
+          description: Prospect statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +362,560 @@ components:
       required:
         - status
 
+    User:
+      type: object
+      required: [id, name, email, role, territory, active]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [head_of_channels, pam, admin]
+        territory:
+          type: ["string", "null"]
+        active:
+          type: boolean
+
+    Territory:
+      type: object
+      required: [id, name, countries, languages]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        owner_user_id:
+          type: ["string", "null"]
+        countries:
+          type: array
+          items:
+            type: string
+        languages:
+          type: array
+          items:
+            type: string
+
+    Signal:
+      type: object
+      required: [id, company_id, signal_type, title, summary, source_url, confidence, discovered_at]
+      properties:
+        id:
+          type: string
+        company_id:
+          type: string
+        signal_type:
+          type: string
+          enum: [partnership, ai_investment, enterprise_access, technology, hiring, event, tender]
+        title:
+          type: string
+        summary:
+          type: string
+        source_url:
+          type: string
+        source_domain:
+          type: ["string", "null"]
+        published_at:
+          type: ["string", "null"]
+        discovered_at:
+          type: string
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        raw_excerpt:
+          type: ["string", "null"]
+
+    Company:
+      type: object
+      required: [id, name, domain, country]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        normalized_name:
+          type: ["string", "null"]
+        domain:
+          type: string
+        website_url:
+          type: ["string", "null"]
+        country:
+          type: string
+        headquarters:
+          type: ["string", "null"]
+        employee_band:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        linkedin_url:
+          type: ["string", "null"]
+        hubspot_company_id:
+          type: ["string", "null"]
+
+    Prospect:
+      type: object
+      required: [id, company, territory_id, partner_type, priority, status, why_it_fits, why_now, enterprise_access, relevant_capability, technology_adjacency, partnership_openness, recent_trigger, created_at]
+      properties:
+        id:
+          type: string
+        company:
+          $ref: "#/components/schemas/Company"
+        territory_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        assigned_user:
+          $ref: "#/components/schemas/User"
+        partner_type:
+          type: string
+        priority:
+          type: string
+          enum: [A, B]
+        enterprise_access:
+          type: boolean
+        relevant_capability:
+          type: boolean
+        technology_adjacency:
+          type: boolean
+        partnership_openness:
+          type: boolean
+        recent_trigger:
+          type: boolean
+        why_it_fits:
+          type: string
+        why_now:
+          type: string
+        suggested_angle:
+          type: ["string", "null"]
+        suggested_target_role:
+          type: ["string", "null"]
+        suggested_message:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [new, accepted, rejected, deferred, pushed_to_hubspot]
+        rejection_reason:
+          type: ["string", "null"]
+        pam_note:
+          type: ["string", "null"]
+        accepted_at:
+          type: ["string", "null"]
+        hubspot_company_id:
+          type: ["string", "null"]
+        signal_count:
+          type: number
+        created_at:
+          type: string
+        updated_at:
+          type: ["string", "null"]
+
+    ProspectDetail:
+      type: object
+      required: [id, company, territory_id, partner_type, priority, status, why_it_fits, why_now, enterprise_access, relevant_capability, technology_adjacency, partnership_openness, recent_trigger, signals, activity, created_at]
+      properties:
+        id:
+          type: string
+        company:
+          $ref: "#/components/schemas/Company"
+        territory_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        assigned_user:
+          $ref: "#/components/schemas/User"
+        partner_type:
+          type: string
+        priority:
+          type: string
+          enum: [A, B]
+        enterprise_access:
+          type: boolean
+        relevant_capability:
+          type: boolean
+        technology_adjacency:
+          type: boolean
+        partnership_openness:
+          type: boolean
+        recent_trigger:
+          type: boolean
+        why_it_fits:
+          type: string
+        why_now:
+          type: string
+        suggested_angle:
+          type: ["string", "null"]
+        suggested_target_role:
+          type: ["string", "null"]
+        suggested_message:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [new, accepted, rejected, deferred, pushed_to_hubspot]
+        rejection_reason:
+          type: ["string", "null"]
+        pam_note:
+          type: ["string", "null"]
+        accepted_at:
+          type: ["string", "null"]
+        hubspot_company_id:
+          type: ["string", "null"]
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Signal"
+        activity:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityItem"
+        created_at:
+          type: string
+        updated_at:
+          type: ["string", "null"]
+
+    ActivityItem:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+        event_type:
+          type: string
+          enum: [discovered, reviewed, accepted, rejected, deferred, hubspot_pushed, note_added]
+        timestamp:
+          type: string
+        actor_name:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+
+    ProspectDecisionInput:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [accepted, rejected, deferred]
+        rejection_reason:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+        assigned_user_id:
+          type: ["string", "null"]
+
+    HubspotPushResult:
+      type: object
+      required: [status, hubspot_company_id]
+      properties:
+        status:
+          type: string
+          enum: [mock_success, success, error]
+        hubspot_company_id:
+          type: string
+        message:
+          type: ["string", "null"]
+
+    ScanConfig:
+      type: object
+      required: [id, territory_id, territory_name, name, partner_types, industries, technologies, excluded_domains, max_results, active]
+      properties:
+        id:
+          type: string
+        territory_id:
+          type: string
+        territory_name:
+          type: string
+        name:
+          type: string
+        search_queries:
+          type: array
+          items:
+            type: string
+        partner_types:
+          type: array
+          items:
+            type: string
+        industries:
+          type: array
+          items:
+            type: string
+        technologies:
+          type: array
+          items:
+            type: string
+        excluded_domains:
+          type: array
+          items:
+            type: string
+        max_results:
+          type: number
+        min_checks_required:
+          type: number
+        recency_window_days:
+          type: number
+        active:
+          type: boolean
+
+    ScanConfigInput:
+      type: object
+      properties:
+        name:
+          type: string
+        partner_types:
+          type: array
+          items:
+            type: string
+        industries:
+          type: array
+          items:
+            type: string
+        technologies:
+          type: array
+          items:
+            type: string
+        excluded_domains:
+          type: array
+          items:
+            type: string
+        max_results:
+          type: number
+        min_checks_required:
+          type: number
+        recency_window_days:
+          type: number
+        active:
+          type: boolean
+
+    ScanRunInput:
+      type: object
+      required: [scan_config_id, mode]
+      properties:
+        scan_config_id:
+          type: string
+        mode:
+          type: string
+          enum: [mock, live]
+
+    ScanRunResult:
+      type: object
+      required: [scan_run_id, status, results_found, results_qualified]
+      properties:
+        scan_run_id:
+          type: string
+        status:
+          type: string
+          enum: [completed, failed, running]
+        results_found:
+          type: number
+        results_qualified:
+          type: number
+        message:
+          type: ["string", "null"]
+
+    KpiRow:
+      type: object
+      required: [metric, current, target, status]
+      properties:
+        metric:
+          type: string
+        current:
+          type: number
+        target:
+          type: number
+        status:
+          type: string
+          enum: [green, amber, red, on_track]
+        what_changed:
+          type: ["string", "null"]
+        explanation:
+          type: ["string", "null"]
+
+    WeeklyKpiRow:
+      type: object
+      required: [metric, current, last_week, target, trend]
+      properties:
+        metric:
+          type: string
+        current:
+          type: number
+        last_week:
+          type: number
+        target:
+          type: number
+        trend:
+          type: string
+          enum: [up, down, flat]
+
+    MarketingKpiRow:
+      type: object
+      required: [metric, this_week, trend]
+      properties:
+        metric:
+          type: string
+        this_week:
+          type: number
+        trend:
+          type: string
+          enum: [up, down, flat]
+
+    HeadOfChannelsKpis:
+      type: object
+      required: [partner_development, weekly_commercial, weekly_marketing, period, territory, updated_at]
+      properties:
+        partner_development:
+          type: array
+          items:
+            $ref: "#/components/schemas/KpiRow"
+        weekly_commercial:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyKpiRow"
+        weekly_marketing:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketingKpiRow"
+        period:
+          type: string
+        territory:
+          type: string
+        updated_at:
+          type: string
+
+    Campaign:
+      type: object
+      required: [id, name, territory, owner_user_id, owner_name, segment, prospect_count, message_angle, status, created_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        territory:
+          type: string
+        owner_user_id:
+          type: string
+        owner_name:
+          type: string
+        segment:
+          type: string
+        prospect_count:
+          type: number
+        message_angle:
+          type: string
+        start_date:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [planned, active, completed]
+        replies:
+          type: number
+        qualified_meetings:
+          type: number
+        signed_partners:
+          type: number
+        created_at:
+          type: string
+
+    CampaignInput:
+      type: object
+      required: [name, territory, owner_user_id, segment, message_angle]
+      properties:
+        name:
+          type: string
+        territory:
+          type: string
+        owner_user_id:
+          type: string
+        segment:
+          type: string
+        message_angle:
+          type: string
+        start_date:
+          type: ["string", "null"]
+        prospect_ids:
+          type: array
+          items:
+            type: string
+
+    CampaignDetail:
+      type: object
+      required: [id, name, territory, owner_user_id, owner_name, segment, prospect_count, message_angle, status, prospects, created_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        territory:
+          type: string
+        owner_user_id:
+          type: string
+        owner_name:
+          type: string
+        segment:
+          type: string
+        prospect_count:
+          type: number
+        message_angle:
+          type: string
+        start_date:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [planned, active, completed]
+        replies:
+          type: number
+        qualified_meetings:
+          type: number
+        signed_partners:
+          type: number
+        prospects:
+          type: array
+          items:
+            $ref: "#/components/schemas/Prospect"
+        created_at:
+          type: string
+
+    TerritoryProspectStats:
+      type: object
+      required: [territory, total, new, accepted, rejected, deferred, pushed_to_hubspot, priority_a, priority_b]
+      properties:
+        territory:
+          type: string
+        total:
+          type: number
+        new:
+          type: number
+        accepted:
+          type: number
+        rejected:
+          type: number
+        deferred:
+          type: number
+        pushed_to_hubspot:
+          type: number
+        priority_a:
+          type: number
+        priority_b:
+          type: number
+
+    ProspectStats:
+      type: object
+      required: [total, by_territory, by_status, by_partner_type, week_over_week]
+      properties:
+        total:
+          type: number
+        by_territory:
+          type: array
+          items:
+            $ref: "#/components/schemas/TerritoryProspectStats"
+        by_status:
+          type: object
+          additionalProperties:
+            type: number
+        by_partner_type:
+          type: object
+          additionalProperties:
+            type: number
+        week_over_week:
+          type: number
