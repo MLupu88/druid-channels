@@ -43,7 +43,7 @@ function TrendIcon({ trend }: { trend: string }) {
 export default function Overview() {
   const { activeUser } = useUser();
   const [territory, setTerritory] = useState<string>('global');
-  const [period, setPeriod] = useState<string>('q1');
+  const [period, setPeriod] = useState<string>('q3');
   const [selectedKpi, setSelectedKpi] = useState<string | null>(null);
 
   const { data: territories } = useListTerritories();
@@ -72,10 +72,10 @@ export default function Overview() {
                 <SelectValue placeholder="Period" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="q1">Q1 2024</SelectItem>
-                <SelectItem value="q2">Q2 2024</SelectItem>
-                <SelectItem value="q3">Q3 2024</SelectItem>
-                <SelectItem value="q4">Q4 2024</SelectItem>
+                <SelectItem value="q1">Q1 2026</SelectItem>
+                <SelectItem value="q2">Q2 2026</SelectItem>
+                <SelectItem value="q3">Q3 2026</SelectItem>
+                <SelectItem value="q4">Q4 2026</SelectItem>
                 <SelectItem value="ytd">Year to date</SelectItem>
               </SelectContent>
             </Select>
@@ -264,9 +264,39 @@ export default function Overview() {
 
               <div>
                 <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">Explanation</h4>
-                <p className="text-sm leading-relaxed text-foreground">
-                  The {selectedKpi.toLowerCase()} metric tracks the performance across all defined territories. We are seeing a higher concentration of activity in Western Europe and the US, which accounts for the current trend. Continue to monitor pipeline conversion rates.
-                </p>
+                {(() => {
+                  const devRow = kpis?.partner_development.find(r => r.metric === selectedKpi);
+                  if (devRow) {
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-sm leading-relaxed text-foreground">{devRow.explanation}</p>
+                        {devRow.what_changed && (
+                          <p className="text-sm leading-relaxed text-muted-foreground">
+                            <span className="font-medium text-foreground">What changed: </span>{devRow.what_changed}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+                  const commercialRow = kpis?.weekly_commercial.find(r => r.metric === selectedKpi);
+                  if (commercialRow) {
+                    const delta = commercialRow.current - commercialRow.last_week;
+                    return (
+                      <p className="text-sm leading-relaxed text-foreground">
+                        {commercialRow.metric} is at {commercialRow.current} for {kpis?.territory}, {delta === 0 ? 'unchanged' : delta > 0 ? `up ${delta} from` : `down ${Math.abs(delta)} from`} {delta !== 0 ? `last week's ${commercialRow.last_week}` : 'last week'}, against a target of {commercialRow.target}.
+                      </p>
+                    );
+                  }
+                  const marketingRow = kpis?.weekly_marketing.find(r => r.metric === selectedKpi);
+                  if (marketingRow) {
+                    return (
+                      <p className="text-sm leading-relaxed text-foreground">
+                        {marketingRow.metric} recorded {marketingRow.this_week} this week for {kpis?.territory}, trending {marketingRow.trend}.
+                      </p>
+                    );
+                  }
+                  return <p className="text-sm text-muted-foreground">No details available for this metric.</p>;
+                })()}
               </div>
             </div>
           </ScrollArea>

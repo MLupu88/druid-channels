@@ -24,6 +24,8 @@ tags:
     description: KPI and head-of-channels metrics
   - name: campaigns
     description: Campaign list management
+  - name: integrations
+    description: Integration connection status (mocked)
 
 paths:
   /healthz:
@@ -131,6 +133,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProspectDetail"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateProspect
+      tags: [prospects]
+      summary: Edit prospect fields (notes, messaging, assignment, priority)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectEditInput"
+      responses:
+        "200":
+          description: Updated prospect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prospect"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteProspect
+      tags: [prospects]
+      summary: Delete a prospect
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
         "404":
           description: Not found
 
@@ -338,6 +384,117 @@ paths:
                 $ref: "#/components/schemas/CampaignDetail"
         "404":
           description: Not found
+    patch:
+      operationId: updateCampaign
+      tags: [campaigns]
+      summary: Edit a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignEditInput"
+      responses:
+        "200":
+          description: Updated campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteCampaign
+      tags: [campaigns]
+      summary: Delete a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+        "404":
+          description: Not found
+
+  /users/{id}:
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Edit a user's role, territory, or active status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserEditInput"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: Not found
+
+  /territories/{id}:
+    patch:
+      operationId: updateTerritory
+      tags: [territories]
+      summary: Edit a territory's name or owner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerritoryEditInput"
+      responses:
+        "200":
+          description: Updated territory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Territory"
+        "404":
+          description: Not found
+
+  /integrations/status:
+    get:
+      operationId: getIntegrationsStatus
+      tags: [integrations]
+      summary: Get mocked integration connection status (HubSpot, etc.)
+      responses:
+        "200":
+          description: Integration statuses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationsStatus"
 
   /prospects/stats/summary:
     get:
@@ -619,7 +776,7 @@ components:
 
     ScanConfig:
       type: object
-      required: [id, territory_id, territory_name, name, partner_types, industries, technologies, excluded_domains, max_results, active]
+      required: [id, territory_id, territory_name, name, partner_types, industries, technologies, excluded_domains, target_signals, max_results, active]
       properties:
         id:
           type: string
@@ -646,6 +803,10 @@ components:
           items:
             type: string
         excluded_domains:
+          type: array
+          items:
+            type: string
+        target_signals:
           type: array
           items:
             type: string
@@ -679,6 +840,10 @@ components:
           type: array
           items:
             type: string
+        target_signals:
+          type: array
+          items:
+            type: string
         max_results:
           type: number
         min_checks_required:
@@ -687,6 +852,101 @@ components:
           type: number
         active:
           type: boolean
+
+    ProspectEditInput:
+      type: object
+      properties:
+        why_it_fits:
+          type: string
+        why_now:
+          type: string
+        suggested_angle:
+          type: ["string", "null"]
+        suggested_target_role:
+          type: ["string", "null"]
+        suggested_message:
+          type: ["string", "null"]
+        pam_note:
+          type: ["string", "null"]
+        priority:
+          type: string
+          enum: [A, B]
+        assigned_user_id:
+          type: ["string", "null"]
+
+    DeleteResult:
+      type: object
+      required: [id, deleted]
+      properties:
+        id:
+          type: string
+        deleted:
+          type: boolean
+
+    CampaignEditInput:
+      type: object
+      properties:
+        name:
+          type: string
+        segment:
+          type: string
+        message_angle:
+          type: string
+        owner_user_id:
+          type: string
+        start_date:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [planned, active, completed]
+
+    UserEditInput:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [head_of_channels, pam, admin]
+        territory:
+          type: ["string", "null"]
+        active:
+          type: boolean
+
+    TerritoryEditInput:
+      type: object
+      properties:
+        name:
+          type: string
+        owner_user_id:
+          type: ["string", "null"]
+
+    IntegrationConnectionStatus:
+      type: object
+      required: [id, name, connected, mode, records_synced, last_sync_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        connected:
+          type: boolean
+        mode:
+          type: string
+          enum: [mock, live]
+        records_synced:
+          type: number
+        last_sync_at:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+
+    IntegrationsStatus:
+      type: object
+      required: [integrations]
+      properties:
+        integrations:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationConnectionStatus"
 
     ScanRunInput:
       type: object

@@ -3,6 +3,8 @@ import {
   useListCampaigns,
   useGetCampaign,
   useCreateCampaign,
+  useUpdateCampaign,
+  useDeleteCampaign,
   useListTerritories,
   useListUsers,
   getListCampaignsQueryKey,
@@ -41,7 +43,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/user-context';
-import { Plus, ChevronLeft, Calendar, Users, Target, MessageSquare } from 'lucide-react';
+import { Plus, ChevronLeft, Calendar, Users, Target, MessageSquare, Pencil, Trash2, MoreVertical } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { format } from 'date-fns';
 
 function StatusBadge({ status }: { status: string }) {
@@ -68,6 +76,8 @@ export default function Campaigns() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // New Campaign Form
   const [name, setName] = useState('');
@@ -75,6 +85,13 @@ export default function Campaigns() {
   const [owner, setOwner] = useState(activeUser?.id || '');
   const [segment, setSegment] = useState('');
   const [angle, setAngle] = useState('');
+
+  // Edit Campaign Form
+  const [editName, setEditName] = useState('');
+  const [editSegment, setEditSegment] = useState('');
+  const [editAngle, setEditAngle] = useState('');
+  const [editOwner, setEditOwner] = useState('');
+  const [editStatus, setEditStatus] = useState('planned');
 
   const { data: detail, isLoading: isLoadingDetail } = useGetCampaign(
     selectedId || '',
@@ -108,6 +125,57 @@ export default function Campaigns() {
     });
   };
 
+  const updateMutation = useUpdateCampaign({
+    mutation: {
+      onSuccess: (_data, variables) => {
+        queryClient.invalidateQueries({ queryKey: getListCampaignsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetCampaignQueryKey(variables.id) });
+        setEditDialogOpen(false);
+        toast({ title: 'Campaign updated' });
+      },
+    },
+  });
+
+  const deleteMutation = useDeleteCampaign({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListCampaignsQueryKey() });
+        setDeleteDialogOpen(false);
+        setSelectedId(null);
+        toast({ title: 'Campaign deleted' });
+      },
+    },
+  });
+
+  const openEditDialog = () => {
+    if (!detail) return;
+    setEditName(detail.name);
+    setEditSegment(detail.segment);
+    setEditAngle(detail.message_angle);
+    setEditOwner(detail.owner_user_id);
+    setEditStatus(detail.status);
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!selectedId) return;
+    updateMutation.mutate({
+      id: selectedId,
+      data: {
+        name: editName,
+        segment: editSegment,
+        message_angle: editAngle,
+        owner_user_id: editOwner,
+        status: editStatus as any,
+      },
+    });
+  };
+
+  const handleDelete = () => {
+    if (!selectedId) return;
+    deleteMutation.mutate({ id: selectedId });
+  };
+
   if (selectedId) {
     return (
       <div className="flex flex-col h-full bg-background relative">
@@ -125,7 +193,24 @@ export default function Campaigns() {
               </p>
             </div>
           </div>
-          {detail && <StatusBadge status={detail.status} />}
+          <div className="flex items-center gap-2">
+            {detail && <StatusBadge status={detail.status} />}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="shrink-0 border-border/60">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={openEditDialog}>
+                  <Pencil className="h-3.5 w-3.5 mr-2" /> Edit campaign
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteDialogOpen(true)}>
+                  <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete campaign
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
         
         <ScrollArea className="flex-1">
@@ -277,6 +362,75 @@ export default function Campaigns() {
           </Table>
         </div>
       </div>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit campaign</DialogTitle>
+            <DialogDescription>Update campaign details, owner, or status.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Campaign Name</Label>
+              <Input value={editName} onChange={e => setEditName(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Owner</Label>
+                <Select value={editOwner} onValueChange={setEditOwner}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {users?.map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select value={editStatus} onValueChange={setEditStatus}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="planned">Planned</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Target Segment</Label>
+              <Input value={editSegment} onChange={e => setEditSegment(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Message Angle</Label>
+              <Textarea value={editAngle} onChange={e => setEditAngle(e.target.value)} className="h-20 resize-none" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={updateMutation.isPending}>Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete {detail?.name}?</DialogTitle>
+            <DialogDescription>
+              This permanently removes the campaign and its prospect associations. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete campaign
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">

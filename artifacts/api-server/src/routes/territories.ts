@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { territoriesTable, usersTable } from "@workspace/db";
-import { ListTerritoriesResponse } from "@workspace/api-zod";
+import { ListTerritoriesResponse, UpdateTerritoryBody, UpdateTerritoryResponse } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -15,6 +15,37 @@ router.get("/territories", async (_req, res): Promise<void> => {
     countries: t.countries as string[],
     languages: t.languages as string[],
   }))));
+});
+
+router.patch("/territories/:id", async (req, res): Promise<void> => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+  const parsed = UpdateTerritoryBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [existing] = await db.select().from(territoriesTable).where(eq(territoriesTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "Territory not found" });
+    return;
+  }
+
+  const data = parsed.data;
+  const updates: Partial<typeof territoriesTable.$inferInsert> = {};
+  if (data.name !== undefined) updates.name = data.name;
+  if (data.owner_user_id !== undefined) updates.ownerUserId = data.owner_user_id;
+
+  const [updated] = await db.update(territoriesTable).set(updates).where(eq(territoriesTable.id, id)).returning();
+
+  res.json(UpdateTerritoryResponse.parse({
+    id: updated.id,
+    name: updated.name,
+    owner_user_id: updated.ownerUserId,
+    countries: updated.countries as string[],
+    languages: updated.languages as string[],
+  }));
 });
 
 export default router;

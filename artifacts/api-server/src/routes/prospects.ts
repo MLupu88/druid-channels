@@ -15,6 +15,9 @@ import {
   MakeProspectDecisionResponse,
   PushProspectToHubspotResponse,
   GetProspectStatsResponse,
+  UpdateProspectBody,
+  UpdateProspectResponse,
+  DeleteProspectResponse,
 } from "@workspace/api-zod";
 import { eq, and, sql, count } from "drizzle-orm";
 
@@ -309,6 +312,75 @@ router.post("/prospects/:id/decision", async (req, res): Promise<void> => {
   res.json(MakeProspectDecisionResponse.parse(
     buildProspectShape(updated, row.company, row.territory ?? null, row.assignedUser ?? null, sigCount)
   ));
+});
+
+router.patch("/prospects/:id", async (req, res): Promise<void> => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+  const parsed = UpdateProspectBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [existing] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "Prospect not found" });
+    return;
+  }
+
+  const data = parsed.data;
+  const updates: Partial<typeof prospectsTable.$inferInsert> = { updatedAt: new Date() };
+  if (data.why_it_fits !== undefined) updates.whyItFits = data.why_it_fits;
+  if (data.why_now !== undefined) updates.whyNow = data.why_now;
+  if (data.suggested_angle !== undefined) updates.suggestedAngle = data.suggested_angle;
+  if (data.suggested_target_role !== undefined) updates.suggestedTargetRole = data.suggested_target_role;
+  if (data.suggested_message !== undefined) updates.suggestedMessage = data.suggested_message;
+  if (data.pam_note !== undefined) updates.pamNote = data.pam_note;
+  if (data.priority !== undefined) updates.priority = data.priority;
+  if (data.assigned_user_id !== undefined) updates.assignedUserId = data.assigned_user_id;
+
+  const [updated] = await db
+    .update(prospectsTable)
+    .set(updates)
+    .where(eq(prospectsTable.id, id))
+    .returning();
+
+  await db.insert(prospectActivityTable).values({
+    prospectId: id,
+    eventType: "note_added",
+    note: "Prospect details edited",
+    timestamp: new Date(),
+  });
+
+  const [row] = await db
+    .select({ company: companiesTable, territory: territoriesTable, assignedUser: usersTable })
+    .from(companiesTable)
+    .leftJoin(territoriesTable, eq(territoriesTable.id, updated.territoryId))
+    .leftJoin(usersTable, eq(usersTable.id, updated.assignedUserId!))
+    .where(eq(companiesTable.id, updated.companyId));
+
+  const signalRows = await db.select({ count: count() }).from(signalsTable).where(eq(signalsTable.companyId, updated.companyId));
+  const sigCount = Number(signalRows[0]?.count ?? 0);
+
+  res.json(UpdateProspectResponse.parse(
+    buildProspectShape(updated, row.company, row.territory ?? null, row.assignedUser ?? null, sigCount)
+  ));
+});
+
+router.delete("/prospects/:id", async (req, res): Promise<void> => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+  const [existing] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "Prospect not found" });
+    return;
+  }
+
+  await db.delete(prospectActivityTable).where(eq(prospectActivityTable.prospectId, id));
+  await db.delete(prospectsTable).where(eq(prospectsTable.id, id));
+
+  res.json(DeleteProspectResponse.parse({ id, deleted: true }));
 });
 
 router.post("/prospects/:id/hubspot", async (req, res): Promise<void> => {

@@ -99,15 +99,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton className="text-muted-foreground">
-                      <Settings />
-                      <span>Settings</span>
+                    <SidebarMenuButton asChild isActive={location === '/settings'} className="text-muted-foreground data-[active=true]:text-foreground">
+                      <Link href="/settings">
+                        <Settings />
+                        <span>Settings</span>
+                      </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton className="text-muted-foreground">
-                      <Unplug />
-                      <span>Integration status</span>
+                    <SidebarMenuButton asChild isActive={location === '/integration-status'} className="text-muted-foreground data-[active=true]:text-foreground">
+                      <Link href="/integration-status">
+                        <Unplug />
+                        <span>Integration status</span>
+                      </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>

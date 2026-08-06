@@ -6,6 +6,9 @@ import {
   CreateCampaignBody,
   CreateCampaignResponse,
   GetCampaignResponse,
+  UpdateCampaignBody,
+  UpdateCampaignResponse,
+  DeleteCampaignResponse,
 } from "@workspace/api-zod";
 import { eq, count } from "drizzle-orm";
 
@@ -150,6 +153,51 @@ router.get("/campaigns/:id", async (req, res): Promise<void> => {
     ...shapeCampaign(row.campaign, row.owner?.name ?? ""),
     prospects,
   }));
+});
+
+router.patch("/campaigns/:id", async (req, res): Promise<void> => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+  const parsed = UpdateCampaignBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [existing] = await db.select().from(campaignsTable).where(eq(campaignsTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "Campaign not found" });
+    return;
+  }
+
+  const data = parsed.data;
+  const updates: Partial<typeof campaignsTable.$inferInsert> = {};
+  if (data.name !== undefined) updates.name = data.name;
+  if (data.segment !== undefined) updates.segment = data.segment;
+  if (data.message_angle !== undefined) updates.messageAngle = data.message_angle;
+  if (data.owner_user_id !== undefined) updates.ownerUserId = data.owner_user_id;
+  if (data.start_date !== undefined) updates.startDate = data.start_date;
+  if (data.status !== undefined) updates.status = data.status;
+
+  const [updated] = await db.update(campaignsTable).set(updates).where(eq(campaignsTable.id, id)).returning();
+
+  const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, updated.ownerUserId));
+  res.json(UpdateCampaignResponse.parse(shapeCampaign(updated, owner?.name ?? "")));
+});
+
+router.delete("/campaigns/:id", async (req, res): Promise<void> => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+  const [existing] = await db.select().from(campaignsTable).where(eq(campaignsTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "Campaign not found" });
+    return;
+  }
+
+  await db.delete(campaignProspectsTable).where(eq(campaignProspectsTable.campaignId, id));
+  await db.delete(campaignsTable).where(eq(campaignsTable.id, id));
+
+  res.json(DeleteCampaignResponse.parse({ id, deleted: true }));
 });
 
 export default router;

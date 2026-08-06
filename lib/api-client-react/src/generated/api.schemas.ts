@@ -278,6 +278,7 @@ export interface ScanConfig {
   industries: string[];
   technologies: string[];
   excluded_domains: string[];
+  target_signals: string[];
   max_results: number;
   min_checks_required?: number;
   recency_window_days?: number;
@@ -290,10 +291,105 @@ export interface ScanConfigInput {
   industries?: string[];
   technologies?: string[];
   excluded_domains?: string[];
+  target_signals?: string[];
   max_results?: number;
   min_checks_required?: number;
   recency_window_days?: number;
   active?: boolean;
+}
+
+export type ProspectEditInputPriority = typeof ProspectEditInputPriority[keyof typeof ProspectEditInputPriority];
+
+
+export const ProspectEditInputPriority = {
+  A: 'A',
+  B: 'B',
+} as const;
+
+export interface ProspectEditInput {
+  why_it_fits?: string;
+  why_now?: string;
+  /** @nullable */
+  suggested_angle?: string | null;
+  /** @nullable */
+  suggested_target_role?: string | null;
+  /** @nullable */
+  suggested_message?: string | null;
+  /** @nullable */
+  pam_note?: string | null;
+  priority?: ProspectEditInputPriority;
+  /** @nullable */
+  assigned_user_id?: string | null;
+}
+
+export interface DeleteResult {
+  id: string;
+  deleted: boolean;
+}
+
+export type CampaignEditInputStatus = typeof CampaignEditInputStatus[keyof typeof CampaignEditInputStatus];
+
+
+export const CampaignEditInputStatus = {
+  planned: 'planned',
+  active: 'active',
+  completed: 'completed',
+} as const;
+
+export interface CampaignEditInput {
+  name?: string;
+  segment?: string;
+  message_angle?: string;
+  owner_user_id?: string;
+  /** @nullable */
+  start_date?: string | null;
+  status?: CampaignEditInputStatus;
+}
+
+export type UserEditInputRole = typeof UserEditInputRole[keyof typeof UserEditInputRole];
+
+
+export const UserEditInputRole = {
+  head_of_channels: 'head_of_channels',
+  pam: 'pam',
+  admin: 'admin',
+} as const;
+
+export interface UserEditInput {
+  role?: UserEditInputRole;
+  /** @nullable */
+  territory?: string | null;
+  active?: boolean;
+}
+
+export interface TerritoryEditInput {
+  name?: string;
+  /** @nullable */
+  owner_user_id?: string | null;
+}
+
+export type IntegrationConnectionStatusMode = typeof IntegrationConnectionStatusMode[keyof typeof IntegrationConnectionStatusMode];
+
+
+export const IntegrationConnectionStatusMode = {
+  mock: 'mock',
+  live: 'live',
+} as const;
+
+export interface IntegrationConnectionStatus {
+  id: string;
+  name: string;
+  connected: boolean;
+  mode: IntegrationConnectionStatusMode;
+  records_synced: number;
+  /** @nullable */
+  last_sync_at: string | null;
+  /** @nullable */
+  description?: string | null;
+}
+
+export interface IntegrationsStatus {
+  integrations: IntegrationConnectionStatus[];
 }
 
 export type ScanRunInputMode = typeof ScanRunInputMode[keyof typeof ScanRunInputMode];

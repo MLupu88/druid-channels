@@ -180,6 +180,85 @@ export const GetProspectResponse = zod.object({
 
 
 /**
+ * @summary Edit prospect fields (notes, messaging, assignment, priority)
+ */
+export const UpdateProspectParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateProspectBody = zod.object({
+  "why_it_fits": zod.string().optional(),
+  "why_now": zod.string().optional(),
+  "suggested_angle": zod.string().nullish(),
+  "suggested_target_role": zod.string().nullish(),
+  "suggested_message": zod.string().nullish(),
+  "pam_note": zod.string().nullish(),
+  "priority": zod.enum(['A', 'B']).optional(),
+  "assigned_user_id": zod.string().nullish()
+})
+
+export const UpdateProspectResponse = zod.object({
+  "id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "normalized_name": zod.string().nullish(),
+  "domain": zod.string(),
+  "website_url": zod.string().nullish(),
+  "country": zod.string(),
+  "headquarters": zod.string().nullish(),
+  "employee_band": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "linkedin_url": zod.string().nullish(),
+  "hubspot_company_id": zod.string().nullish()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "active": zod.boolean()
+}).optional(),
+  "partner_type": zod.string(),
+  "priority": zod.enum(['A', 'B']),
+  "enterprise_access": zod.boolean(),
+  "relevant_capability": zod.boolean(),
+  "technology_adjacency": zod.boolean(),
+  "partnership_openness": zod.boolean(),
+  "recent_trigger": zod.boolean(),
+  "why_it_fits": zod.string(),
+  "why_now": zod.string(),
+  "suggested_angle": zod.string().nullish(),
+  "suggested_target_role": zod.string().nullish(),
+  "suggested_message": zod.string().nullish(),
+  "status": zod.enum(['new', 'accepted', 'rejected', 'deferred', 'pushed_to_hubspot']),
+  "rejection_reason": zod.string().nullish(),
+  "pam_note": zod.string().nullish(),
+  "accepted_at": zod.string().nullish(),
+  "hubspot_company_id": zod.string().nullish(),
+  "signal_count": zod.number().optional(),
+  "created_at": zod.string(),
+  "updated_at": zod.string().nullish()
+})
+
+
+/**
+ * @summary Delete a prospect
+ */
+export const DeleteProspectParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteProspectResponse = zod.object({
+  "id": zod.string(),
+  "deleted": zod.boolean()
+})
+
+
+/**
  * @summary Accept, reject, or defer a prospect
  */
 export const MakeProspectDecisionParams = zod.object({
@@ -268,6 +347,7 @@ export const ListScanConfigsResponseItem = zod.object({
   "industries": zod.array(zod.string()),
   "technologies": zod.array(zod.string()),
   "excluded_domains": zod.array(zod.string()),
+  "target_signals": zod.array(zod.string()),
   "max_results": zod.number(),
   "min_checks_required": zod.number().optional(),
   "recency_window_days": zod.number().optional(),
@@ -293,6 +373,7 @@ export const GetScanConfigResponse = zod.object({
   "industries": zod.array(zod.string()),
   "technologies": zod.array(zod.string()),
   "excluded_domains": zod.array(zod.string()),
+  "target_signals": zod.array(zod.string()),
   "max_results": zod.number(),
   "min_checks_required": zod.number().optional(),
   "recency_window_days": zod.number().optional(),
@@ -313,6 +394,7 @@ export const UpdateScanConfigBody = zod.object({
   "industries": zod.array(zod.string()).optional(),
   "technologies": zod.array(zod.string()).optional(),
   "excluded_domains": zod.array(zod.string()).optional(),
+  "target_signals": zod.array(zod.string()).optional(),
   "max_results": zod.number().optional(),
   "min_checks_required": zod.number().optional(),
   "recency_window_days": zod.number().optional(),
@@ -329,6 +411,7 @@ export const UpdateScanConfigResponse = zod.object({
   "industries": zod.array(zod.string()),
   "technologies": zod.array(zod.string()),
   "excluded_domains": zod.array(zod.string()),
+  "target_signals": zod.array(zod.string()),
   "max_results": zod.number(),
   "min_checks_required": zod.number().optional(),
   "recency_window_days": zod.number().optional(),
@@ -509,6 +592,113 @@ export const GetCampaignResponse = zod.object({
   "updated_at": zod.string().nullish()
 })),
   "created_at": zod.string()
+})
+
+
+/**
+ * @summary Edit a campaign
+ */
+export const UpdateCampaignParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateCampaignBody = zod.object({
+  "name": zod.string().optional(),
+  "segment": zod.string().optional(),
+  "message_angle": zod.string().optional(),
+  "owner_user_id": zod.string().optional(),
+  "start_date": zod.string().nullish(),
+  "status": zod.enum(['planned', 'active', 'completed']).optional()
+})
+
+export const UpdateCampaignResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "territory": zod.string(),
+  "owner_user_id": zod.string(),
+  "owner_name": zod.string(),
+  "segment": zod.string(),
+  "prospect_count": zod.number(),
+  "message_angle": zod.string(),
+  "start_date": zod.string().nullish(),
+  "status": zod.enum(['planned', 'active', 'completed']),
+  "replies": zod.number().optional(),
+  "qualified_meetings": zod.number().optional(),
+  "signed_partners": zod.number().optional(),
+  "created_at": zod.string()
+})
+
+
+/**
+ * @summary Delete a campaign
+ */
+export const DeleteCampaignParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteCampaignResponse = zod.object({
+  "id": zod.string(),
+  "deleted": zod.boolean()
+})
+
+
+/**
+ * @summary Edit a user's role, territory, or active status
+ */
+export const UpdateUserParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateUserBody = zod.object({
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']).optional(),
+  "territory": zod.string().nullish(),
+  "active": zod.boolean().optional()
+})
+
+export const UpdateUserResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "active": zod.boolean()
+})
+
+
+/**
+ * @summary Edit a territory's name or owner
+ */
+export const UpdateTerritoryParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateTerritoryBody = zod.object({
+  "name": zod.string().optional(),
+  "owner_user_id": zod.string().nullish()
+})
+
+export const UpdateTerritoryResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "owner_user_id": zod.string().nullish(),
+  "countries": zod.array(zod.string()),
+  "languages": zod.array(zod.string())
+})
+
+
+/**
+ * @summary Get mocked integration connection status (HubSpot, etc.)
+ */
+export const GetIntegrationsStatusResponse = zod.object({
+  "integrations": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "connected": zod.boolean(),
+  "mode": zod.enum(['mock', 'live']),
+  "records_synced": zod.number(),
+  "last_sync_at": zod.string().nullable(),
+  "description": zod.string().nullish()
+}))
 })
 
 

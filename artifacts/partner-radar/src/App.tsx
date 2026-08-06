@@ -9,6 +9,8 @@ import Overview from '@/pages/overview';
 import Prospects from '@/pages/prospects';
 import ScanSetup from '@/pages/scan-setup';
 import Campaigns from '@/pages/campaigns';
+import Settings from '@/pages/settings';
+import IntegrationStatus from '@/pages/integration-status';
 
 const queryClient = new QueryClient();
 
@@ -20,6 +22,8 @@ function Router() {
         <Route path="/prospects" component={Prospects} />
         <Route path="/scan-setup" component={ScanSetup} />
         <Route path="/campaigns" component={Campaigns} />
+        <Route path="/settings" component={Settings} />
+        <Route path="/integration-status" component={IntegrationStatus} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

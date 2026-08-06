@@ -16,6 +16,7 @@ export interface ScanConfig {
   industries: string[];
   technologies: string[];
   excluded_domains: string[];
+  target_signals: string[];
   max_results: number;
   min_checks_required?: number;
   recency_window_days?: number;

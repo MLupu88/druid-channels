@@ -22,6 +22,7 @@ function shapeConfig(c: typeof scanConfigsTable.$inferSelect, territoryName: str
     industries: c.industries as string[],
     technologies: c.technologies as string[],
     excluded_domains: c.excludedDomains as string[],
+    target_signals: c.targetSignals as string[],
     max_results: c.maxResults,
     min_checks_required: c.minChecksRequired,
     recency_window_days: c.recencyWindowDays,
@@ -72,6 +73,7 @@ router.put("/scan-configs/:id", async (req, res): Promise<void> => {
   if (data.industries !== undefined) updates.industries = data.industries;
   if (data.technologies !== undefined) updates.technologies = data.technologies;
   if (data.excluded_domains !== undefined) updates.excludedDomains = data.excluded_domains;
+  if (data.target_signals !== undefined) updates.targetSignals = data.target_signals;
   if (data.max_results !== undefined) updates.maxResults = data.max_results;
   if (data.min_checks_required !== undefined) updates.minChecksRequired = data.min_checks_required;
   if (data.recency_window_days !== undefined) updates.recencyWindowDays = data.recency_window_days;

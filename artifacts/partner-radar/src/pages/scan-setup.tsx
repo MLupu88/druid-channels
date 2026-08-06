@@ -74,6 +74,7 @@ export default function ScanSetup() {
         industries: localConfig.industries,
         technologies: localConfig.technologies,
         excluded_domains: localConfig.excluded_domains,
+        target_signals: localConfig.target_signals,
         max_results: localConfig.max_results,
         min_checks_required: localConfig.min_checks_required,
         recency_window_days: localConfig.recency_window_days
@@ -216,16 +217,27 @@ export default function ScanSetup() {
                 </CardHeader>
                 <CardContent className="p-6">
                   <div className="grid grid-cols-2 gap-y-4">
-                    {signalOptions.map(opt => (
-                      <div key={opt.id} className="flex items-center space-x-2">
-                        <Checkbox 
-                          id={`sig-${opt.id}`} 
-                          checked={true} // In a real app we'd map this to config, but api schema lacks explicit signal checkboxes, they are assumed. We show mock state.
-                          onCheckedChange={() => {}}
-                        />
-                        <Label htmlFor={`sig-${opt.id}`} className="font-normal cursor-pointer">{opt.label}</Label>
-                      </div>
-                    ))}
+                    {signalOptions.map(opt => {
+                      const selected: string[] = localConfig.target_signals || [];
+                      const checked = selected.includes(opt.id);
+                      return (
+                        <div key={opt.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`sig-${opt.id}`}
+                            checked={checked}
+                            onCheckedChange={(value) => {
+                              setLocalConfig((prev: any) => ({
+                                ...prev,
+                                target_signals: value
+                                  ? [...(prev.target_signals || []), opt.id]
+                                  : (prev.target_signals || []).filter((s: string) => s !== opt.id),
+                              }));
+                            }}
+                          />
+                          <Label htmlFor={`sig-${opt.id}`} className="font-normal cursor-pointer">{opt.label}</Label>
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>

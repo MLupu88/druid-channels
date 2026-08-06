@@ -8,6 +8,8 @@ import {
   useRunScan,
   useListScanConfigs,
   useListUsers,
+  useUpdateProspect,
+  useDeleteProspect,
   getListProspectsQueryKey,
   getGetProspectQueryKey
 } from '@workspace/api-client-react';
@@ -54,7 +56,9 @@ import {
   MoreVertical,
   Check,
   Send,
-  Minus
+  Minus,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -103,9 +107,18 @@ export default function Prospects() {
   const [acceptDialogOpen, setAcceptDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [hubspotDialogOpen, setHubspotDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const [note, setNote] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+
+  const [editWhyItFits, setEditWhyItFits] = useState('');
+  const [editWhyNow, setEditWhyNow] = useState('');
+  const [editSuggestedMessage, setEditSuggestedMessage] = useState('');
+  const [editPamNote, setEditPamNote] = useState('');
+  const [editPriority, setEditPriority] = useState('A');
+  const [editAssignedUserId, setEditAssignedUserId] = useState<string>('unassigned');
 
   const { data: territories } = useListTerritories();
   const { data: users } = useListUsers();
@@ -165,6 +178,59 @@ export default function Prospects() {
     }
   });
 
+  const updateMutation = useUpdateProspect({
+    mutation: {
+      onSuccess: (_data, variables) => {
+        queryClient.invalidateQueries({ queryKey: getListProspectsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetProspectQueryKey(variables.id) });
+        setEditDialogOpen(false);
+        toast({ title: 'Prospect updated' });
+      },
+    },
+  });
+
+  const deleteMutation = useDeleteProspect({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProspectsQueryKey() });
+        setDeleteDialogOpen(false);
+        setSelectedId(null);
+        toast({ title: 'Prospect deleted' });
+      },
+    },
+  });
+
+  const openEditDialog = () => {
+    if (!detail) return;
+    setEditWhyItFits(detail.why_it_fits || '');
+    setEditWhyNow(detail.why_now || '');
+    setEditSuggestedMessage(detail.suggested_message || '');
+    setEditPamNote(detail.pam_note || '');
+    setEditPriority(detail.priority);
+    setEditAssignedUserId(detail.assigned_user?.id || 'unassigned');
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!selectedId) return;
+    updateMutation.mutate({
+      id: selectedId,
+      data: {
+        why_it_fits: editWhyItFits,
+        why_now: editWhyNow,
+        suggested_message: editSuggestedMessage,
+        pam_note: editPamNote,
+        priority: editPriority as any,
+        assigned_user_id: editAssignedUserId === 'unassigned' ? null : editAssignedUserId,
+      },
+    });
+  };
+
+  const handleDelete = () => {
+    if (!selectedId) return;
+    deleteMutation.mutate({ id: selectedId });
+  };
+
   const runScanMutation = useRunScan({
     mutation: {
       onSuccess: () => {
@@ -201,6 +267,7 @@ export default function Prospects() {
     runScanMutation.mutate({
       data: {
         scan_config_id: configId,
+        mode: 'mock',
       }
     });
   };
@@ -391,26 +458,34 @@ export default function Prospects() {
                   </Button>
                 )}
 
-                {(detail.status === 'new' || detail.status === 'deferred') && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" className="shrink-0 border-border/60">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem onClick={() => handleDecision('deferred')}>
-                        Defer for later
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setRejectDialogOpen(true)}>
-                        Reject
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => copyToClipboard(window.location.href)}>
-                        Copy link
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="shrink-0 border-border/60">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={openEditDialog}>
+                      <Pencil className="h-3.5 w-3.5 mr-2" /> Edit details
+                    </DropdownMenuItem>
+                    {(detail.status === 'new' || detail.status === 'deferred') && (
+                      <>
+                        <DropdownMenuItem onClick={() => handleDecision('deferred')}>
+                          Defer for later
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setRejectDialogOpen(true)}>
+                          Reject
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    <DropdownMenuItem onClick={() => copyToClipboard(window.location.href)}>
+                      Copy link
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteDialogOpen(true)}>
+                      <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete prospect
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
@@ -630,6 +705,79 @@ export default function Prospects() {
             <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={() => handleDecision('rejected')} disabled={decisionMutation.isPending || !rejectionReason}>
               Reject prospect
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Edit {detail?.company.name}</DialogTitle>
+            <DialogDescription>Update the qualification notes and outreach details for this prospect.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Why it fits</label>
+              <Textarea value={editWhyItFits} onChange={e => setEditWhyItFits(e.target.value)} className="min-h-[70px]" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Why now</label>
+              <Textarea value={editWhyNow} onChange={e => setEditWhyNow(e.target.value)} className="min-h-[70px]" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Suggested message</label>
+              <Textarea value={editSuggestedMessage} onChange={e => setEditSuggestedMessage(e.target.value)} className="min-h-[100px]" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">PAM note</label>
+              <Textarea value={editPamNote} onChange={e => setEditPamNote(e.target.value)} className="min-h-[60px]" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Priority</label>
+                <Select value={editPriority} onValueChange={setEditPriority}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="A">Priority A</SelectItem>
+                    <SelectItem value="B">Priority B</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Assigned PAM</label>
+                <Select value={editAssignedUserId} onValueChange={setEditAssignedUserId}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {users?.map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={updateMutation.isPending}>Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete {detail?.company.name}?</DialogTitle>
+            <DialogDescription>
+              This permanently removes the prospect and its activity history. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete prospect
             </Button>
           </DialogFooter>
         </DialogContent>
