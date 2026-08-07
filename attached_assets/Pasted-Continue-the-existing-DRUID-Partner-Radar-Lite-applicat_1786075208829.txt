@@ -1,0 +1,736 @@
+Continue the existing DRUID Partner Radar Lite application.
+
+DO NOT rebuild it.
+DO NOT add a large new architecture.
+DO NOT turn this into a CRM, project-management tool, partner portal or marketing automation platform.
+
+The goal is simple:
+
+Help the Channels team:
+1. find good new partners
+2. know what changed around existing partners
+3. spot useful RFPs, events, customer wins and AI activity
+4. keep the Head of Channels’ existing reporting view trustworthy
+
+PAMs already manage relationships through meetings, Teams, WhatsApp and email.
+HubSpot remains the commercial system of record.
+This app should reduce research work and improve visibility.
+
+==================================================
+1. KEEP THE EXECUTIVE TABLES EXACTLY AS THEY ARE
+==================================================
+
+The Overview page must retain these exact table structures.
+
+TABLE 1
+
+KPI | Current | Target | Status
+
+Rows:
+- New Partner Prospects
+- Signed Partners
+- Active Onboarding
+- Certified Partners
+- Partner-Sourced Pipeline
+- Partner-Influenced Pipeline
+- Closed Revenue
+- Renewals
+
+TABLE 2
+
+Metric | Current | Last Week | Target | Trend
+
+Rows:
+- Partner-Sourced Pipeline
+- Opportunities Created
+- Closed Revenue
+- Renewals Due
+- Renewals Closed
+
+TABLE 3
+
+Metric | This Week | Trend
+
+Rows:
+- Joint Campaigns
+- Events
+- Webinars
+- Marketing Qualified Leads
+- Partner Referrals
+
+Do not:
+- add permanent columns
+- replace these tables with cards
+- build another dashboard
+- invent new executive KPIs
+
+These three tables are the fixed Head of Channels view.
+
+==================================================
+2. KEEP "WHAT CHANGED"
+==================================================
+
+"What changed" is important.
+
+But do NOT add it as another visible column.
+
+When the user clicks a table row, open the existing right-side panel.
+
+Show:
+
+- What changed since the last period
+- Which territory contributed
+- Which records caused the movement
+- Important exceptions
+- Last updated
+- Data source
+
+Example:
+
+New Partner Prospects
+12 current / 15 target
+
+WHAT CHANGED
+
++4 this week
+
+DACH +2
+US +1
+UK&I +1
+
+Notable updates:
+- German integrator launched a GenAI practice
+- US MSP launched an AI managed-service offer
+- UK CX consultancy announced a new enterprise partnership
+
+==================================================
+3. STOP USING FAKE KPI CALCULATIONS
+==================================================
+
+Review the current KPI logic.
+
+Do not calculate one KPI from something unrelated.
+
+Examples of what must NOT happen:
+
+- MQLs calculated from partner prospects
+- Opportunities Created calculated from accepted partner prospects
+- Events calculated from campaign count
+- Renewals calculated from meetings
+- Partner Referrals inferred from replies unless that is actually how the metric is defined
+
+For the mockup, a metric may be:
+
+- Mock data
+- Manual data
+- Connected data
+- Not connected
+
+It is better to show "--" than a misleading number.
+
+The UI may show a small "Demo data" label while we are still in mock mode.
+
+==================================================
+4. SIMPLIFY THE LANGUAGE
+==================================================
+
+Avoid pompous product terminology.
+
+Use these labels:
+
+"New partners"
+NOT "Prospect Radar"
+
+"Partners"
+NOT "Partner Intelligence"
+
+"Partner updates"
+NOT "External intelligence"
+
+"What to look for"
+NOT "Research Plays"
+
+"What changed"
+NOT "Signal analysis"
+
+"How to approach them"
+NOT "Suggested outreach angle"
+
+"Help needed from HQ"
+NOT "HQ Support Requirements"
+
+"Sources"
+NOT "Evidence repository"
+
+"Strong match"
+NOT "Priority A"
+
+"Worth a look"
+NOT "Priority B"
+
+The application should sound like a practical internal tool.
+
+==================================================
+5. NAVIGATION
+==================================================
+
+Keep navigation very small:
+
+Overview
+New partners
+Partners
+Activities
+
+Settings can contain:
+
+What to look for
+
+Do not add more main navigation items unless necessary.
+
+==================================================
+6. NEW PARTNERS
+==================================================
+
+Keep the existing prospect functionality but simplify the experience.
+
+For each suggested company show:
+
+Company
+Territory
+PAM
+Partner type
+
+WHY IT MAY FIT
+One short paragraph.
+
+WHY NOW
+One short paragraph.
+
+Useful information:
+- Enterprise customers
+- AI / automation / CX capability
+- Technologies they work with
+- Industries
+- Open to partnerships where publicly visible
+- Recent relevant activity
+
+HOW TO APPROACH THEM
+One short suggested angle.
+
+SOURCES
+Public URLs supporting the recommendation.
+
+Actions:
+
+Accept
+Reject
+Maybe later
+Copy message
+
+Only after Accept:
+
+Send to HubSpot
+
+Do not create a complex score.
+
+Use five simple checks internally:
+
+- Enterprise customers
+- Relevant capability
+- Relevant technology ecosystem
+- Good partnership fit
+- Recent reason to contact
+
+Display only:
+
+Strong match
+or
+Worth a look
+
+==================================================
+7. EXISTING PARTNERS
+==================================================
+
+Add a simple Partners view.
+
+This is NOT partner management.
+
+It is a research briefing for the PAM and Head of Channels.
+
+Opening a partner should show:
+
+PARTNER NAME
+Territory
+PAM
+Last researched
+
+--------------------------------
+COMMERCIAL
+--------------------------------
+
+Use HubSpot data when available.
+
+For mock mode, clearly mark this as demo data.
+
+Show only useful information such as:
+
+- Signed status
+- Open opportunities
+- Partner-sourced pipeline
+- Closed revenue
+- Renewals
+
+Do not use public research to infer what the partner has sold with DRUID.
+
+--------------------------------
+WHAT CHANGED
+--------------------------------
+
+Show only new public information found since the last research date.
+
+Examples:
+
+- New AI service launched
+- New customer win
+- New partnership
+- New country expansion
+- Acquisition
+- Relevant leadership appointment
+- Important hiring
+- Upcoming event
+- Relevant RFP
+
+Do not show generic company news.
+
+--------------------------------
+WHAT THEY ARE DOING
+--------------------------------
+
+Short summary of publicly visible:
+
+- AI services
+- automation
+- contact center
+- managed services
+- technologies
+- industries
+- relevant offerings
+
+--------------------------------
+CUSTOMERS / MARKET ACCESS
+--------------------------------
+
+Show public information such as:
+
+- customer case studies
+- named customers
+- recent wins
+- industries served
+- countries served
+
+Do NOT call these "prospects".
+
+If research suggests a possible opening, label it:
+
+"Possible customer opening"
+
+Example:
+
+Possible customer opening
+
+Partner X recently announced a new banking customer.
+Its customer-service transformation work may create a relevant DRUID conversation.
+
+--------------------------------
+RFPS
+--------------------------------
+
+Show relevant public RFPs/tenders where found.
+
+Each item:
+
+Title
+Country
+Deadline
+Why it may be relevant
+Source
+
+Do not create an RFP management workflow.
+
+This is research only.
+
+--------------------------------
+EVENTS
+--------------------------------
+
+Show relevant upcoming events.
+
+Each item:
+
+Event
+Date
+Location
+Why it matters
+Partner involvement if known
+
+Possible actions:
+
+Meet there
+Attend together
+Speak together
+Potential place to find new partners
+
+Do not build event management.
+
+--------------------------------
+AI / BUSINESS UPDATES
+--------------------------------
+
+Show relevant things such as:
+
+- AI practice launched
+- GenAI or agentic AI activity
+- New managed AI offer
+- acquisition
+- AI leadership appointment
+- AI hiring cluster
+- important customer win
+
+==================================================
+8. HELP NEEDED FROM HQ
+==================================================
+
+At the bottom of the Partner page add:
+
+Help needed from HQ
+
+Dropdown:
+
+None
+Marketing
+Executive intro
+Technical help
+Pricing / commercial
+RFP help
+Event support
+Partner enablement
+Other
+
+Optional note.
+
+Example:
+
+"Need banking references and executive support for a September customer meeting."
+
+This is one of the very few fields the PAM should manually maintain.
+
+Do NOT create tasks automatically.
+
+==================================================
+9. DIFFERENT PAMs WORK DIFFERENTLY
+==================================================
+
+Reuse the existing Scan Setup/configuration.
+
+Rename the user-facing concept:
+
+"What to look for"
+
+Do not build a separate Research Play feature.
+
+Allow each territory to choose what the system should pay more attention to.
+
+Checkboxes:
+
+New partners
+RFPs
+Events
+AI moves
+Customer wins
+Partnerships
+
+Allow territory-specific keywords/searches behind these settings.
+
+Seed examples:
+
+Denny — Portugal / Canada / South America
+
+Higher emphasis:
+- RFPs
+- tenders
+- consortium opportunities
+- local enterprise integrators
+- events
+
+James — UK&I
+
+Higher emphasis:
+- AI consultancies
+- CX
+- contact-center integrators
+- enterprise customer wins
+- events
+
+Vlad — DACH
+
+Higher emphasis:
+- enterprise integrators
+- SAP / Microsoft / automation ecosystem
+- AI investments
+- regulated industries
+- local events
+
+Chase — US
+
+Higher emphasis:
+- MSPs
+- AI practices
+- alliances
+- contact-center ecosystem
+- acquisitions
+- major events
+
+Elena — CEE
+
+Higher emphasis:
+- regional SIs
+- Microsoft ecosystem
+- automation partners
+- enterprise wins
+- regional expansion
+
+These are configurations, not separate workflows.
+
+==================================================
+10. ACTIVITIES
+==================================================
+
+Reuse the existing Campaign Lists functionality.
+
+Rename it:
+
+Activities
+
+Do not create a new marketing system.
+
+An activity should have:
+
+Type:
+- Joint Campaign
+- Event
+- Webinar
+
+Partner
+Territory
+PAM
+Date
+
+Status:
+- Planned
+- Live
+- Completed
+
+Optional:
+HubSpot campaign link
+
+Results:
+MQLs
+Partner Referrals
+
+Notes
+
+This lightweight object exists primarily to support the third executive table.
+
+Do not build:
+- email automation
+- landing pages
+- nurture flows
+- advertising management
+- creative workflow
+
+==================================================
+11. PARTNER RECRUITMENT CONTENT
+==================================================
+
+Do NOT build a separate feature for this yet.
+
+For mock purposes only, optionally allow the user on the New Partners page to generate a simple recruitment message.
+
+Example use case:
+
+"We are looking for enterprise AI / automation partners in Portugal."
+
+Generate:
+
+- LinkedIn post draft
+- Short email version
+
+Do not integrate with LinkedIn.
+Do not scrape LinkedIn.
+Do not post automatically.
+
+Keep this secondary.
+
+==================================================
+12. RESEARCH SOURCES
+==================================================
+
+Remain in mock mode for this iteration.
+
+Prepare realistic mock examples from:
+
+- Company websites
+- News
+- Customer case studies
+- Partner/ecosystem pages
+- Job postings
+- Event pages
+- Public RFP/tender sources
+
+Every research item needs:
+
+Source URL
+Source name/domain
+Published date where available
+Date found
+
+Clearly distinguish:
+
+PUBLIC SOURCE
+AI SUMMARY
+HUBSPOT DATA
+PAM NOTE
+
+Do not allow AI-generated interpretation to look like a verified fact.
+
+==================================================
+13. DO NOT BUILD LIVE INTEGRATIONS YET
+==================================================
+
+For this iteration:
+
+DO NOT connect live search.
+DO NOT connect Firecrawl.
+DO NOT build real HubSpot sync.
+DO NOT add LinkedIn integration.
+DO NOT add contact enrichment.
+DO NOT ingest Teams or WhatsApp.
+
+Keep the existing mock HubSpot behavior.
+
+We are validating whether the workflow and information are useful first.
+
+==================================================
+14. MICROSOFT-STYLE UX
+==================================================
+
+Keep the existing Microsoft / Fluent-inspired visual style.
+
+Do not rewrite the entire frontend just to change component libraries.
+
+Prioritize:
+
+- Segoe UI
+- restrained colors
+- dense, clean tables
+- simple side panels
+- compact controls
+- neutral surfaces
+- minimal shadows
+- small badges
+- clear hierarchy
+
+Avoid:
+
+- giant KPI cards
+- gradients
+- decorative charts
+- oversized headings
+- startup-style analytics
+- too many cards inside cards
+
+This should feel like a simple internal Microsoft 365 business application.
+
+==================================================
+15. MINIMIZE PAM ADMIN
+==================================================
+
+The PAM should ideally only need to manually do three things:
+
+1. Accept / reject / defer a suggested new partner
+2. Add a note when useful
+3. Record Help needed from HQ
+
+Do not require the PAM to maintain:
+
+- complex stages
+- project plans
+- meeting minutes
+- long action logs
+- marketing workflows
+- commercial figures already available in HubSpot
+
+==================================================
+16. THIS ITERATION ONLY
+==================================================
+
+Implement only:
+
+1. Preserve the exact three executive tables.
+2. Move What Changed into the right-side row panel.
+3. Remove misleading KPI calculations.
+4. Simplify labels and navigation.
+5. Keep and simplify New Partners.
+6. Add a simple Partners research view.
+7. Add What Changed since last research.
+8. Add mock RFPs.
+9. Add mock relevant events.
+10. Add customer / market-access research.
+11. Add Help needed from HQ.
+12. Reuse Scan Setup as What to look for.
+13. Reuse Campaign Lists as Activities.
+14. Keep integrations mocked.
+
+Do not expand the scope beyond this list.
+
+==================================================
+17. SUCCESS CRITERIA
+==================================================
+
+HEAD OF CHANNELS
+
+Can open Overview and immediately see the exact reporting tables requested.
+
+Can click a metric and understand what changed.
+
+Does not need to learn another dashboard.
+
+PAM
+
+Can review a suggested new partner in under one minute.
+
+Can open an existing partner and quickly understand:
+
+- what changed
+- relevant customer activity
+- possible RFPs
+- relevant events
+- AI/business updates
+- what help might be needed from HQ
+
+PAM does not feel like they are maintaining another CRM.
+
+PRODUCT
+
+Feels simple.
+Feels useful.
+Reduces research time.
+Surfaces information the team might otherwise miss.
+Does not pretend to know things it cannot know.
+
+The operating principle is:
+
+Research finds something useful.
+The PAM decides whether it matters.
+HubSpot holds the commercial truth.
+The Head of Channels sees what changed.
