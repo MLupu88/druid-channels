@@ -5,10 +5,10 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
-import type { UserEditInputRole } from './userEditInputRole';
 
 export interface UserEditInput {
-  role?: UserEditInputRole;
+  /** @minLength 1 */
+  name?: string;
   /** @nullable */
   territory?: string | null;
   active?: boolean;

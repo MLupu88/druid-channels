@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import {
   useListUsers,
   useListTerritories,
+  useCreateUser,
   useUpdateUser,
+  useResetUserPassword,
   useUpdateTerritory,
   useListScanConfigs,
   useGetScanConfig,
@@ -42,6 +44,20 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from '@/components/ui/sheet';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -58,7 +74,10 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Pencil, Save, Database, Sparkles, Unplug, CheckCircle2, Search, Bot, Loader2, XCircle, Eye } from 'lucide-react';
+import {
+  Pencil, Save, Database, Sparkles, Unplug, CheckCircle2, Search, Bot, Loader2, XCircle, Eye,
+  Plus, MoreHorizontal, KeyRound, UserX, UserCheck, Copy,
+} from 'lucide-react';
 import {
   Textarea,
 } from '@/components/ui/textarea';
@@ -76,6 +95,251 @@ const SIGNAL_OPTIONS = [
   { id: 'partnerships', label: 'Partnership announcements' },
 ];
 
+function generateClientPassword(): string {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  let binary = '';
+  bytes.forEach((b) => { binary += String.fromCharCode(b); });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** Fluent-style right-side drawer for adding a PAM or editing an existing one's name/territory. */
+function PamFormDrawer({
+  user,
+  territories,
+  onClose,
+}: {
+  user: User | null; // null => create mode
+  territories: { id: string; name: string }[] | undefined;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const isEdit = !!user;
+
+  const [name, setName] = useState(user?.name ?? '');
+  const [email, setEmail] = useState('');
+  const [territory, setTerritory] = useState(user?.territory ?? '');
+  const [password, setPassword] = useState('');
+
+  const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+
+  const createMutation = useCreateUser({
+    mutation: {
+      onSuccess: (created) => {
+        invalidateUsers();
+        toast({ title: 'PAM added', description: `${created.name} can now log in with the credential you set.` });
+        onClose();
+      },
+      onError: (err: any) => {
+        toast({ title: 'Could not add PAM', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      },
+    },
+  });
+
+  const updateMutation = useUpdateUser({
+    mutation: {
+      onSuccess: () => {
+        invalidateUsers();
+        toast({ title: 'PAM updated' });
+        onClose();
+      },
+      onError: (err: any) => {
+        toast({ title: 'Could not update PAM', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      },
+    },
+  });
+
+  const pending = createMutation.isPending || updateMutation.isPending;
+  const canSubmit = isEdit
+    ? name.trim().length > 0
+    : name.trim().length > 0 && email.trim().length > 0 && password.length >= 16;
+
+  const handleSubmit = () => {
+    if (isEdit && user) {
+      updateMutation.mutate({ id: user.id, data: { name: name.trim(), territory: territory || null } });
+    } else {
+      createMutation.mutate({
+        data: { name: name.trim(), email: email.trim(), territory: territory || null, password },
+      });
+    }
+  };
+
+  return (
+    <Sheet open onOpenChange={(open) => !open && onClose()}>
+      <SheetContent className="sm:max-w-[420px] flex flex-col gap-0">
+        <SheetHeader>
+          <SheetTitle>{isEdit ? `Edit ${user!.name}` : 'Add PAM'}</SheetTitle>
+          <SheetDescription>
+            {isEdit ? 'Update name or territory.' : 'Create a Partner Alliance Manager account. Role is always PAM.'}
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Email</Label>
+            {isEdit ? (
+              <Input value={user!.email} disabled />
+            ) : (
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@druidai.com" />
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Territory</Label>
+            <Select value={territory} onValueChange={setTerritory}>
+              <SelectTrigger><SelectValue placeholder="No territory" /></SelectTrigger>
+              <SelectContent>
+                {territories?.map((t) => (
+                  <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {!isEdit && (
+            <div className="space-y-2">
+              <Label>Initial password</Label>
+              <div className="flex gap-2">
+                <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 16 characters" />
+                <Button type="button" variant="outline" onClick={() => setPassword(generateClientPassword())}>
+                  Generate
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Share this with the PAM securely -- it won't be shown again after you close this panel.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <SheetFooter className="pt-4 border-t border-border/50">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={!canSubmit || pending}>
+            {isEdit ? 'Save changes' : 'Add PAM'}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function DeactivateConfirmDialog({ user, onClose }: { user: User; onClose: () => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const updateMutation = useUpdateUser({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+        toast({ title: `${user.name} deactivated`, description: 'They can no longer log in.' });
+        onClose();
+      },
+      onError: (err: any) => {
+        toast({ title: 'Could not deactivate PAM', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      },
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Deactivate {user.name}?</DialogTitle>
+          <DialogDescription>
+            They will immediately lose access and won't be able to log in until reactivated.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            variant="destructive"
+            disabled={updateMutation.isPending}
+            onClick={() => updateMutation.mutate({ id: user.id, data: { active: false } })}
+          >
+            Deactivate
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ResetAccessDialog({ user, onClose }: { user: User; onClose: () => void }) {
+  const { toast } = useToast();
+  const [revealed, setRevealed] = useState<string | null>(null);
+
+  const resetMutation = useResetUserPassword({
+    mutation: {
+      onSuccess: (result) => {
+        setRevealed(result.temporary_password);
+      },
+      onError: (err: any) => {
+        toast({ title: 'Could not reset access', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+        onClose();
+      },
+    },
+  });
+
+  const handleCopy = async () => {
+    if (!revealed) return;
+    try {
+      await navigator.clipboard.writeText(revealed);
+      toast({ description: 'Temporary password copied' });
+    } catch {
+      /* clipboard may be unavailable; the value is still visible on screen */
+    }
+  };
+
+  if (revealed) {
+    return (
+      <Dialog open onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Temporary password for {user.name}</DialogTitle>
+            <DialogDescription>
+              Share this with {user.name} securely. It will not be shown again -- their old password no longer works.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+            <code className="flex-1 text-sm font-mono break-all">{revealed}</code>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleCopy}>
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button onClick={onClose}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Reset access for {user.name}?</DialogTitle>
+          <DialogDescription>
+            This generates a new temporary password and immediately invalidates their current one.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={resetMutation.isPending} onClick={() => resetMutation.mutate({ id: user.id })}>
+            Reset access
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TeamTab() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -83,21 +347,25 @@ function TeamTab() {
   const { data: users, isLoading: usersLoading } = useListUsers();
   const { data: territories, isLoading: territoriesLoading } = useListTerritories();
 
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [userRole, setUserRole] = useState('');
-  const [userTerritory, setUserTerritory] = useState('');
-  const [userActive, setUserActive] = useState(true);
+  const [pamForm, setPamForm] = useState<
+    { mode: 'create' } | { mode: 'edit'; user: User } | null
+  >(null);
+
+  const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
+  const [resetTarget, setResetTarget] = useState<User | null>(null);
 
   const [editingTerritoryId, setEditingTerritoryId] = useState<string | null>(null);
   const [territoryName, setTerritoryName] = useState('');
   const [territoryOwner, setTerritoryOwner] = useState('');
 
-  const updateUserMutation = useUpdateUser({
+  const activateMutation = useUpdateUser({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (updated) => {
         queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
-        setEditingUser(null);
-        toast({ title: 'User updated' });
+        toast({ title: `${updated.name} activated` });
+      },
+      onError: (err: any) => {
+        toast({ title: 'Could not activate PAM', description: err?.message ?? 'Unknown error', variant: 'destructive' });
       },
     },
   });
@@ -111,25 +379,6 @@ function TeamTab() {
       },
     },
   });
-
-  const openUserEdit = (user: User) => {
-    setEditingUser(user);
-    setUserRole(user.role);
-    setUserTerritory(user.territory || '');
-    setUserActive(user.active);
-  };
-
-  const saveUser = () => {
-    if (!editingUser) return;
-    updateUserMutation.mutate({
-      id: editingUser.id,
-      data: {
-        role: userRole as any,
-        territory: userTerritory || null,
-        active: userActive,
-      },
-    });
-  };
 
   const territoryById = new Map(territories?.map((t) => [t.id, t]));
   const openTerritoryEdit = (id: string) => {
@@ -154,8 +403,12 @@ function TeamTab() {
   return (
     <div className="space-y-8">
       <div className="border border-border/60 rounded-md bg-card">
-        <div className="p-4 border-b border-border/50 bg-muted/20">
+        <div className="p-4 border-b border-border/50 bg-muted/20 flex items-center justify-between">
           <h3 className="font-medium text-sm">Users</h3>
+          <Button size="sm" onClick={() => setPamForm({ mode: 'create' })} data-testid="button-add-pam">
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Add PAM
+          </Button>
         </div>
         <Table>
           <TableHeader>
@@ -188,9 +441,32 @@ function TeamTab() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openUserEdit(user)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    {user.role === 'pam' && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-pam-menu-${user.id}`}>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                          <DropdownMenuItem onClick={() => setPamForm({ mode: 'edit', user })}>
+                            <Pencil className="h-3.5 w-3.5 mr-2" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setResetTarget(user)}>
+                            <KeyRound className="h-3.5 w-3.5 mr-2" /> Reset access
+                          </DropdownMenuItem>
+                          {user.active ? (
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeactivateTarget(user)}>
+                              <UserX className="h-3.5 w-3.5 mr-2" /> Deactivate
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => activateMutation.mutate({ id: user.id, data: { active: true } })}>
+                              <UserCheck className="h-3.5 w-3.5 mr-2" /> Activate
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
@@ -239,47 +515,19 @@ function TeamTab() {
         </Table>
       </div>
 
-      <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Edit {editingUser?.name}</DialogTitle>
-            <DialogDescription>Update role, territory assignment, or active status.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label>Role</Label>
-              <Select value={userRole} onValueChange={setUserRole}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="head_of_channels">Head of Channels</SelectItem>
-                  <SelectItem value="pam">PAM</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Territory</Label>
-              <Select value={userTerritory} onValueChange={setUserTerritory}>
-                <SelectTrigger><SelectValue placeholder="No territory" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Global">Global</SelectItem>
-                  {territories?.map((t) => (
-                    <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center justify-between">
-              <Label>Active</Label>
-              <Switch checked={userActive} onCheckedChange={setUserActive} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
-            <Button onClick={saveUser} disabled={updateUserMutation.isPending}>Save changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {pamForm && (
+        <PamFormDrawer
+          user={pamForm.mode === 'edit' ? pamForm.user : null}
+          territories={territories}
+          onClose={() => setPamForm(null)}
+        />
+      )}
+      {deactivateTarget && (
+        <DeactivateConfirmDialog user={deactivateTarget} onClose={() => setDeactivateTarget(null)} />
+      )}
+      {resetTarget && (
+        <ResetAccessDialog user={resetTarget} onClose={() => setResetTarget(null)} />
+      )}
 
       <Dialog open={!!editingTerritoryId} onOpenChange={(open) => !open && setEditingTerritoryId(null)}>
         <DialogContent className="sm:max-w-[425px]">

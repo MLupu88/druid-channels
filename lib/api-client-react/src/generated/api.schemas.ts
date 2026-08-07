@@ -327,20 +327,31 @@ export interface DeleteResult {
   deleted: boolean;
 }
 
-export type UserEditInputRole = typeof UserEditInputRole[keyof typeof UserEditInputRole];
-
-
-export const UserEditInputRole = {
-  head_of_channels: 'head_of_channels',
-  pam: 'pam',
-  admin: 'admin',
-} as const;
-
 export interface UserEditInput {
-  role?: UserEditInputRole;
+  /** @minLength 1 */
+  name?: string;
   /** @nullable */
   territory?: string | null;
   active?: boolean;
+}
+
+export interface CreateUserInput {
+  /** @minLength 1 */
+  name: string;
+  email: string;
+  /** @nullable */
+  territory?: string | null;
+  /**
+     * Initial access credential for the new PAM. Hashed server-side; never stored or returned in plaintext.
+     * @minLength 16
+     */
+  password: string;
+}
+
+export interface UserResetPasswordResponse {
+  user: User;
+  /** One-time plaintext temporary password. Shown only in this response; never persisted or logged. */
+  temporary_password: string;
 }
 
 export interface TerritoryEditInput {
