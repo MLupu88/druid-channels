@@ -451,19 +451,28 @@ export const GetHeadOfChannelsKpisResponse = zod.object({
   "target": zod.number(),
   "status": zod.enum(['green', 'amber', 'red', 'on_track']),
   "what_changed": zod.string().nullish(),
-  "explanation": zod.string().nullish()
+  "explanation": zod.string().nullish(),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish()
 })),
   "weekly_commercial": zod.array(zod.object({
   "metric": zod.string(),
   "current": zod.number(),
   "last_week": zod.number(),
   "target": zod.number(),
-  "trend": zod.enum(['up', 'down', 'flat'])
+  "trend": zod.enum(['up', 'down', 'flat']),
+  "explanation": zod.string().nullish(),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish()
 })),
   "weekly_marketing": zod.array(zod.object({
   "metric": zod.string(),
   "this_week": zod.number(),
-  "trend": zod.enum(['up', 'down', 'flat'])
+  "last_week": zod.number().nullish(),
+  "trend": zod.enum(['up', 'down', 'flat']),
+  "explanation": zod.string().nullish(),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish()
 })),
   "period": zod.string(),
   "territory": zod.string(),
@@ -477,17 +486,18 @@ export const GetHeadOfChannelsKpisResponse = zod.object({
 export const ListCampaignsResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar']),
   "territory": zod.string(),
   "owner_user_id": zod.string(),
   "owner_name": zod.string(),
-  "segment": zod.string(),
-  "prospect_count": zod.number(),
-  "message_angle": zod.string(),
-  "start_date": zod.string().nullish(),
-  "status": zod.enum(['planned', 'active', 'completed']),
-  "replies": zod.number().optional(),
-  "qualified_meetings": zod.number().optional(),
-  "signed_partners": zod.number().optional(),
+  "partner_company_id": zod.string().nullish(),
+  "partner_company_name": zod.string().nullish(),
+  "activity_date": zod.string().nullish(),
+  "status": zod.enum(['planned', 'live', 'completed']),
+  "hubspot_link": zod.string().nullish(),
+  "mqls": zod.number(),
+  "partner_referrals": zod.number(),
+  "notes": zod.string().nullish(),
   "created_at": zod.string()
 })
 export const ListCampaignsResponse = zod.array(ListCampaignsResponseItem)
@@ -498,99 +508,31 @@ export const ListCampaignsResponse = zod.array(ListCampaignsResponseItem)
  */
 export const CreateCampaignBody = zod.object({
   "name": zod.string(),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar']),
   "territory": zod.string(),
   "owner_user_id": zod.string(),
-  "segment": zod.string(),
-  "message_angle": zod.string(),
-  "start_date": zod.string().nullish(),
-  "prospect_ids": zod.array(zod.string()).optional()
+  "partner_company_id": zod.string().nullish(),
+  "activity_date": zod.string().nullish(),
+  "status": zod.enum(['planned', 'live', 'completed']).optional(),
+  "hubspot_link": zod.string().nullish(),
+  "notes": zod.string().nullish()
 })
 
 export const CreateCampaignResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar']),
   "territory": zod.string(),
   "owner_user_id": zod.string(),
   "owner_name": zod.string(),
-  "segment": zod.string(),
-  "prospect_count": zod.number(),
-  "message_angle": zod.string(),
-  "start_date": zod.string().nullish(),
-  "status": zod.enum(['planned', 'active', 'completed']),
-  "replies": zod.number().optional(),
-  "qualified_meetings": zod.number().optional(),
-  "signed_partners": zod.number().optional(),
-  "created_at": zod.string()
-})
-
-
-/**
- * @summary Get a campaign with its prospects
- */
-export const GetCampaignParams = zod.object({
-  "id": zod.coerce.string()
-})
-
-export const GetCampaignResponse = zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "territory": zod.string(),
-  "owner_user_id": zod.string(),
-  "owner_name": zod.string(),
-  "segment": zod.string(),
-  "prospect_count": zod.number(),
-  "message_angle": zod.string(),
-  "start_date": zod.string().nullish(),
-  "status": zod.enum(['planned', 'active', 'completed']),
-  "replies": zod.number().optional(),
-  "qualified_meetings": zod.number().optional(),
-  "signed_partners": zod.number().optional(),
-  "prospects": zod.array(zod.object({
-  "id": zod.string(),
-  "company": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "normalized_name": zod.string().nullish(),
-  "domain": zod.string(),
-  "website_url": zod.string().nullish(),
-  "country": zod.string(),
-  "headquarters": zod.string().nullish(),
-  "employee_band": zod.string().nullish(),
-  "description": zod.string().nullish(),
-  "linkedin_url": zod.string().nullish(),
-  "hubspot_company_id": zod.string().nullish()
-}),
-  "territory_id": zod.string(),
-  "territory_name": zod.string().nullish(),
-  "assigned_user": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "email": zod.string(),
-  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
-  "territory": zod.string().nullable(),
-  "active": zod.boolean()
-}).optional(),
-  "partner_type": zod.string(),
-  "priority": zod.enum(['A', 'B']),
-  "enterprise_access": zod.boolean(),
-  "relevant_capability": zod.boolean(),
-  "technology_adjacency": zod.boolean(),
-  "partnership_openness": zod.boolean(),
-  "recent_trigger": zod.boolean(),
-  "why_it_fits": zod.string(),
-  "why_now": zod.string(),
-  "suggested_angle": zod.string().nullish(),
-  "suggested_target_role": zod.string().nullish(),
-  "suggested_message": zod.string().nullish(),
-  "status": zod.enum(['new', 'accepted', 'rejected', 'deferred', 'pushed_to_hubspot']),
-  "rejection_reason": zod.string().nullish(),
-  "pam_note": zod.string().nullish(),
-  "accepted_at": zod.string().nullish(),
-  "hubspot_company_id": zod.string().nullish(),
-  "signal_count": zod.number().optional(),
-  "created_at": zod.string(),
-  "updated_at": zod.string().nullish()
-})),
+  "partner_company_id": zod.string().nullish(),
+  "partner_company_name": zod.string().nullish(),
+  "activity_date": zod.string().nullish(),
+  "status": zod.enum(['planned', 'live', 'completed']),
+  "hubspot_link": zod.string().nullish(),
+  "mqls": zod.number(),
+  "partner_referrals": zod.number(),
+  "notes": zod.string().nullish(),
   "created_at": zod.string()
 })
 
@@ -604,27 +546,33 @@ export const UpdateCampaignParams = zod.object({
 
 export const UpdateCampaignBody = zod.object({
   "name": zod.string().optional(),
-  "segment": zod.string().optional(),
-  "message_angle": zod.string().optional(),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar']).optional(),
+  "territory": zod.string().optional(),
   "owner_user_id": zod.string().optional(),
-  "start_date": zod.string().nullish(),
-  "status": zod.enum(['planned', 'active', 'completed']).optional()
+  "partner_company_id": zod.string().nullish(),
+  "activity_date": zod.string().nullish(),
+  "status": zod.enum(['planned', 'live', 'completed']).optional(),
+  "hubspot_link": zod.string().nullish(),
+  "mqls": zod.number().optional(),
+  "partner_referrals": zod.number().optional(),
+  "notes": zod.string().nullish()
 })
 
 export const UpdateCampaignResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar']),
   "territory": zod.string(),
   "owner_user_id": zod.string(),
   "owner_name": zod.string(),
-  "segment": zod.string(),
-  "prospect_count": zod.number(),
-  "message_angle": zod.string(),
-  "start_date": zod.string().nullish(),
-  "status": zod.enum(['planned', 'active', 'completed']),
-  "replies": zod.number().optional(),
-  "qualified_meetings": zod.number().optional(),
-  "signed_partners": zod.number().optional(),
+  "partner_company_id": zod.string().nullish(),
+  "partner_company_name": zod.string().nullish(),
+  "activity_date": zod.string().nullish(),
+  "status": zod.enum(['planned', 'live', 'completed']),
+  "hubspot_link": zod.string().nullish(),
+  "mqls": zod.number(),
+  "partner_referrals": zod.number(),
+  "notes": zod.string().nullish(),
   "created_at": zod.string()
 })
 
@@ -699,6 +647,172 @@ export const GetIntegrationsStatusResponse = zod.object({
   "last_sync_at": zod.string().nullable(),
   "description": zod.string().nullish()
 }))
+})
+
+
+/**
+ * @summary List existing partners (accepted/pushed-to-HubSpot prospects)
+ */
+export const ListPartnersQueryParams = zod.object({
+  "territory": zod.coerce.string().nullish()
+})
+
+export const ListPartnersResponseItem = zod.object({
+  "id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "normalized_name": zod.string().nullish(),
+  "domain": zod.string(),
+  "website_url": zod.string().nullish(),
+  "country": zod.string(),
+  "headquarters": zod.string().nullish(),
+  "employee_band": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "linkedin_url": zod.string().nullish(),
+  "hubspot_company_id": zod.string().nullish()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullable(),
+  "assigned_user": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "active": zod.boolean()
+}).optional(),
+  "status": zod.enum(['accepted', 'pushed_to_hubspot']),
+  "last_researched_at": zod.string().nullish(),
+  "help_needed_type": zod.enum(['none', 'intro_to_customer', 'pricing_support', 'legal_review', 'exec_sponsorship', 'other']),
+  "help_needed_note": zod.string().nullish(),
+  "open_research_count": zod.number().optional(),
+  "created_at": zod.string()
+})
+export const ListPartnersResponse = zod.array(ListPartnersResponseItem)
+
+
+/**
+ * @summary Get a partner research briefing
+ */
+export const GetPartnerParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetPartnerResponse = zod.object({
+  "id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "normalized_name": zod.string().nullish(),
+  "domain": zod.string(),
+  "website_url": zod.string().nullish(),
+  "country": zod.string(),
+  "headquarters": zod.string().nullish(),
+  "employee_band": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "linkedin_url": zod.string().nullish(),
+  "hubspot_company_id": zod.string().nullish()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullable(),
+  "assigned_user": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "active": zod.boolean()
+}).optional(),
+  "status": zod.enum(['accepted', 'pushed_to_hubspot']),
+  "last_researched_at": zod.string().nullish(),
+  "help_needed_type": zod.enum(['none', 'intro_to_customer', 'pricing_support', 'legal_review', 'exec_sponsorship', 'other']),
+  "help_needed_note": zod.string().nullish(),
+  "commercial": zod.object({
+  "pipeline_sourced": zod.number().nullable(),
+  "pipeline_influenced": zod.number().nullable(),
+  "revenue_closed": zod.number().nullable(),
+  "renewal_date": zod.string().nullable()
+}),
+  "research_items": zod.array(zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['what_changed', 'whats_happening', 'customer_access', 'ai_update']),
+  "source_kind": zod.enum(['public_source', 'ai_summary', 'hubspot_data', 'pam_note']),
+  "title": zod.string(),
+  "summary": zod.string(),
+  "is_possible_customer_opening": zod.boolean(),
+  "source_url": zod.string().nullish(),
+  "source_domain": zod.string().nullish(),
+  "published_at": zod.string().nullish(),
+  "discovered_at": zod.string()
+})),
+  "rfps": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "country": zod.string(),
+  "deadline": zod.string().nullish(),
+  "why_relevant": zod.string(),
+  "source_url": zod.string().nullish(),
+  "source_domain": zod.string().nullish(),
+  "discovered_at": zod.string()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "event_date": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "why_it_matters": zod.string(),
+  "suggested_action": zod.enum(['meet_there', 'attend_together', 'speak_together', 'sourcing_opportunity']),
+  "source_url": zod.string().nullish(),
+  "discovered_at": zod.string()
+})),
+  "created_at": zod.string()
+})
+
+
+/**
+ * @summary Update what help a PAM needs to move a partner forward
+ */
+export const UpdatePartnerHelpNeededParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdatePartnerHelpNeededBody = zod.object({
+  "help_needed_type": zod.enum(['none', 'intro_to_customer', 'pricing_support', 'legal_review', 'exec_sponsorship', 'other']),
+  "help_needed_note": zod.string().nullish()
+})
+
+export const UpdatePartnerHelpNeededResponse = zod.object({
+  "id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "normalized_name": zod.string().nullish(),
+  "domain": zod.string(),
+  "website_url": zod.string().nullish(),
+  "country": zod.string(),
+  "headquarters": zod.string().nullish(),
+  "employee_band": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "linkedin_url": zod.string().nullish(),
+  "hubspot_company_id": zod.string().nullish()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullable(),
+  "assigned_user": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "active": zod.boolean()
+}).optional(),
+  "status": zod.enum(['accepted', 'pushed_to_hubspot']),
+  "last_researched_at": zod.string().nullish(),
+  "help_needed_type": zod.enum(['none', 'intro_to_customer', 'pricing_support', 'legal_review', 'exec_sponsorship', 'other']),
+  "help_needed_note": zod.string().nullish(),
+  "open_research_count": zod.number().optional(),
+  "created_at": zod.string()
 })
 
 

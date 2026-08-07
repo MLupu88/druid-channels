@@ -10,5 +10,13 @@ import type { MarketingKpiRowTrend } from './marketingKpiRowTrend';
 export interface MarketingKpiRow {
   metric: string;
   this_week: number;
+  /** @nullable */
+  last_week?: number | null;
   trend: MarketingKpiRowTrend;
+  /** @nullable */
+  explanation?: string | null;
+  /** @nullable */
+  data_source?: string | null;
+  /** @nullable */
+  last_updated?: string | null;
 }

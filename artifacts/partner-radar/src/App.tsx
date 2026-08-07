@@ -7,10 +7,9 @@ import { UserProvider } from '@/contexts/user-context';
 import NotFound from '@/pages/not-found';
 import Overview from '@/pages/overview';
 import Prospects from '@/pages/prospects';
-import ScanSetup from '@/pages/scan-setup';
+import Partners from '@/pages/partners';
 import Campaigns from '@/pages/campaigns';
 import Settings from '@/pages/settings';
-import IntegrationStatus from '@/pages/integration-status';
 
 const queryClient = new QueryClient();
 
@@ -19,11 +18,10 @@ function Router() {
     <AppLayout>
       <Switch>
         <Route path="/" component={Overview} />
-        <Route path="/prospects" component={Prospects} />
-        <Route path="/scan-setup" component={ScanSetup} />
-        <Route path="/campaigns" component={Campaigns} />
+        <Route path="/new-partners" component={Prospects} />
+        <Route path="/partners" component={Partners} />
+        <Route path="/activities" component={Campaigns} />
         <Route path="/settings" component={Settings} />
-        <Route path="/integration-status" component={IntegrationStatus} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

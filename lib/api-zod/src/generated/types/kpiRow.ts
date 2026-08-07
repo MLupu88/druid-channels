@@ -16,4 +16,8 @@ export interface KpiRow {
   what_changed?: string | null;
   /** @nullable */
   explanation?: string | null;
+  /** @nullable */
+  data_source?: string | null;
+  /** @nullable */
+  last_updated?: string | null;
 }

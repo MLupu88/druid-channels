@@ -70,6 +70,25 @@ import { format } from 'date-fns';
 import { useUser } from '@/contexts/user-context';
 import type { ProspectDecisionInputDecision } from '@workspace/api-client-react';
 
+function generateRecruitmentMessage(detail: {
+  company: { name: string };
+  suggested_target_role?: string | null;
+  suggested_angle?: string | null;
+  why_now?: string | null;
+}): string {
+  const role = detail.suggested_target_role || 'the partnerships lead';
+  const angle = detail.suggested_angle || 'building joint go-to-market motion together';
+  const trigger = detail.why_now ? ` ${detail.why_now}` : '';
+  return `Hi [Name],
+
+I'm reaching out from DRUID because ${detail.company.name} looks like a strong fit for a partnership.${trigger}
+
+I'd love to connect with ${role} to explore ${angle}. Would you be open to a short call in the next couple of weeks?
+
+Best,
+[Your name]`;
+}
+
 function PriorityBadge({ priority }: { priority: string }) {
   if (priority === 'A') return <Badge className="bg-primary hover:bg-primary/90 text-primary-foreground border-transparent px-2 font-medium">A</Badge>;
   return <Badge variant="outline" className="text-muted-foreground px-2 font-medium">B</Badge>;
@@ -119,6 +138,7 @@ export default function Prospects() {
   const [editPamNote, setEditPamNote] = useState('');
   const [editPriority, setEditPriority] = useState('A');
   const [editAssignedUserId, setEditAssignedUserId] = useState<string>('unassigned');
+  const [draftMessage, setDraftMessage] = useState('');
 
   const { data: territories } = useListTerritories();
   const { data: users } = useListUsers();
@@ -136,6 +156,10 @@ export default function Prospects() {
     selectedId || '', 
     { query: { enabled: !!selectedId, queryKey: getGetProspectQueryKey(selectedId || '') } }
   );
+
+  useEffect(() => {
+    setDraftMessage(detail?.suggested_message || '');
+  }, [detail?.id]);
 
   const decisionMutation = useMakeProspectDecision({
     mutation: {
@@ -281,7 +305,7 @@ export default function Prospects() {
     <div className="flex flex-col h-full w-full overflow-hidden relative">
       <div className="flex-none p-4 border-b border-border/50 bg-card z-10 space-y-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold tracking-tight">Prospect Review</h1>
+          <h1 className="text-xl font-semibold tracking-tight">New partners</h1>
           <Button onClick={runMockScan} disabled={runScanMutation.isPending} variant="outline" size="sm" className="h-8">
             <Filter className="h-4 w-4 mr-2" />
             Run mock scan
@@ -585,12 +609,23 @@ export default function Prospects() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <h4 className="text-sm font-medium">Draft message</h4>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => copyToClipboard(detail.suggested_message || '')}>
-                          Copy message
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setDraftMessage(generateRecruitmentMessage(detail))}
+                          >
+                            Generate message
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => copyToClipboard(draftMessage)}>
+                            Copy message
+                          </Button>
+                        </div>
                       </div>
-                      <Textarea 
-                        defaultValue={detail.suggested_message || ''} 
+                      <Textarea
+                        value={draftMessage}
+                        onChange={e => setDraftMessage(e.target.value)}
                         className="min-h-[250px] font-sans text-sm resize-y"
                       />
                     </div>

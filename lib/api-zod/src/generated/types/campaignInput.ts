@@ -5,14 +5,21 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { CampaignInputStatus } from './campaignInputStatus';
+import type { CampaignInputType } from './campaignInputType';
 
 export interface CampaignInput {
   name: string;
+  type: CampaignInputType;
   territory: string;
   owner_user_id: string;
-  segment: string;
-  message_angle: string;
   /** @nullable */
-  start_date?: string | null;
-  prospect_ids?: string[];
+  partner_company_id?: string | null;
+  /** @nullable */
+  activity_date?: string | null;
+  status?: CampaignInputStatus;
+  /** @nullable */
+  hubspot_link?: string | null;
+  /** @nullable */
+  notes?: string | null;
 }

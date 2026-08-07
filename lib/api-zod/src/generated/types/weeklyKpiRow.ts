@@ -13,4 +13,10 @@ export interface WeeklyKpiRow {
   last_week: number;
   target: number;
   trend: WeeklyKpiRowTrend;
+  /** @nullable */
+  explanation?: string | null;
+  /** @nullable */
+  data_source?: string | null;
+  /** @nullable */
+  last_updated?: string | null;
 }

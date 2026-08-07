@@ -11,6 +11,6 @@ export type CampaignStatus = typeof CampaignStatus[keyof typeof CampaignStatus];
 
 export const CampaignStatus = {
   planned: 'planned',
-  active: 'active',
+  live: 'live',
   completed: 'completed',
 } as const;

@@ -23,9 +23,11 @@ tags:
   - name: kpis
     description: KPI and head-of-channels metrics
   - name: campaigns
-    description: Campaign list management
+    description: Activities (joint campaigns, events, webinars) management
   - name: integrations
     description: Integration connection status (mocked)
+  - name: partners
+    description: Existing partner research briefings
 
 paths:
   /healthz:
@@ -365,25 +367,6 @@ paths:
                 $ref: "#/components/schemas/Campaign"
 
   /campaigns/{id}:
-    get:
-      operationId: getCampaign
-      tags: [campaigns]
-      summary: Get a campaign with its prospects
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Campaign detail
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CampaignDetail"
-        "404":
-          description: Not found
     patch:
       operationId: updateCampaign
       tags: [campaigns]
@@ -495,6 +478,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationsStatus"
+
+  /partners:
+    get:
+      operationId: listPartners
+      tags: [partners]
+      summary: List existing partners (accepted/pushed-to-HubSpot prospects)
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of partners
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Partner"
+
+  /partners/{id}:
+    get:
+      operationId: getPartner
+      tags: [partners]
+      summary: Get a partner research briefing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Partner detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerDetail"
+        "404":
+          description: Not found
+
+  /partners/{id}/help-needed:
+    patch:
+      operationId: updatePartnerHelpNeeded
+      tags: [partners]
+      summary: Update what help a PAM needs to move a partner forward
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HelpNeededInput"
+      responses:
+        "200":
+          description: Updated partner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Partner"
+        "404":
+          description: Not found
 
   /prospects/stats/summary:
     get:
@@ -883,23 +934,6 @@ components:
         deleted:
           type: boolean
 
-    CampaignEditInput:
-      type: object
-      properties:
-        name:
-          type: string
-        segment:
-          type: string
-        message_angle:
-          type: string
-        owner_user_id:
-          type: string
-        start_date:
-          type: ["string", "null"]
-        status:
-          type: string
-          enum: [planned, active, completed]
-
     UserEditInput:
       type: object
       properties:
@@ -991,6 +1025,10 @@ components:
           type: ["string", "null"]
         explanation:
           type: ["string", "null"]
+        data_source:
+          type: ["string", "null"]
+        last_updated:
+          type: ["string", "null"]
 
     WeeklyKpiRow:
       type: object
@@ -1007,6 +1045,12 @@ components:
         trend:
           type: string
           enum: [up, down, flat]
+        explanation:
+          type: ["string", "null"]
+        data_source:
+          type: ["string", "null"]
+        last_updated:
+          type: ["string", "null"]
 
     MarketingKpiRow:
       type: object
@@ -1016,9 +1060,17 @@ components:
           type: string
         this_week:
           type: number
+        last_week:
+          type: ["number", "null"]
         trend:
           type: string
           enum: [up, down, flat]
+        explanation:
+          type: ["string", "null"]
+        data_source:
+          type: ["string", "null"]
+        last_updated:
+          type: ["string", "null"]
 
     HeadOfChannelsKpis:
       type: object
@@ -1045,94 +1097,254 @@ components:
 
     Campaign:
       type: object
-      required: [id, name, territory, owner_user_id, owner_name, segment, prospect_count, message_angle, status, created_at]
+      required: [id, name, type, territory, owner_user_id, owner_name, status, mqls, partner_referrals, created_at]
       properties:
         id:
           type: string
         name:
           type: string
+        type:
+          type: string
+          enum: [joint_campaign, event, webinar]
         territory:
           type: string
         owner_user_id:
           type: string
         owner_name:
           type: string
-        segment:
-          type: string
-        prospect_count:
-          type: number
-        message_angle:
-          type: string
-        start_date:
+        partner_company_id:
+          type: ["string", "null"]
+        partner_company_name:
+          type: ["string", "null"]
+        activity_date:
           type: ["string", "null"]
         status:
           type: string
-          enum: [planned, active, completed]
-        replies:
+          enum: [planned, live, completed]
+        hubspot_link:
+          type: ["string", "null"]
+        mqls:
           type: number
-        qualified_meetings:
+        partner_referrals:
           type: number
-        signed_partners:
-          type: number
+        notes:
+          type: ["string", "null"]
         created_at:
           type: string
 
     CampaignInput:
       type: object
-      required: [name, territory, owner_user_id, segment, message_angle]
+      required: [name, type, territory, owner_user_id]
       properties:
         name:
           type: string
+        type:
+          type: string
+          enum: [joint_campaign, event, webinar]
         territory:
           type: string
         owner_user_id:
           type: string
-        segment:
-          type: string
-        message_angle:
-          type: string
-        start_date:
+        partner_company_id:
           type: ["string", "null"]
-        prospect_ids:
-          type: array
-          items:
-            type: string
+        activity_date:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [planned, live, completed]
+        hubspot_link:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
 
-    CampaignDetail:
+    CampaignEditInput:
       type: object
-      required: [id, name, territory, owner_user_id, owner_name, segment, prospect_count, message_angle, status, prospects, created_at]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [joint_campaign, event, webinar]
+        territory:
+          type: string
+        owner_user_id:
+          type: string
+        partner_company_id:
+          type: ["string", "null"]
+        activity_date:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [planned, live, completed]
+        hubspot_link:
+          type: ["string", "null"]
+        mqls:
+          type: number
+        partner_referrals:
+          type: number
+        notes:
+          type: ["string", "null"]
+
+    PartnerResearchItem:
+      type: object
+      required: [id, category, source_kind, title, summary, is_possible_customer_opening, discovered_at]
+      properties:
+        id:
+          type: string
+        category:
+          type: string
+          enum: [what_changed, whats_happening, customer_access, ai_update]
+        source_kind:
+          type: string
+          enum: [public_source, ai_summary, hubspot_data, pam_note]
+        title:
+          type: string
+        summary:
+          type: string
+        is_possible_customer_opening:
+          type: boolean
+        source_url:
+          type: ["string", "null"]
+        source_domain:
+          type: ["string", "null"]
+        published_at:
+          type: ["string", "null"]
+        discovered_at:
+          type: string
+
+    Rfp:
+      type: object
+      required: [id, title, country, why_relevant, discovered_at]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        country:
+          type: string
+        deadline:
+          type: ["string", "null"]
+        why_relevant:
+          type: string
+        source_url:
+          type: ["string", "null"]
+        source_domain:
+          type: ["string", "null"]
+        discovered_at:
+          type: string
+
+    PartnerEvent:
+      type: object
+      required: [id, name, why_it_matters, suggested_action, discovered_at]
       properties:
         id:
           type: string
         name:
           type: string
-        territory:
-          type: string
-        owner_user_id:
-          type: string
-        owner_name:
-          type: string
-        segment:
-          type: string
-        prospect_count:
-          type: number
-        message_angle:
-          type: string
-        start_date:
+        event_date:
           type: ["string", "null"]
+        location:
+          type: ["string", "null"]
+        why_it_matters:
+          type: string
+        suggested_action:
+          type: string
+          enum: [meet_there, attend_together, speak_together, sourcing_opportunity]
+        source_url:
+          type: ["string", "null"]
+        discovered_at:
+          type: string
+
+    HelpNeededInput:
+      type: object
+      required: [help_needed_type]
+      properties:
+        help_needed_type:
+          type: string
+          enum: [none, intro_to_customer, pricing_support, legal_review, exec_sponsorship, other]
+        help_needed_note:
+          type: ["string", "null"]
+
+    PartnerCommercial:
+      type: object
+      required: [pipeline_sourced, pipeline_influenced, revenue_closed, renewal_date]
+      properties:
+        pipeline_sourced:
+          type: ["number", "null"]
+        pipeline_influenced:
+          type: ["number", "null"]
+        revenue_closed:
+          type: ["number", "null"]
+        renewal_date:
+          type: ["string", "null"]
+
+    Partner:
+      type: object
+      required: [id, company, territory_id, territory_name, status, help_needed_type, created_at]
+      properties:
+        id:
+          type: string
+        company:
+          $ref: "#/components/schemas/Company"
+        territory_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        assigned_user:
+          $ref: "#/components/schemas/User"
         status:
           type: string
-          enum: [planned, active, completed]
-        replies:
+          enum: [accepted, pushed_to_hubspot]
+        last_researched_at:
+          type: ["string", "null"]
+        help_needed_type:
+          type: string
+          enum: [none, intro_to_customer, pricing_support, legal_review, exec_sponsorship, other]
+        help_needed_note:
+          type: ["string", "null"]
+        open_research_count:
           type: number
-        qualified_meetings:
-          type: number
-        signed_partners:
-          type: number
-        prospects:
+        created_at:
+          type: string
+
+    PartnerDetail:
+      type: object
+      required: [id, company, territory_id, territory_name, status, help_needed_type, commercial, research_items, rfps, events, created_at]
+      properties:
+        id:
+          type: string
+        company:
+          $ref: "#/components/schemas/Company"
+        territory_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        assigned_user:
+          $ref: "#/components/schemas/User"
+        status:
+          type: string
+          enum: [accepted, pushed_to_hubspot]
+        last_researched_at:
+          type: ["string", "null"]
+        help_needed_type:
+          type: string
+          enum: [none, intro_to_customer, pricing_support, legal_review, exec_sponsorship, other]
+        help_needed_note:
+          type: ["string", "null"]
+        commercial:
+          $ref: "#/components/schemas/PartnerCommercial"
+        research_items:
           type: array
           items:
-            $ref: "#/components/schemas/Prospect"
+            $ref: "#/components/schemas/PartnerResearchItem"
+        rfps:
+          type: array
+          items:
+            $ref: "#/components/schemas/Rfp"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/PartnerEvent"
         created_at:
           type: string
 

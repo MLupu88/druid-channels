@@ -115,7 +115,6 @@ export default function Overview() {
                       <TableHead className="font-medium text-muted-foreground text-right">Current</TableHead>
                       <TableHead className="font-medium text-muted-foreground text-right">Target</TableHead>
                       <TableHead className="font-medium text-muted-foreground">Status</TableHead>
-                      <TableHead className="font-medium text-muted-foreground">What changed</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -129,7 +128,6 @@ export default function Overview() {
                         <TableCell className="text-right tabular-nums">{row.current}</TableCell>
                         <TableCell className="text-right tabular-nums text-muted-foreground">{row.target}</TableCell>
                         <TableCell><StatusBadge status={row.status} /></TableCell>
-                        <TableCell className="text-muted-foreground text-sm truncate max-w-[200px]">{row.what_changed}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -186,8 +184,9 @@ export default function Overview() {
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[250px] font-medium text-muted-foreground">Metric</TableHead>
+                      <TableHead className="w-[220px] font-medium text-muted-foreground">Metric</TableHead>
                       <TableHead className="font-medium text-muted-foreground text-right">This Week</TableHead>
+                      <TableHead className="font-medium text-muted-foreground text-right">Last Week</TableHead>
                       <TableHead className="font-medium text-muted-foreground">Trend</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -200,6 +199,7 @@ export default function Overview() {
                       >
                         <TableCell className="font-medium">{row.metric}</TableCell>
                         <TableCell className="text-right tabular-nums">{row.this_week}</TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">{row.last_week ?? '—'}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1.5">
                             <TrendIcon trend={row.trend} />
@@ -282,22 +282,46 @@ export default function Overview() {
                   if (commercialRow) {
                     const delta = commercialRow.current - commercialRow.last_week;
                     return (
-                      <p className="text-sm leading-relaxed text-foreground">
-                        {commercialRow.metric} is at {commercialRow.current} for {kpis?.territory}, {delta === 0 ? 'unchanged' : delta > 0 ? `up ${delta} from` : `down ${Math.abs(delta)} from`} {delta !== 0 ? `last week's ${commercialRow.last_week}` : 'last week'}, against a target of {commercialRow.target}.
-                      </p>
+                      <div className="space-y-2">
+                        <p className="text-sm leading-relaxed text-foreground">
+                          {commercialRow.explanation ?? `${commercialRow.metric} is at ${commercialRow.current} for ${kpis?.territory}, ${delta === 0 ? 'unchanged' : delta > 0 ? `up ${delta} from` : `down ${Math.abs(delta)} from`} ${delta !== 0 ? `last week's ${commercialRow.last_week}` : 'last week'}, against a target of ${commercialRow.target}.`}
+                        </p>
+                      </div>
                     );
                   }
                   const marketingRow = kpis?.weekly_marketing.find(r => r.metric === selectedKpi);
                   if (marketingRow) {
                     return (
                       <p className="text-sm leading-relaxed text-foreground">
-                        {marketingRow.metric} recorded {marketingRow.this_week} this week for {kpis?.territory}, trending {marketingRow.trend}.
+                        {marketingRow.explanation ?? `${marketingRow.metric} recorded ${marketingRow.this_week} this week for ${kpis?.territory}, trending ${marketingRow.trend}.`}
                       </p>
                     );
                   }
                   return <p className="text-sm text-muted-foreground">No details available for this metric.</p>;
                 })()}
               </div>
+
+              {(() => {
+                const row =
+                  kpis?.partner_development.find(r => r.metric === selectedKpi) ??
+                  kpis?.weekly_commercial.find(r => r.metric === selectedKpi) ??
+                  kpis?.weekly_marketing.find(r => r.metric === selectedKpi);
+                if (!row || (!row.data_source && !row.last_updated)) return null;
+                return (
+                  <div className="rounded-md border border-border/60 bg-muted/10 p-3 space-y-1.5">
+                    {row.data_source && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Data source: </span>{row.data_source}
+                      </p>
+                    )}
+                    {row.last_updated && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Last updated: </span>{new Date(row.last_updated).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </ScrollArea>
         </div>

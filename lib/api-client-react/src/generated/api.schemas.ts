@@ -327,25 +327,6 @@ export interface DeleteResult {
   deleted: boolean;
 }
 
-export type CampaignEditInputStatus = typeof CampaignEditInputStatus[keyof typeof CampaignEditInputStatus];
-
-
-export const CampaignEditInputStatus = {
-  planned: 'planned',
-  active: 'active',
-  completed: 'completed',
-} as const;
-
-export interface CampaignEditInput {
-  name?: string;
-  segment?: string;
-  message_angle?: string;
-  owner_user_id?: string;
-  /** @nullable */
-  start_date?: string | null;
-  status?: CampaignEditInputStatus;
-}
-
 export type UserEditInputRole = typeof UserEditInputRole[keyof typeof UserEditInputRole];
 
 
@@ -442,6 +423,10 @@ export interface KpiRow {
   what_changed?: string | null;
   /** @nullable */
   explanation?: string | null;
+  /** @nullable */
+  data_source?: string | null;
+  /** @nullable */
+  last_updated?: string | null;
 }
 
 export type WeeklyKpiRowTrend = typeof WeeklyKpiRowTrend[keyof typeof WeeklyKpiRowTrend];
@@ -459,6 +444,12 @@ export interface WeeklyKpiRow {
   last_week: number;
   target: number;
   trend: WeeklyKpiRowTrend;
+  /** @nullable */
+  explanation?: string | null;
+  /** @nullable */
+  data_source?: string | null;
+  /** @nullable */
+  last_updated?: string | null;
 }
 
 export type MarketingKpiRowTrend = typeof MarketingKpiRowTrend[keyof typeof MarketingKpiRowTrend];
@@ -473,7 +464,15 @@ export const MarketingKpiRowTrend = {
 export interface MarketingKpiRow {
   metric: string;
   this_week: number;
+  /** @nullable */
+  last_week?: number | null;
   trend: MarketingKpiRowTrend;
+  /** @nullable */
+  explanation?: string | null;
+  /** @nullable */
+  data_source?: string | null;
+  /** @nullable */
+  last_updated?: string | null;
 }
 
 export interface HeadOfChannelsKpis {
@@ -485,69 +484,294 @@ export interface HeadOfChannelsKpis {
   updated_at: string;
 }
 
+export type CampaignType = typeof CampaignType[keyof typeof CampaignType];
+
+
+export const CampaignType = {
+  joint_campaign: 'joint_campaign',
+  event: 'event',
+  webinar: 'webinar',
+} as const;
+
 export type CampaignStatus = typeof CampaignStatus[keyof typeof CampaignStatus];
 
 
 export const CampaignStatus = {
   planned: 'planned',
-  active: 'active',
+  live: 'live',
   completed: 'completed',
 } as const;
 
 export interface Campaign {
   id: string;
   name: string;
+  type: CampaignType;
   territory: string;
   owner_user_id: string;
   owner_name: string;
-  segment: string;
-  prospect_count: number;
-  message_angle: string;
   /** @nullable */
-  start_date?: string | null;
+  partner_company_id?: string | null;
+  /** @nullable */
+  partner_company_name?: string | null;
+  /** @nullable */
+  activity_date?: string | null;
   status: CampaignStatus;
-  replies?: number;
-  qualified_meetings?: number;
-  signed_partners?: number;
+  /** @nullable */
+  hubspot_link?: string | null;
+  mqls: number;
+  partner_referrals: number;
+  /** @nullable */
+  notes?: string | null;
   created_at: string;
 }
 
-export interface CampaignInput {
-  name: string;
-  territory: string;
-  owner_user_id: string;
-  segment: string;
-  message_angle: string;
-  /** @nullable */
-  start_date?: string | null;
-  prospect_ids?: string[];
-}
-
-export type CampaignDetailStatus = typeof CampaignDetailStatus[keyof typeof CampaignDetailStatus];
+export type CampaignInputType = typeof CampaignInputType[keyof typeof CampaignInputType];
 
 
-export const CampaignDetailStatus = {
+export const CampaignInputType = {
+  joint_campaign: 'joint_campaign',
+  event: 'event',
+  webinar: 'webinar',
+} as const;
+
+export type CampaignInputStatus = typeof CampaignInputStatus[keyof typeof CampaignInputStatus];
+
+
+export const CampaignInputStatus = {
   planned: 'planned',
-  active: 'active',
+  live: 'live',
   completed: 'completed',
 } as const;
 
-export interface CampaignDetail {
-  id: string;
+export interface CampaignInput {
   name: string;
+  type: CampaignInputType;
   territory: string;
   owner_user_id: string;
-  owner_name: string;
-  segment: string;
-  prospect_count: number;
-  message_angle: string;
   /** @nullable */
-  start_date?: string | null;
-  status: CampaignDetailStatus;
-  replies?: number;
-  qualified_meetings?: number;
-  signed_partners?: number;
-  prospects: Prospect[];
+  partner_company_id?: string | null;
+  /** @nullable */
+  activity_date?: string | null;
+  status?: CampaignInputStatus;
+  /** @nullable */
+  hubspot_link?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type CampaignEditInputType = typeof CampaignEditInputType[keyof typeof CampaignEditInputType];
+
+
+export const CampaignEditInputType = {
+  joint_campaign: 'joint_campaign',
+  event: 'event',
+  webinar: 'webinar',
+} as const;
+
+export type CampaignEditInputStatus = typeof CampaignEditInputStatus[keyof typeof CampaignEditInputStatus];
+
+
+export const CampaignEditInputStatus = {
+  planned: 'planned',
+  live: 'live',
+  completed: 'completed',
+} as const;
+
+export interface CampaignEditInput {
+  name?: string;
+  type?: CampaignEditInputType;
+  territory?: string;
+  owner_user_id?: string;
+  /** @nullable */
+  partner_company_id?: string | null;
+  /** @nullable */
+  activity_date?: string | null;
+  status?: CampaignEditInputStatus;
+  /** @nullable */
+  hubspot_link?: string | null;
+  mqls?: number;
+  partner_referrals?: number;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type PartnerResearchItemCategory = typeof PartnerResearchItemCategory[keyof typeof PartnerResearchItemCategory];
+
+
+export const PartnerResearchItemCategory = {
+  what_changed: 'what_changed',
+  whats_happening: 'whats_happening',
+  customer_access: 'customer_access',
+  ai_update: 'ai_update',
+} as const;
+
+export type PartnerResearchItemSourceKind = typeof PartnerResearchItemSourceKind[keyof typeof PartnerResearchItemSourceKind];
+
+
+export const PartnerResearchItemSourceKind = {
+  public_source: 'public_source',
+  ai_summary: 'ai_summary',
+  hubspot_data: 'hubspot_data',
+  pam_note: 'pam_note',
+} as const;
+
+export interface PartnerResearchItem {
+  id: string;
+  category: PartnerResearchItemCategory;
+  source_kind: PartnerResearchItemSourceKind;
+  title: string;
+  summary: string;
+  is_possible_customer_opening: boolean;
+  /** @nullable */
+  source_url?: string | null;
+  /** @nullable */
+  source_domain?: string | null;
+  /** @nullable */
+  published_at?: string | null;
+  discovered_at: string;
+}
+
+export interface Rfp {
+  id: string;
+  title: string;
+  country: string;
+  /** @nullable */
+  deadline?: string | null;
+  why_relevant: string;
+  /** @nullable */
+  source_url?: string | null;
+  /** @nullable */
+  source_domain?: string | null;
+  discovered_at: string;
+}
+
+export type PartnerEventSuggestedAction = typeof PartnerEventSuggestedAction[keyof typeof PartnerEventSuggestedAction];
+
+
+export const PartnerEventSuggestedAction = {
+  meet_there: 'meet_there',
+  attend_together: 'attend_together',
+  speak_together: 'speak_together',
+  sourcing_opportunity: 'sourcing_opportunity',
+} as const;
+
+export interface PartnerEvent {
+  id: string;
+  name: string;
+  /** @nullable */
+  event_date?: string | null;
+  /** @nullable */
+  location?: string | null;
+  why_it_matters: string;
+  suggested_action: PartnerEventSuggestedAction;
+  /** @nullable */
+  source_url?: string | null;
+  discovered_at: string;
+}
+
+export type HelpNeededInputHelpNeededType = typeof HelpNeededInputHelpNeededType[keyof typeof HelpNeededInputHelpNeededType];
+
+
+export const HelpNeededInputHelpNeededType = {
+  none: 'none',
+  intro_to_customer: 'intro_to_customer',
+  pricing_support: 'pricing_support',
+  legal_review: 'legal_review',
+  exec_sponsorship: 'exec_sponsorship',
+  other: 'other',
+} as const;
+
+export interface HelpNeededInput {
+  help_needed_type: HelpNeededInputHelpNeededType;
+  /** @nullable */
+  help_needed_note?: string | null;
+}
+
+export interface PartnerCommercial {
+  /** @nullable */
+  pipeline_sourced: number | null;
+  /** @nullable */
+  pipeline_influenced: number | null;
+  /** @nullable */
+  revenue_closed: number | null;
+  /** @nullable */
+  renewal_date: string | null;
+}
+
+export type PartnerStatus = typeof PartnerStatus[keyof typeof PartnerStatus];
+
+
+export const PartnerStatus = {
+  accepted: 'accepted',
+  pushed_to_hubspot: 'pushed_to_hubspot',
+} as const;
+
+export type PartnerHelpNeededType = typeof PartnerHelpNeededType[keyof typeof PartnerHelpNeededType];
+
+
+export const PartnerHelpNeededType = {
+  none: 'none',
+  intro_to_customer: 'intro_to_customer',
+  pricing_support: 'pricing_support',
+  legal_review: 'legal_review',
+  exec_sponsorship: 'exec_sponsorship',
+  other: 'other',
+} as const;
+
+export interface Partner {
+  id: string;
+  company: Company;
+  territory_id: string;
+  /** @nullable */
+  territory_name: string | null;
+  assigned_user?: User;
+  status: PartnerStatus;
+  /** @nullable */
+  last_researched_at?: string | null;
+  help_needed_type: PartnerHelpNeededType;
+  /** @nullable */
+  help_needed_note?: string | null;
+  open_research_count?: number;
+  created_at: string;
+}
+
+export type PartnerDetailStatus = typeof PartnerDetailStatus[keyof typeof PartnerDetailStatus];
+
+
+export const PartnerDetailStatus = {
+  accepted: 'accepted',
+  pushed_to_hubspot: 'pushed_to_hubspot',
+} as const;
+
+export type PartnerDetailHelpNeededType = typeof PartnerDetailHelpNeededType[keyof typeof PartnerDetailHelpNeededType];
+
+
+export const PartnerDetailHelpNeededType = {
+  none: 'none',
+  intro_to_customer: 'intro_to_customer',
+  pricing_support: 'pricing_support',
+  legal_review: 'legal_review',
+  exec_sponsorship: 'exec_sponsorship',
+  other: 'other',
+} as const;
+
+export interface PartnerDetail {
+  id: string;
+  company: Company;
+  territory_id: string;
+  /** @nullable */
+  territory_name: string | null;
+  assigned_user?: User;
+  status: PartnerDetailStatus;
+  /** @nullable */
+  last_researched_at?: string | null;
+  help_needed_type: PartnerDetailHelpNeededType;
+  /** @nullable */
+  help_needed_note?: string | null;
+  commercial: PartnerCommercial;
+  research_items: PartnerResearchItem[];
+  rfps: Rfp[];
+  events: PartnerEvent[];
   created_at: string;
 }
 
@@ -615,5 +839,12 @@ territory?: string | null;
  * @nullable
  */
 period?: string | null;
+};
+
+export type ListPartnersParams = {
+/**
+ * @nullable
+ */
+territory?: string | null;
 };
 

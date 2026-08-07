@@ -6,11 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CampaignDetailStatus = typeof CampaignDetailStatus[keyof typeof CampaignDetailStatus];
+export type CampaignInputStatus = typeof CampaignInputStatus[keyof typeof CampaignInputStatus];
 
 
-export const CampaignDetailStatus = {
+export const CampaignInputStatus = {
   planned: 'planned',
-  active: 'active',
+  live: 'live',
   completed: 'completed',
 } as const;

@@ -6,21 +6,27 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CampaignStatus } from './campaignStatus';
+import type { CampaignType } from './campaignType';
 
 export interface Campaign {
   id: string;
   name: string;
+  type: CampaignType;
   territory: string;
   owner_user_id: string;
   owner_name: string;
-  segment: string;
-  prospect_count: number;
-  message_angle: string;
   /** @nullable */
-  start_date?: string | null;
+  partner_company_id?: string | null;
+  /** @nullable */
+  partner_company_name?: string | null;
+  /** @nullable */
+  activity_date?: string | null;
   status: CampaignStatus;
-  replies?: number;
-  qualified_meetings?: number;
-  signed_partners?: number;
+  /** @nullable */
+  hubspot_link?: string | null;
+  mqls: number;
+  partner_referrals: number;
+  /** @nullable */
+  notes?: string | null;
   created_at: string;
 }

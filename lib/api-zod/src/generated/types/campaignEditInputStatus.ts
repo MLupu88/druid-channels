@@ -11,6 +11,6 @@ export type CampaignEditInputStatus = typeof CampaignEditInputStatus[keyof typeo
 
 export const CampaignEditInputStatus = {
   planned: 'planned',
-  active: 'active',
+  live: 'live',
   completed: 'completed',
 } as const;

@@ -16,10 +16,9 @@ import {
 import { 
   LayoutDashboard, 
   Users, 
+  Handshake,
   ListOrdered, 
-  Settings2, 
   Settings, 
-  Unplug, 
   Search, 
   HelpCircle,
   ChevronDown,
@@ -65,26 +64,26 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={location === '/prospects'}>
-                      <Link href="/prospects">
+                    <SidebarMenuButton asChild isActive={location === '/new-partners'}>
+                      <Link href="/new-partners">
                         <Users />
-                        <span>Prospects</span>
+                        <span>New partners</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={location === '/campaigns'}>
-                      <Link href="/campaigns">
+                    <SidebarMenuButton asChild isActive={location === '/partners'}>
+                      <Link href="/partners">
+                        <Handshake />
+                        <span>Partners</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={location === '/activities'}>
+                      <Link href="/activities">
                         <ListOrdered />
-                        <span>Campaign lists</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={location === '/scan-setup'}>
-                      <Link href="/scan-setup">
-                        <Settings2 />
-                        <span>Scan setup</span>
+                        <span>Activities</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -106,14 +105,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={location === '/integration-status'} className="text-muted-foreground data-[active=true]:text-foreground">
-                      <Link href="/integration-status">
-                        <Unplug />
-                        <span>Integration status</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -127,7 +118,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <input 
                   type="search" 
-                  placeholder="Search prospects..." 
+                  placeholder="Search..." 
                   className="h-9 w-full rounded-md border border-input bg-transparent pl-9 pr-4 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
               </div>

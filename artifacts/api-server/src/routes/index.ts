@@ -8,6 +8,7 @@ import scansRouter from "./scans";
 import kpisRouter from "./kpis";
 import campaignsRouter from "./campaigns";
 import integrationsRouter from "./integrations";
+import partnersRouter from "./partners";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(scansRouter);
 router.use(kpisRouter);
 router.use(campaignsRouter);
 router.use(integrationsRouter);
+router.use(partnersRouter);
 
 export default router;

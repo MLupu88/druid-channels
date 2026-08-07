@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, boolean, timestamp, numeric, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { companiesTable } from "./companies";
@@ -29,6 +29,16 @@ export const prospectsTable = pgTable("prospects", {
   pamNote: text("pam_note"),
   acceptedAt: timestamp("accepted_at", { withTimezone: true }),
   hubspotCompanyId: text("hubspot_company_id"),
+  // Fields used once a prospect becomes an existing "Partner" (status accepted/pushed_to_hubspot).
+  helpNeededType: text("help_needed_type", {
+    enum: ["none", "intro_to_customer", "pricing_support", "legal_review", "exec_sponsorship", "other"],
+  }).notNull().default("none"),
+  helpNeededNote: text("help_needed_note"),
+  lastResearchedAt: timestamp("last_researched_at", { withTimezone: true }),
+  pipelineSourced: numeric("pipeline_sourced"),
+  pipelineInfluenced: numeric("pipeline_influenced"),
+  revenueClosed: numeric("revenue_closed"),
+  renewalDate: date("renewal_date", { mode: "string" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

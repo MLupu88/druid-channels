@@ -6,13 +6,22 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CampaignEditInputStatus } from './campaignEditInputStatus';
+import type { CampaignEditInputType } from './campaignEditInputType';
 
 export interface CampaignEditInput {
   name?: string;
-  segment?: string;
-  message_angle?: string;
+  type?: CampaignEditInputType;
+  territory?: string;
   owner_user_id?: string;
   /** @nullable */
-  start_date?: string | null;
+  partner_company_id?: string | null;
+  /** @nullable */
+  activity_date?: string | null;
   status?: CampaignEditInputStatus;
+  /** @nullable */
+  hubspot_link?: string | null;
+  mqls?: number;
+  partner_referrals?: number;
+  /** @nullable */
+  notes?: string | null;
 }

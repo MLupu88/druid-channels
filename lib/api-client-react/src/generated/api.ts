@@ -21,16 +21,19 @@ import type {
 
 import type {
   Campaign,
-  CampaignDetail,
   CampaignEditInput,
   CampaignInput,
   DeleteResult,
   GetHeadOfChannelsKpisParams,
   HeadOfChannelsKpis,
   HealthStatus,
+  HelpNeededInput,
   HubspotPushResult,
   IntegrationsStatus,
+  ListPartnersParams,
   ListProspectsParams,
+  Partner,
+  PartnerDetail,
   Prospect,
   ProspectDecisionInput,
   ProspectDetail,
@@ -1280,83 +1283,6 @@ export const useCreateCampaign = <TError = ErrorType<unknown>,
       return useMutation(getCreateCampaignMutationOptions(options));
     }
 
-export const getGetCampaignUrl = (id: string,) => {
-
-
-
-
-  return `/api/campaigns/${id}`
-}
-
-/**
- * @summary Get a campaign with its prospects
- */
-export const getCampaign = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<CampaignDetail> => {
-
-  return customFetch<CampaignDetail>(getGetCampaignUrl(id),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetCampaignQueryKey = (id: string,) => {
-    return [
-    `/api/campaigns/${id}`
-    ] as const;
-    }
-
-
-export const getGetCampaignQueryOptions = <TData = Awaited<ReturnType<typeof getCampaign>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCampaign>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetCampaignQueryKey(id);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCampaign>>> = ({ signal }) => getCampaign(id, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCampaign>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetCampaignQueryResult = NonNullable<Awaited<ReturnType<typeof getCampaign>>>
-export type GetCampaignQueryError = ErrorType<void>
-
-
-/**
- * @summary Get a campaign with its prospects
- */
-
-export function useGetCampaign<TData = Awaited<ReturnType<typeof getCampaign>>, TError = ErrorType<void>>(
- id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCampaign>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetCampaignQueryOptions(id,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
-
 export const getUpdateCampaignUrl = (id: string,) => {
 
 
@@ -1720,6 +1646,239 @@ export function useGetIntegrationsStatus<TData = Awaited<ReturnType<typeof getIn
 
 
 
+
+export const getListPartnersUrl = (params?: ListPartnersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/partners?${stringifiedParams}` : `/api/partners`
+}
+
+/**
+ * @summary List existing partners (accepted/pushed-to-HubSpot prospects)
+ */
+export const listPartners = async (params?: ListPartnersParams, options?: Parameters<typeof customFetch>[1]): Promise<Partner[]> => {
+
+  return customFetch<Partner[]>(getListPartnersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPartnersQueryKey = (params?: ListPartnersParams,) => {
+    return [
+    `/api/partners`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPartnersQueryOptions = <TData = Awaited<ReturnType<typeof listPartners>>, TError = ErrorType<unknown>>(params?: ListPartnersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPartners>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPartnersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPartners>>> = ({ signal }) => listPartners(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPartners>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPartnersQueryResult = NonNullable<Awaited<ReturnType<typeof listPartners>>>
+export type ListPartnersQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List existing partners (accepted/pushed-to-HubSpot prospects)
+ */
+
+export function useListPartners<TData = Awaited<ReturnType<typeof listPartners>>, TError = ErrorType<unknown>>(
+ params?: ListPartnersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPartners>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPartnersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPartnerUrl = (id: string,) => {
+
+
+
+
+  return `/api/partners/${id}`
+}
+
+/**
+ * @summary Get a partner research briefing
+ */
+export const getPartner = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PartnerDetail> => {
+
+  return customFetch<PartnerDetail>(getGetPartnerUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPartnerQueryKey = (id: string,) => {
+    return [
+    `/api/partners/${id}`
+    ] as const;
+    }
+
+
+export const getGetPartnerQueryOptions = <TData = Awaited<ReturnType<typeof getPartner>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPartner>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPartnerQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPartner>>> = ({ signal }) => getPartner(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPartner>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPartnerQueryResult = NonNullable<Awaited<ReturnType<typeof getPartner>>>
+export type GetPartnerQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a partner research briefing
+ */
+
+export function useGetPartner<TData = Awaited<ReturnType<typeof getPartner>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPartner>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPartnerQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdatePartnerHelpNeededUrl = (id: string,) => {
+
+
+
+
+  return `/api/partners/${id}/help-needed`
+}
+
+/**
+ * @summary Update what help a PAM needs to move a partner forward
+ */
+export const updatePartnerHelpNeeded = async (id: string,
+    helpNeededInput: HelpNeededInput, options?: Parameters<typeof customFetch>[1]): Promise<Partner> => {
+
+  return customFetch<Partner>(getUpdatePartnerHelpNeededUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(helpNeededInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePartnerHelpNeededMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePartnerHelpNeeded>>, TError,{id: string;data: BodyType<HelpNeededInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePartnerHelpNeeded>>, TError,{id: string;data: BodyType<HelpNeededInput>}, TContext> => {
+
+const mutationKey = ['updatePartnerHelpNeeded'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePartnerHelpNeeded>>, {id: string;data: BodyType<HelpNeededInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updatePartnerHelpNeeded(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePartnerHelpNeededMutationResult = NonNullable<Awaited<ReturnType<typeof updatePartnerHelpNeeded>>>
+    export type UpdatePartnerHelpNeededMutationBody = BodyType<HelpNeededInput>
+    export type UpdatePartnerHelpNeededMutationError = ErrorType<void>
+
+    /**
+ * @summary Update what help a PAM needs to move a partner forward
+ */
+export const useUpdatePartnerHelpNeeded = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePartnerHelpNeeded>>, TError,{id: string;data: BodyType<HelpNeededInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePartnerHelpNeeded>>,
+        TError,
+        {id: string;data: BodyType<HelpNeededInput>},
+        TContext
+      > => {
+      return useMutation(getUpdatePartnerHelpNeededMutationOptions(options));
+    }
 
 export const getGetProspectStatsUrl = () => {
 
