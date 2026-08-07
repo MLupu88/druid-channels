@@ -3,7 +3,7 @@
 # Build context MUST be the repository root (pnpm workspace monorepo), e.g.:
 #   docker build -f artifacts/api-server/Dockerfile -t druid-channels-api:local .
 
-FROM node:24-alpine AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.10.0 --activate
 
@@ -15,7 +15,7 @@ RUN pnpm --filter @workspace/api-server run build
 # Runtime: the esbuild bundle in dist/ has no runtime dependency on
 # node_modules (see artifacts/api-server/build.mjs), so the final image only
 # needs Node + the built dist/ output.
-FROM node:24-alpine AS runtime
+FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080

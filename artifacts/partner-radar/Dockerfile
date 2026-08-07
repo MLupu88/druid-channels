@@ -8,7 +8,7 @@
 # only needs to be a valid number for the build step; it has no effect on the
 # runtime container, which always serves on 8080 (see nginx.conf).
 
-FROM node:24-alpine AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.10.0 --activate
 
