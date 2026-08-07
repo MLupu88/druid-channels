@@ -112,6 +112,27 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a new PAM (role is always pam; not caller-assignable)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserInput"
+      responses:
+        "201":
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid input
+        "409":
+          description: Email already in use
 
   /territories:
     get:
@@ -713,6 +734,29 @@ paths:
         "404":
           description: Not found
 
+  /users/{id}/reset-password:
+    post:
+      operationId: resetUserPassword
+      tags: [users]
+      summary: Reset access for a PAM by generating a new strong temporary password, invalidating the old one, and returning it once
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Temporary password generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResetPasswordResponse"
+        "400":
+          description: Target user is not a PAM
+        "404":
+          description: Not found
+
   /territories/{id}:
     patch:
       operationId: updateTerritory
@@ -1198,13 +1242,40 @@ components:
     UserEditInput:
       type: object
       properties:
-        role:
+        name:
           type: string
-          enum: [head_of_channels, pam, admin]
+          minLength: 1
         territory:
           type: ["string", "null"]
         active:
           type: boolean
+
+    CreateUserInput:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        territory:
+          type: ["string", "null"]
+        password:
+          type: string
+          minLength: 16
+          description: Initial access credential for the new PAM. Hashed server-side; never stored or returned in plaintext.
+
+    UserResetPasswordResponse:
+      type: object
+      required: [user, temporary_password]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        temporary_password:
+          type: string
+          description: One-time plaintext temporary password. Shown only in this response; never persisted or logged.
 
     TerritoryEditInput:
       type: object

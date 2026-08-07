@@ -25,3 +25,14 @@ export function verifyPassword(plain: string, stored: string | null | undefined)
     return false;
   }
 }
+
+// Server-generated temporary password used only for resetting a PAM's
+// access (account creation instead takes its initial password from
+// CreateUserInput.password). 18 random bytes -> 24-char base64url string
+// (144 bits of entropy), well above the 16-char minimum enforced on
+// CreateUserInput.password. Caller is responsible for showing this to the
+// admin exactly once and never logging it -- this module only ever returns
+// the plaintext, it does not persist it.
+export function generateTemporaryPassword(): string {
+  return randomBytes(18).toString("base64url");
+}

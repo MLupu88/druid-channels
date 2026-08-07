@@ -74,6 +74,31 @@ export const ListUsersResponse = zod.array(ListUsersResponseItem)
 
 
 /**
+ * @summary Create a new PAM (role is always pam; not caller-assignable)
+ */
+
+export const createUserBodyPasswordMin = 16;
+
+
+
+export const CreateUserBody = zod.object({
+  "name": zod.string().min(1),
+  "email": zod.string().email(),
+  "territory": zod.string().nullish(),
+  "password": zod.string().min(createUserBodyPasswordMin).describe('Initial access credential for the new PAM. Hashed server-side; never stored or returned in plaintext.')
+})
+
+export const CreateUserResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "active": zod.boolean()
+})
+
+
+/**
  * @summary List all territories
  */
 export const ListTerritoriesResponseItem = zod.object({
@@ -897,8 +922,11 @@ export const UpdateUserParams = zod.object({
   "id": zod.coerce.string()
 })
 
+
+
+
 export const UpdateUserBody = zod.object({
-  "role": zod.enum(['head_of_channels', 'pam', 'admin']).optional(),
+  "name": zod.string().min(1).optional(),
   "territory": zod.string().nullish(),
   "active": zod.boolean().optional()
 })
@@ -910,6 +938,26 @@ export const UpdateUserResponse = zod.object({
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
   "active": zod.boolean()
+})
+
+
+/**
+ * @summary Reset access for a PAM by generating a new strong temporary password, invalidating the old one, and returning it once
+ */
+export const ResetUserPasswordParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ResetUserPasswordResponse = zod.object({
+  "user": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "active": zod.boolean()
+}),
+  "temporary_password": zod.string().describe('One-time plaintext temporary password. Shown only in this response; never persisted or logged.')
 })
 
 
