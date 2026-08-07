@@ -20,18 +20,30 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AuthSessionInput,
+  AuthSessionResponse,
   Campaign,
   CampaignEditInput,
   CampaignInput,
+  Connection,
+  ConnectionUpdateInput,
   DeleteResult,
+  ExportQuarterlyPptxParams,
   GetHeadOfChannelsKpisParams,
+  GetKpiDetailsParams,
   HeadOfChannelsKpis,
   HealthStatus,
   HelpNeededInput,
   HubspotPushResult,
-  IntegrationsStatus,
+  KpiDetail,
+  ListManualMetricValuesParams,
   ListPartnersParams,
   ListProspectsParams,
+  ManualMetricValue,
+  ManualMetricValueInput,
+  MetricMapping,
+  MetricMappingInput,
+  MetricMappingPreviewInput,
   Partner,
   PartnerDetail,
   Prospect,
@@ -75,6 +87,77 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getCreateAuthSessionUrl = () => {
+
+
+
+
+  return `/api/auth/session`
+}
+
+/**
+ * @summary Issue a signed session token for a user (demo "act as" switcher; no password exists yet)
+ */
+export const createAuthSession = async (authSessionInput: AuthSessionInput, options?: Parameters<typeof customFetch>[1]): Promise<AuthSessionResponse> => {
+
+  return customFetch<AuthSessionResponse>(getCreateAuthSessionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(authSessionInput)
+  }
+);}
+
+
+
+
+
+export const getCreateAuthSessionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAuthSession>>, TError,{data: BodyType<AuthSessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAuthSession>>, TError,{data: BodyType<AuthSessionInput>}, TContext> => {
+
+const mutationKey = ['createAuthSession'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAuthSession>>, {data: BodyType<AuthSessionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAuthSession(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAuthSessionMutationResult = NonNullable<Awaited<ReturnType<typeof createAuthSession>>>
+    export type CreateAuthSessionMutationBody = BodyType<AuthSessionInput>
+    export type CreateAuthSessionMutationError = ErrorType<void>
+
+    /**
+ * @summary Issue a signed session token for a user (demo "act as" switcher; no password exists yet)
+ */
+export const useCreateAuthSession = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAuthSession>>, TError,{data: BodyType<AuthSessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAuthSession>>,
+        TError,
+        {data: BodyType<AuthSessionInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAuthSessionMutationOptions(options));
+    }
 
 export const getHealthCheckUrl = () => {
 
@@ -1135,6 +1218,770 @@ export function useGetHeadOfChannelsKpis<TData = Awaited<ReturnType<typeof getHe
 
 
 
+export const getGetKpiDetailsUrl = (params: GetKpiDetailsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/kpis/details?${stringifiedParams}` : `/api/kpis/details`
+}
+
+/**
+ * @summary Get the drill-down detail for a single KPI, using the same source/period/territory as its row
+ */
+export const getKpiDetails = async (params: GetKpiDetailsParams, options?: Parameters<typeof customFetch>[1]): Promise<KpiDetail> => {
+
+  return customFetch<KpiDetail>(getGetKpiDetailsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetKpiDetailsQueryKey = (params?: GetKpiDetailsParams,) => {
+    return [
+    `/api/kpis/details`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetKpiDetailsQueryOptions = <TData = Awaited<ReturnType<typeof getKpiDetails>>, TError = ErrorType<void>>(params: GetKpiDetailsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKpiDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetKpiDetailsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getKpiDetails>>> = ({ signal }) => getKpiDetails(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getKpiDetails>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetKpiDetailsQueryResult = NonNullable<Awaited<ReturnType<typeof getKpiDetails>>>
+export type GetKpiDetailsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the drill-down detail for a single KPI, using the same source/period/territory as its row
+ */
+
+export function useGetKpiDetails<TData = Awaited<ReturnType<typeof getKpiDetails>>, TError = ErrorType<void>>(
+ params: GetKpiDetailsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKpiDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetKpiDetailsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListConnectionsUrl = () => {
+
+
+
+
+  return `/api/connections`
+}
+
+/**
+ * @summary List configured integration connections (HubSpot, web search, web reader, AI) with live status
+ */
+export const listConnections = async ( options?: Parameters<typeof customFetch>[1]): Promise<Connection[]> => {
+
+  return customFetch<Connection[]>(getListConnectionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListConnectionsQueryKey = () => {
+    return [
+    `/api/connections`
+    ] as const;
+    }
+
+
+export const getListConnectionsQueryOptions = <TData = Awaited<ReturnType<typeof listConnections>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListConnectionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listConnections>>> = ({ signal }) => listConnections({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listConnections>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListConnectionsQueryResult = NonNullable<Awaited<ReturnType<typeof listConnections>>>
+export type ListConnectionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List configured integration connections (HubSpot, web search, web reader, AI) with live status
+ */
+
+export function useListConnections<TData = Awaited<ReturnType<typeof listConnections>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListConnectionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateConnectionUrl = (id: string,) => {
+
+
+
+
+  return `/api/connections/${id}`
+}
+
+/**
+ * @summary Update a connection's non-secret configuration
+ */
+export const updateConnection = async (id: string,
+    connectionUpdateInput: ConnectionUpdateInput, options?: Parameters<typeof customFetch>[1]): Promise<Connection> => {
+
+  return customFetch<Connection>(getUpdateConnectionUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(connectionUpdateInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateConnectionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateConnection>>, TError,{id: string;data: BodyType<ConnectionUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateConnection>>, TError,{id: string;data: BodyType<ConnectionUpdateInput>}, TContext> => {
+
+const mutationKey = ['updateConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateConnection>>, {id: string;data: BodyType<ConnectionUpdateInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateConnection(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof updateConnection>>>
+    export type UpdateConnectionMutationBody = BodyType<ConnectionUpdateInput>
+    export type UpdateConnectionMutationError = ErrorType<void>
+
+    /**
+ * @summary Update a connection's non-secret configuration
+ */
+export const useUpdateConnection = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateConnection>>, TError,{id: string;data: BodyType<ConnectionUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateConnection>>,
+        TError,
+        {id: string;data: BodyType<ConnectionUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateConnectionMutationOptions(options));
+    }
+
+export const getTestConnectionUrl = (id: string,) => {
+
+
+
+
+  return `/api/connections/${id}/test`
+}
+
+/**
+ * @summary Test a connection using its configured environment-variable credential
+ */
+export const testConnection = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<Connection> => {
+
+  return customFetch<Connection>(getTestConnectionUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getTestConnectionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testConnection>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['testConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testConnection>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  testConnection(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof testConnection>>>
+
+    export type TestConnectionMutationError = ErrorType<void>
+
+    /**
+ * @summary Test a connection using its configured environment-variable credential
+ */
+export const useTestConnection = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testConnection>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getTestConnectionMutationOptions(options));
+    }
+
+export const getListMetricMappingsUrl = () => {
+
+
+
+
+  return `/api/metric-mappings`
+}
+
+/**
+ * @summary List every canonical KPI's data-source mapping and status
+ */
+export const listMetricMappings = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetricMapping[]> => {
+
+  return customFetch<MetricMapping[]>(getListMetricMappingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMetricMappingsQueryKey = () => {
+    return [
+    `/api/metric-mappings`
+    ] as const;
+    }
+
+
+export const getListMetricMappingsQueryOptions = <TData = Awaited<ReturnType<typeof listMetricMappings>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMetricMappings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMetricMappingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMetricMappings>>> = ({ signal }) => listMetricMappings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMetricMappings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMetricMappingsQueryResult = NonNullable<Awaited<ReturnType<typeof listMetricMappings>>>
+export type ListMetricMappingsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List every canonical KPI's data-source mapping and status
+ */
+
+export function useListMetricMappings<TData = Awaited<ReturnType<typeof listMetricMappings>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMetricMappings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMetricMappingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpsertMetricMappingUrl = (metricKey: string,) => {
+
+
+
+
+  return `/api/metric-mappings/${metricKey}`
+}
+
+/**
+ * @summary Save how a KPI's value should be sourced
+ */
+export const upsertMetricMapping = async (metricKey: string,
+    metricMappingInput: MetricMappingInput, options?: Parameters<typeof customFetch>[1]): Promise<MetricMapping> => {
+
+  return customFetch<MetricMapping>(getUpsertMetricMappingUrl(metricKey),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(metricMappingInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertMetricMappingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMetricMapping>>, TError,{metricKey: string;data: BodyType<MetricMappingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertMetricMapping>>, TError,{metricKey: string;data: BodyType<MetricMappingInput>}, TContext> => {
+
+const mutationKey = ['upsertMetricMapping'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertMetricMapping>>, {metricKey: string;data: BodyType<MetricMappingInput>}> = (props) => {
+          const {metricKey,data} = props ?? {};
+
+          return  upsertMetricMapping(metricKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertMetricMappingMutationResult = NonNullable<Awaited<ReturnType<typeof upsertMetricMapping>>>
+    export type UpsertMetricMappingMutationBody = BodyType<MetricMappingInput>
+    export type UpsertMetricMappingMutationError = ErrorType<void>
+
+    /**
+ * @summary Save how a KPI's value should be sourced
+ */
+export const useUpsertMetricMapping = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMetricMapping>>, TError,{metricKey: string;data: BodyType<MetricMappingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertMetricMapping>>,
+        TError,
+        {metricKey: string;data: BodyType<MetricMappingInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertMetricMappingMutationOptions(options));
+    }
+
+export const getPreviewMetricMappingUrl = (metricKey: string,) => {
+
+
+
+
+  return `/api/metric-mappings/${metricKey}/preview`
+}
+
+/**
+ * @summary Preview what a candidate mapping would produce, without saving it
+ */
+export const previewMetricMapping = async (metricKey: string,
+    metricMappingPreviewInput: MetricMappingPreviewInput, options?: Parameters<typeof customFetch>[1]): Promise<KpiDetail> => {
+
+  return customFetch<KpiDetail>(getPreviewMetricMappingUrl(metricKey),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(metricMappingPreviewInput)
+  }
+);}
+
+
+
+
+
+export const getPreviewMetricMappingMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewMetricMapping>>, TError,{metricKey: string;data: BodyType<MetricMappingPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewMetricMapping>>, TError,{metricKey: string;data: BodyType<MetricMappingPreviewInput>}, TContext> => {
+
+const mutationKey = ['previewMetricMapping'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewMetricMapping>>, {metricKey: string;data: BodyType<MetricMappingPreviewInput>}> = (props) => {
+          const {metricKey,data} = props ?? {};
+
+          return  previewMetricMapping(metricKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewMetricMappingMutationResult = NonNullable<Awaited<ReturnType<typeof previewMetricMapping>>>
+    export type PreviewMetricMappingMutationBody = BodyType<MetricMappingPreviewInput>
+    export type PreviewMetricMappingMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Preview what a candidate mapping would produce, without saving it
+ */
+export const usePreviewMetricMapping = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewMetricMapping>>, TError,{metricKey: string;data: BodyType<MetricMappingPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof previewMetricMapping>>,
+        TError,
+        {metricKey: string;data: BodyType<MetricMappingPreviewInput>},
+        TContext
+      > => {
+      return useMutation(getPreviewMetricMappingMutationOptions(options));
+    }
+
+export const getListManualMetricValuesUrl = (params?: ListManualMetricValuesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/manual-metric-values?${stringifiedParams}` : `/api/manual-metric-values`
+}
+
+/**
+ * @summary List manually entered KPI values
+ */
+export const listManualMetricValues = async (params?: ListManualMetricValuesParams, options?: Parameters<typeof customFetch>[1]): Promise<ManualMetricValue[]> => {
+
+  return customFetch<ManualMetricValue[]>(getListManualMetricValuesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListManualMetricValuesQueryKey = (params?: ListManualMetricValuesParams,) => {
+    return [
+    `/api/manual-metric-values`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListManualMetricValuesQueryOptions = <TData = Awaited<ReturnType<typeof listManualMetricValues>>, TError = ErrorType<unknown>>(params?: ListManualMetricValuesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listManualMetricValues>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListManualMetricValuesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listManualMetricValues>>> = ({ signal }) => listManualMetricValues(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listManualMetricValues>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListManualMetricValuesQueryResult = NonNullable<Awaited<ReturnType<typeof listManualMetricValues>>>
+export type ListManualMetricValuesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List manually entered KPI values
+ */
+
+export function useListManualMetricValues<TData = Awaited<ReturnType<typeof listManualMetricValues>>, TError = ErrorType<unknown>>(
+ params?: ListManualMetricValuesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listManualMetricValues>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListManualMetricValuesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpsertManualMetricValueUrl = () => {
+
+
+
+
+  return `/api/manual-metric-values`
+}
+
+/**
+ * @summary Create or update a manually entered KPI value for a metric/period/territory
+ */
+export const upsertManualMetricValue = async (manualMetricValueInput: ManualMetricValueInput, options?: Parameters<typeof customFetch>[1]): Promise<ManualMetricValue> => {
+
+  return customFetch<ManualMetricValue>(getUpsertManualMetricValueUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(manualMetricValueInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertManualMetricValueMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertManualMetricValue>>, TError,{data: BodyType<ManualMetricValueInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertManualMetricValue>>, TError,{data: BodyType<ManualMetricValueInput>}, TContext> => {
+
+const mutationKey = ['upsertManualMetricValue'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertManualMetricValue>>, {data: BodyType<ManualMetricValueInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertManualMetricValue(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertManualMetricValueMutationResult = NonNullable<Awaited<ReturnType<typeof upsertManualMetricValue>>>
+    export type UpsertManualMetricValueMutationBody = BodyType<ManualMetricValueInput>
+    export type UpsertManualMetricValueMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create or update a manually entered KPI value for a metric/period/territory
+ */
+export const useUpsertManualMetricValue = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertManualMetricValue>>, TError,{data: BodyType<ManualMetricValueInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertManualMetricValue>>,
+        TError,
+        {data: BodyType<ManualMetricValueInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertManualMetricValueMutationOptions(options));
+    }
+
+export const getExportQuarterlyPptxUrl = (params?: ExportQuarterlyPptxParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/exports/quarterly-pptx?${stringifiedParams}` : `/api/exports/quarterly-pptx`
+}
+
+/**
+ * @summary Export the quarterly Head of Channels report as a PowerPoint deck
+ */
+export const exportQuarterlyPptx = async (params?: ExportQuarterlyPptxParams, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getExportQuarterlyPptxUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportQuarterlyPptxQueryKey = (params?: ExportQuarterlyPptxParams,) => {
+    return [
+    `/api/exports/quarterly-pptx`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportQuarterlyPptxQueryOptions = <TData = Awaited<ReturnType<typeof exportQuarterlyPptx>>, TError = ErrorType<unknown>>(params?: ExportQuarterlyPptxParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportQuarterlyPptx>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportQuarterlyPptxQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportQuarterlyPptx>>> = ({ signal }) => exportQuarterlyPptx(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportQuarterlyPptx>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportQuarterlyPptxQueryResult = NonNullable<Awaited<ReturnType<typeof exportQuarterlyPptx>>>
+export type ExportQuarterlyPptxQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Export the quarterly Head of Channels report as a PowerPoint deck
+ */
+
+export function useExportQuarterlyPptx<TData = Awaited<ReturnType<typeof exportQuarterlyPptx>>, TError = ErrorType<unknown>>(
+ params?: ExportQuarterlyPptxParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportQuarterlyPptx>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportQuarterlyPptxQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getListCampaignsUrl = () => {
 
 
@@ -1569,83 +2416,6 @@ export const useUpdateTerritory = <TError = ErrorType<void>,
       > => {
       return useMutation(getUpdateTerritoryMutationOptions(options));
     }
-
-export const getGetIntegrationsStatusUrl = () => {
-
-
-
-
-  return `/api/integrations/status`
-}
-
-/**
- * @summary Get mocked integration connection status (HubSpot, etc.)
- */
-export const getIntegrationsStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<IntegrationsStatus> => {
-
-  return customFetch<IntegrationsStatus>(getGetIntegrationsStatusUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetIntegrationsStatusQueryKey = () => {
-    return [
-    `/api/integrations/status`
-    ] as const;
-    }
-
-
-export const getGetIntegrationsStatusQueryOptions = <TData = Awaited<ReturnType<typeof getIntegrationsStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrationsStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetIntegrationsStatusQueryKey();
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getIntegrationsStatus>>> = ({ signal }) => getIntegrationsStatus({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getIntegrationsStatus>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetIntegrationsStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getIntegrationsStatus>>>
-export type GetIntegrationsStatusQueryError = ErrorType<unknown>
-
-
-/**
- * @summary Get mocked integration connection status (HubSpot, etc.)
- */
-
-export function useGetIntegrationsStatus<TData = Awaited<ReturnType<typeof getIntegrationsStatus>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrationsStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetIntegrationsStatusQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
 
 export const getListPartnersUrl = (params?: ListPartnersParams,) => {
   const normalizedParams = new URLSearchParams();

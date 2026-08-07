@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   useGetHeadOfChannelsKpis, 
   useListTerritories, 
-  useGetProspectStats 
+  useGetKpiDetails,
+  getGetKpiDetailsQueryKey,
 } from '@workspace/api-client-react';
 import { 
   Table, 
@@ -40,6 +41,13 @@ function TrendIcon({ trend }: { trend: string }) {
   return <Minus className="h-4 w-4 text-muted-foreground inline" />;
 }
 
+function DataStatusBadge({ status }: { status: string }) {
+  if (status === 'CONNECTED') return <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 font-normal text-xs">Connected</Badge>;
+  if (status === 'MANUAL') return <Badge variant="outline" className="text-sky-700 bg-sky-50 border-sky-200 font-normal text-xs">Manual</Badge>;
+  if (status === 'DEMO') return <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-normal text-xs">Demo data</Badge>;
+  return <Badge variant="outline" className="text-muted-foreground font-normal text-xs">Not connected</Badge>;
+}
+
 export default function Overview() {
   const { activeUser } = useUser();
   const [territory, setTerritory] = useState<string>('global');
@@ -51,7 +59,11 @@ export default function Overview() {
     territory: territory === 'global' ? null : territory, 
     period 
   });
-  const { data: stats, isLoading: isLoadingStats } = useGetProspectStats();
+  const detailParams = { metric_key: selectedKpi ?? '', territory: territory === 'global' ? null : territory, period };
+  const { data: detail, isLoading: isLoadingDetail } = useGetKpiDetails(
+    detailParams,
+    { query: { enabled: Boolean(selectedKpi), queryKey: getGetKpiDetailsQueryKey(detailParams) } },
+  );
 
   const isHeadOfChannels = activeUser?.role === 'head_of_channels';
 
@@ -91,6 +103,18 @@ export default function Overview() {
                 ))}
               </SelectContent>
             </Select>
+
+            <Button
+              variant="outline"
+              className="bg-card"
+              onClick={() => {
+                const params = new URLSearchParams({ period });
+                if (territory !== 'global') params.set('territory', territory);
+                window.open(`/api/exports/quarterly-pptx?${params.toString()}`, '_blank');
+              }}
+            >
+              Export quarterly report
+            </Button>
           </div>
         </div>
 
@@ -122,7 +146,7 @@ export default function Overview() {
                       <TableRow 
                         key={i} 
                         className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => setSelectedKpi(row.metric)}
+                        onClick={() => setSelectedKpi(row.metric_key)}
                       >
                         <TableCell className="font-medium">{row.metric}</TableCell>
                         <TableCell className="text-right tabular-nums">{row.current}</TableCell>
@@ -156,7 +180,7 @@ export default function Overview() {
                       <TableRow 
                         key={i}
                         className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => setSelectedKpi(row.metric)}
+                        onClick={() => setSelectedKpi(row.metric_key)}
                       >
                         <TableCell className="font-medium">{row.metric}</TableCell>
                         <TableCell className="text-right tabular-nums">{row.current}</TableCell>
@@ -195,7 +219,7 @@ export default function Overview() {
                       <TableRow 
                         key={i}
                         className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => setSelectedKpi(row.metric)}
+                        onClick={() => setSelectedKpi(row.metric_key)}
                       >
                         <TableCell className="font-medium">{row.metric}</TableCell>
                         <TableCell className="text-right tabular-nums">{row.this_week}</TableCell>
@@ -222,7 +246,7 @@ export default function Overview() {
       {selectedKpi && (
         <div className="w-[400px] border-l border-border/50 bg-card flex flex-col h-full shadow-[-10px_0_30px_rgba(0,0,0,0.03)] transition-transform duration-300">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 bg-muted/10">
-            <h3 className="font-medium">{selectedKpi} details</h3>
+            <h3 className="font-medium">{detail?.metric ?? 'Metric'} details</h3>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setSelectedKpi(null)}>
               <X className="h-4 w-4" />
             </Button>
@@ -230,98 +254,98 @@ export default function Overview() {
           
           <ScrollArea className="flex-1">
             <div className="p-5 space-y-6">
-              <div>
-                <h4 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wider">Territory Breakdown</h4>
-                {isLoadingStats ? (
-                  <div className="space-y-2">
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-full" />
+              {isLoadingDetail ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : detail ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <DataStatusBadge status={detail.data_status} />
+                    {detail.reconciles === false && (
+                      <Badge variant="outline" className="text-rose-700 bg-rose-50 border-rose-200 font-normal text-xs">Reconciliation mismatch</Badge>
+                    )}
                   </div>
-                ) : stats ? (
-                  <div className="rounded-md border border-border/60 overflow-hidden">
-                    <Table>
-                      <TableHeader className="bg-muted/20">
-                        <TableRow className="hover:bg-transparent">
-                          <TableHead className="py-2 h-9 text-xs">Territory</TableHead>
-                          <TableHead className="py-2 h-9 text-xs text-right">Contribution</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {stats.by_territory.map((t, idx) => (
-                          <TableRow key={idx} className="hover:bg-muted/30">
-                            <TableCell className="py-2 text-sm">{t.territory}</TableCell>
-                            <TableCell className="py-2 text-sm text-right font-medium">{t.total}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No breakdown available.</p>
-                )}
-              </div>
 
-              <div>
-                <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">Explanation</h4>
-                {(() => {
-                  const devRow = kpis?.partner_development.find(r => r.metric === selectedKpi);
-                  if (devRow) {
-                    return (
-                      <div className="space-y-2">
-                        <p className="text-sm leading-relaxed text-foreground">{devRow.explanation}</p>
-                        {devRow.what_changed && (
-                          <p className="text-sm leading-relaxed text-muted-foreground">
-                            <span className="font-medium text-foreground">What changed: </span>{devRow.what_changed}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  }
-                  const commercialRow = kpis?.weekly_commercial.find(r => r.metric === selectedKpi);
-                  if (commercialRow) {
-                    const delta = commercialRow.current - commercialRow.last_week;
-                    return (
-                      <div className="space-y-2">
-                        <p className="text-sm leading-relaxed text-foreground">
-                          {commercialRow.explanation ?? `${commercialRow.metric} is at ${commercialRow.current} for ${kpis?.territory}, ${delta === 0 ? 'unchanged' : delta > 0 ? `up ${delta} from` : `down ${Math.abs(delta)} from`} ${delta !== 0 ? `last week's ${commercialRow.last_week}` : 'last week'}, against a target of ${commercialRow.target}.`}
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">Explanation</h4>
+                    <div className="space-y-2">
+                      <p className="text-sm leading-relaxed text-foreground">{detail.explanation}</p>
+                      {detail.what_changed && (
+                        <p className="text-sm leading-relaxed text-muted-foreground">
+                          <span className="font-medium text-foreground">What changed: </span>{detail.what_changed}
                         </p>
-                      </div>
-                    );
-                  }
-                  const marketingRow = kpis?.weekly_marketing.find(r => r.metric === selectedKpi);
-                  if (marketingRow) {
-                    return (
-                      <p className="text-sm leading-relaxed text-foreground">
-                        {marketingRow.explanation ?? `${marketingRow.metric} recorded ${marketingRow.this_week} this week for ${kpis?.territory}, trending ${marketingRow.trend}.`}
-                      </p>
-                    );
-                  }
-                  return <p className="text-sm text-muted-foreground">No details available for this metric.</p>;
-                })()}
-              </div>
+                      )}
+                      {detail.reconciliation_note && (
+                        <p className="text-sm leading-relaxed text-rose-700">{detail.reconciliation_note}</p>
+                      )}
+                    </div>
+                  </div>
 
-              {(() => {
-                const row =
-                  kpis?.partner_development.find(r => r.metric === selectedKpi) ??
-                  kpis?.weekly_commercial.find(r => r.metric === selectedKpi) ??
-                  kpis?.weekly_marketing.find(r => r.metric === selectedKpi);
-                if (!row || (!row.data_source && !row.last_updated)) return null;
-                return (
-                  <div className="rounded-md border border-border/60 bg-muted/10 p-3 space-y-1.5">
-                    {row.data_source && (
-                      <p className="text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">Data source: </span>{row.data_source}
-                      </p>
-                    )}
-                    {row.last_updated && (
-                      <p className="text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">Last updated: </span>{new Date(row.last_updated).toLocaleString()}
-                      </p>
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wider">Territory Breakdown</h4>
+                    {detail.by_territory.length > 0 ? (
+                      <div className="rounded-md border border-border/60 overflow-hidden">
+                        <Table>
+                          <TableHeader className="bg-muted/20">
+                            <TableRow className="hover:bg-transparent">
+                              <TableHead className="py-2 h-9 text-xs">Territory</TableHead>
+                              <TableHead className="py-2 h-9 text-xs text-right">Contribution</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {detail.by_territory.map((t, idx) => (
+                              <TableRow key={idx} className="hover:bg-muted/30">
+                                <TableCell className="py-2 text-sm">{t.territory_name}</TableCell>
+                                <TableCell className="py-2 text-sm text-right font-medium">{t.value}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No territory breakdown available for this metric.</p>
                     )}
                   </div>
-                );
-              })()}
+
+                  {detail.records.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wider">Underlying records</h4>
+                      <div className="rounded-md border border-border/60 overflow-hidden max-h-64 overflow-y-auto">
+                        <Table>
+                          <TableBody>
+                            {detail.records.map((r, idx) => (
+                              <TableRow key={idx} className="hover:bg-muted/30">
+                                <TableCell className="py-2 text-sm">{r.label}</TableCell>
+                                <TableCell className="py-2 text-sm text-right text-muted-foreground">{r.date ? new Date(r.date).toLocaleDateString() : '—'}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  )}
+
+                  {(detail.data_source || detail.last_updated) && (
+                    <div className="rounded-md border border-border/60 bg-muted/10 p-3 space-y-1.5">
+                      {detail.data_source && (
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">Data source: </span>{detail.data_source}
+                        </p>
+                      )}
+                      {detail.last_updated && (
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">Last updated: </span>{new Date(detail.last_updated).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No details available for this metric.</p>
+              )}
             </div>
           </ScrollArea>
         </div>

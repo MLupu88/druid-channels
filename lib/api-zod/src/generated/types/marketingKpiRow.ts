@@ -5,9 +5,11 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { DataStatus } from './dataStatus';
 import type { MarketingKpiRowTrend } from './marketingKpiRowTrend';
 
 export interface MarketingKpiRow {
+  metric_key: string;
   metric: string;
   this_week: number;
   /** @nullable */
@@ -19,4 +21,5 @@ export interface MarketingKpiRow {
   data_source?: string | null;
   /** @nullable */
   last_updated?: string | null;
+  data_status: DataStatus;
 }

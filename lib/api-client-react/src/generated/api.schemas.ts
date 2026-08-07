@@ -349,30 +349,6 @@ export interface TerritoryEditInput {
   owner_user_id?: string | null;
 }
 
-export type IntegrationConnectionStatusMode = typeof IntegrationConnectionStatusMode[keyof typeof IntegrationConnectionStatusMode];
-
-
-export const IntegrationConnectionStatusMode = {
-  mock: 'mock',
-  live: 'live',
-} as const;
-
-export interface IntegrationConnectionStatus {
-  id: string;
-  name: string;
-  connected: boolean;
-  mode: IntegrationConnectionStatusMode;
-  records_synced: number;
-  /** @nullable */
-  last_sync_at: string | null;
-  /** @nullable */
-  description?: string | null;
-}
-
-export interface IntegrationsStatus {
-  integrations: IntegrationConnectionStatus[];
-}
-
 export type ScanRunInputMode = typeof ScanRunInputMode[keyof typeof ScanRunInputMode];
 
 
@@ -414,7 +390,18 @@ export const KpiRowStatus = {
   on_track: 'on_track',
 } as const;
 
+export type DataStatus = typeof DataStatus[keyof typeof DataStatus];
+
+
+export const DataStatus = {
+  CONNECTED: 'CONNECTED',
+  MANUAL: 'MANUAL',
+  DEMO: 'DEMO',
+  NOT_CONNECTED: 'NOT_CONNECTED',
+} as const;
+
 export interface KpiRow {
+  metric_key: string;
   metric: string;
   current: number;
   target: number;
@@ -427,6 +414,7 @@ export interface KpiRow {
   data_source?: string | null;
   /** @nullable */
   last_updated?: string | null;
+  data_status: DataStatus;
 }
 
 export type WeeklyKpiRowTrend = typeof WeeklyKpiRowTrend[keyof typeof WeeklyKpiRowTrend];
@@ -439,6 +427,7 @@ export const WeeklyKpiRowTrend = {
 } as const;
 
 export interface WeeklyKpiRow {
+  metric_key: string;
   metric: string;
   current: number;
   last_week: number;
@@ -450,6 +439,7 @@ export interface WeeklyKpiRow {
   data_source?: string | null;
   /** @nullable */
   last_updated?: string | null;
+  data_status: DataStatus;
 }
 
 export type MarketingKpiRowTrend = typeof MarketingKpiRowTrend[keyof typeof MarketingKpiRowTrend];
@@ -462,6 +452,7 @@ export const MarketingKpiRowTrend = {
 } as const;
 
 export interface MarketingKpiRow {
+  metric_key: string;
   metric: string;
   this_week: number;
   /** @nullable */
@@ -473,6 +464,7 @@ export interface MarketingKpiRow {
   data_source?: string | null;
   /** @nullable */
   last_updated?: string | null;
+  data_status: DataStatus;
 }
 
 export interface HeadOfChannelsKpis {
@@ -482,6 +474,233 @@ export interface HeadOfChannelsKpis {
   period: string;
   territory: string;
   updated_at: string;
+}
+
+export type SourceType = typeof SourceType[keyof typeof SourceType];
+
+
+export const SourceType = {
+  PARTNER_RADAR: 'PARTNER_RADAR',
+  HUBSPOT: 'HUBSPOT',
+  ACTIVITIES: 'ACTIVITIES',
+  MANUAL: 'MANUAL',
+  DEMO: 'DEMO',
+  NOT_CONNECTED: 'NOT_CONNECTED',
+} as const;
+
+export type MappingStatus = typeof MappingStatus[keyof typeof MappingStatus];
+
+
+export const MappingStatus = {
+  connected: 'connected',
+  needs_mapping: 'needs_mapping',
+  not_connected: 'not_connected',
+  demo: 'demo',
+} as const;
+
+export interface TerritoryContribution {
+  /** @nullable */
+  territory_id: string | null;
+  territory_name: string;
+  value: number;
+}
+
+export interface KpiDetailRecord {
+  label: string;
+  value: number;
+  /** @nullable */
+  date?: string | null;
+}
+
+/**
+ * @nullable
+ */
+export type KpiDetailTrend = typeof KpiDetailTrend[keyof typeof KpiDetailTrend] | null;
+
+
+export const KpiDetailTrend = {
+  up: 'up',
+  down: 'down',
+  flat: 'flat',
+} as const;
+
+/**
+ * @nullable
+ */
+export type KpiDetailStatus = typeof KpiDetailStatus[keyof typeof KpiDetailStatus] | null;
+
+
+export const KpiDetailStatus = {
+  green: 'green',
+  amber: 'amber',
+  red: 'red',
+  on_track: 'on_track',
+} as const;
+
+export interface KpiDetail {
+  metric_key: string;
+  metric: string;
+  period: string;
+  territory: string;
+  /** @nullable */
+  current?: number | null;
+  /** @nullable */
+  target?: number | null;
+  /** @nullable */
+  last_week?: number | null;
+  /** @nullable */
+  trend?: KpiDetailTrend;
+  /** @nullable */
+  status?: KpiDetailStatus;
+  data_status: DataStatus;
+  /** @nullable */
+  data_source?: string | null;
+  /** @nullable */
+  last_updated?: string | null;
+  /** @nullable */
+  what_changed?: string | null;
+  /** @nullable */
+  explanation?: string | null;
+  by_territory: TerritoryContribution[];
+  records: KpiDetailRecord[];
+  reconciles: boolean;
+  /** @nullable */
+  reconciliation_note?: string | null;
+}
+
+export interface AuthSessionInput {
+  user_id: string;
+}
+
+export interface AuthSessionResponse {
+  token: string;
+  user: User;
+  expires_at: string;
+}
+
+export type ConnectionProviderType = typeof ConnectionProviderType[keyof typeof ConnectionProviderType];
+
+
+export const ConnectionProviderType = {
+  hubspot: 'hubspot',
+  web_search: 'web_search',
+  web_reader: 'web_reader',
+  ai: 'ai',
+} as const;
+
+export type ConnectionStatus = typeof ConnectionStatus[keyof typeof ConnectionStatus];
+
+
+export const ConnectionStatus = {
+  not_configured: 'not_configured',
+  unverified: 'unverified',
+  connected: 'connected',
+  error: 'error',
+} as const;
+
+export type ConnectionConfigJson = { [key: string]: unknown };
+
+export interface Connection {
+  id: string;
+  provider_type: ConnectionProviderType;
+  provider_name: string;
+  status: ConnectionStatus;
+  config_json: ConnectionConfigJson;
+  /** @nullable */
+  credential_env_var: string | null;
+  has_credential: boolean;
+  /** @nullable */
+  last_tested_at?: string | null;
+  /** @nullable */
+  last_error?: string | null;
+}
+
+export type ConnectionUpdateInputConfigJson = { [key: string]: unknown };
+
+export interface ConnectionUpdateInput {
+  provider_name?: string;
+  config_json?: ConnectionUpdateInputConfigJson;
+  /** @nullable */
+  credential_env_var?: string | null;
+}
+
+/**
+ * @nullable
+ */
+export type MetricMappingMappingJson = { [key: string]: unknown } | null;
+
+export interface MetricMapping {
+  id: string;
+  metric_key: string;
+  metric_label: string;
+  source_type: SourceType;
+  /** @nullable */
+  connection_id: string | null;
+  /** @nullable */
+  mapping_json: MetricMappingMappingJson;
+  active: boolean;
+  mapping_status: MappingStatus;
+  current_data_status: DataStatus;
+  updated_at: string;
+}
+
+/**
+ * @nullable
+ */
+export type MetricMappingInputMappingJson = { [key: string]: unknown } | null;
+
+export interface MetricMappingInput {
+  source_type: SourceType;
+  /** @nullable */
+  connection_id?: string | null;
+  /** @nullable */
+  mapping_json?: MetricMappingInputMappingJson;
+  active?: boolean;
+}
+
+/**
+ * @nullable
+ */
+export type MetricMappingPreviewInputMappingJson = { [key: string]: unknown } | null;
+
+export interface MetricMappingPreviewInput {
+  source_type: SourceType;
+  /** @nullable */
+  connection_id?: string | null;
+  /** @nullable */
+  mapping_json?: MetricMappingPreviewInputMappingJson;
+  active?: boolean;
+  /** @nullable */
+  territory?: string | null;
+  /** @nullable */
+  period?: string | null;
+}
+
+export interface ManualMetricValue {
+  id: string;
+  metric_key: string;
+  period: string;
+  /** @nullable */
+  territory_id: string | null;
+  territory_name: string;
+  current_value: number;
+  /** @nullable */
+  target_value: number | null;
+  /** @nullable */
+  note: string | null;
+  updated_at: string;
+}
+
+export interface ManualMetricValueInput {
+  metric_key: string;
+  period: string;
+  /** @nullable */
+  territory_id?: string | null;
+  current_value: number;
+  /** @nullable */
+  target_value?: number | null;
+  /** @nullable */
+  note?: string | null;
 }
 
 export type CampaignType = typeof CampaignType[keyof typeof CampaignType];
@@ -831,6 +1050,36 @@ search?: string | null;
 };
 
 export type GetHeadOfChannelsKpisParams = {
+/**
+ * @nullable
+ */
+territory?: string | null;
+/**
+ * @nullable
+ */
+period?: string | null;
+};
+
+export type GetKpiDetailsParams = {
+metric_key: string;
+/**
+ * @nullable
+ */
+territory?: string | null;
+/**
+ * @nullable
+ */
+period?: string | null;
+};
+
+export type ListManualMetricValuesParams = {
+/**
+ * @nullable
+ */
+metric_key?: string | null;
+};
+
+export type ExportQuarterlyPptxParams = {
 /**
  * @nullable
  */

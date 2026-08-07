@@ -16,3 +16,15 @@ Flow:
 
 **Why:** editing generated files directly is silently overwritten by the next codegen run, and
 consuming code written against a stale contract fails typecheck in confusing ways.
+
+**Preview/dry-run endpoints:** for an endpoint that computes a value under a hypothetical
+override (e.g. "preview this KPI mapping before saving"), pass the override as a parameter into
+the same pure compute function used by the real read path, instead of writing the override to the
+DB, computing, then reverting. The mutate/revert pattern is fragile (races, partial failures leave
+bad state) and duplicates logic that can drift from the real path.
+
+**Stale HMR after codegen:** after `codegen` regenerates client hook files, Vite's dev server can
+serve stale HMR state for pages that import the changed hooks (e.g. a hook that no longer exists
+throws `X is not defined` in the browser even though the file on disk is correct). A full workflow
+restart (not just waiting for HMR) clears it — always restart + refresh the browser screenshot
+after codegen touches consumed hooks, don't trust mid-edit HMR error logs as the final verdict.

@@ -24,12 +24,39 @@ tags:
     description: KPI and head-of-channels metrics
   - name: campaigns
     description: Activities (joint campaigns, events, webinars) management
-  - name: integrations
-    description: Integration connection status (mocked)
   - name: partners
     description: Existing partner research briefings
+  - name: auth
+    description: Demo session issuance (no password login exists yet; see AuthSessionInput)
+  - name: connections
+    description: Third-party connection admin (HubSpot, web search/reader, AI)
+  - name: metric-mappings
+    description: Map each KPI to a data source, with preview-before-save
+  - name: exports
+    description: Quarterly report export
 
 paths:
+  /auth/session:
+    post:
+      operationId: createAuthSession
+      tags: [auth]
+      summary: Issue a signed session token for a user (demo "act as" switcher; no password exists yet)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthSessionInput"
+      responses:
+        "200":
+          description: Signed session token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionResponse"
+        "404":
+          description: Unknown or inactive user
+
   /healthz:
     get:
       operationId: healthCheck
@@ -334,6 +361,225 @@ paths:
               schema:
                 $ref: "#/components/schemas/HeadOfChannelsKpis"
 
+  /kpis/details:
+    get:
+      operationId: getKpiDetails
+      tags: [kpis]
+      summary: Get the drill-down detail for a single KPI, using the same source/period/territory as its row
+      parameters:
+        - name: metric_key
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: period
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: KPI drill-down detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KpiDetail"
+        "404":
+          description: Unknown metric_key
+
+  /connections:
+    get:
+      operationId: listConnections
+      tags: [connections]
+      summary: List configured integration connections (HubSpot, web search, web reader, AI) with live status
+      responses:
+        "200":
+          description: List of connections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Connection"
+
+  /connections/{id}:
+    patch:
+      operationId: updateConnection
+      tags: [connections]
+      summary: Update a connection's non-secret configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionUpdateInput"
+      responses:
+        "200":
+          description: Updated connection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connection"
+        "404":
+          description: Not found
+
+  /connections/{id}/test:
+    post:
+      operationId: testConnection
+      tags: [connections]
+      summary: Test a connection using its configured environment-variable credential
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test result (also updates the connection's stored status)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connection"
+        "404":
+          description: Not found
+
+  /metric-mappings:
+    get:
+      operationId: listMetricMappings
+      tags: [metric-mappings]
+      summary: List every canonical KPI's data-source mapping and status
+      responses:
+        "200":
+          description: List of metric mappings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MetricMapping"
+
+  /metric-mappings/{metric_key}:
+    put:
+      operationId: upsertMetricMapping
+      tags: [metric-mappings]
+      summary: Save how a KPI's value should be sourced
+      parameters:
+        - name: metric_key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetricMappingInput"
+      responses:
+        "200":
+          description: Updated mapping
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricMapping"
+        "404":
+          description: Unknown metric_key
+
+  /metric-mappings/{metric_key}/preview:
+    post:
+      operationId: previewMetricMapping
+      tags: [metric-mappings]
+      summary: Preview what a candidate mapping would produce, without saving it
+      parameters:
+        - name: metric_key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetricMappingPreviewInput"
+      responses:
+        "200":
+          description: Preview of the resulting KPI detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KpiDetail"
+
+  /manual-metric-values:
+    get:
+      operationId: listManualMetricValues
+      tags: [metric-mappings]
+      summary: List manually entered KPI values
+      parameters:
+        - name: metric_key
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of manual metric values
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ManualMetricValue"
+    put:
+      operationId: upsertManualMetricValue
+      tags: [metric-mappings]
+      summary: Create or update a manually entered KPI value for a metric/period/territory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManualMetricValueInput"
+      responses:
+        "200":
+          description: Saved manual value
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManualMetricValue"
+
+  /exports/quarterly-pptx:
+    get:
+      operationId: exportQuarterlyPptx
+      tags: [exports]
+      summary: Export the quarterly Head of Channels report as a PowerPoint deck
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: period
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: PowerPoint file
+          content:
+            application/vnd.openxmlformats-officedocument.presentationml.presentation:
+              schema:
+                type: string
+                format: binary
+
   /campaigns:
     get:
       operationId: listCampaigns
@@ -465,19 +711,6 @@ paths:
                 $ref: "#/components/schemas/Territory"
         "404":
           description: Not found
-
-  /integrations/status:
-    get:
-      operationId: getIntegrationsStatus
-      tags: [integrations]
-      summary: Get mocked integration connection status (HubSpot, etc.)
-      responses:
-        "200":
-          description: Integration statuses
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IntegrationsStatus"
 
   /partners:
     get:
@@ -953,35 +1186,6 @@ components:
         owner_user_id:
           type: ["string", "null"]
 
-    IntegrationConnectionStatus:
-      type: object
-      required: [id, name, connected, mode, records_synced, last_sync_at]
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        connected:
-          type: boolean
-        mode:
-          type: string
-          enum: [mock, live]
-        records_synced:
-          type: number
-        last_sync_at:
-          type: ["string", "null"]
-        description:
-          type: ["string", "null"]
-
-    IntegrationsStatus:
-      type: object
-      required: [integrations]
-      properties:
-        integrations:
-          type: array
-          items:
-            $ref: "#/components/schemas/IntegrationConnectionStatus"
-
     ScanRunInput:
       type: object
       required: [scan_config_id, mode]
@@ -1010,8 +1214,10 @@ components:
 
     KpiRow:
       type: object
-      required: [metric, current, target, status]
+      required: [metric_key, metric, current, target, status, data_status]
       properties:
+        metric_key:
+          type: string
         metric:
           type: string
         current:
@@ -1029,11 +1235,15 @@ components:
           type: ["string", "null"]
         last_updated:
           type: ["string", "null"]
+        data_status:
+          $ref: "#/components/schemas/DataStatus"
 
     WeeklyKpiRow:
       type: object
-      required: [metric, current, last_week, target, trend]
+      required: [metric_key, metric, current, last_week, target, trend, data_status]
       properties:
+        metric_key:
+          type: string
         metric:
           type: string
         current:
@@ -1051,11 +1261,15 @@ components:
           type: ["string", "null"]
         last_updated:
           type: ["string", "null"]
+        data_status:
+          $ref: "#/components/schemas/DataStatus"
 
     MarketingKpiRow:
       type: object
-      required: [metric, this_week, trend]
+      required: [metric_key, metric, this_week, trend, data_status]
       properties:
+        metric_key:
+          type: string
         metric:
           type: string
         this_week:
@@ -1071,6 +1285,8 @@ components:
           type: ["string", "null"]
         last_updated:
           type: ["string", "null"]
+        data_status:
+          $ref: "#/components/schemas/DataStatus"
 
     HeadOfChannelsKpis:
       type: object
@@ -1094,6 +1310,240 @@ components:
           type: string
         updated_at:
           type: string
+
+    DataStatus:
+      type: string
+      enum: [CONNECTED, MANUAL, DEMO, NOT_CONNECTED]
+
+    SourceType:
+      type: string
+      enum: [PARTNER_RADAR, HUBSPOT, ACTIVITIES, MANUAL, DEMO, NOT_CONNECTED]
+
+    MappingStatus:
+      type: string
+      enum: [connected, needs_mapping, not_connected, demo]
+
+    TerritoryContribution:
+      type: object
+      required: [territory_id, territory_name, value]
+      properties:
+        territory_id:
+          type: ["string", "null"]
+        territory_name:
+          type: string
+        value:
+          type: number
+
+    KpiDetailRecord:
+      type: object
+      required: [label, value]
+      properties:
+        label:
+          type: string
+        value:
+          type: number
+        date:
+          type: ["string", "null"]
+
+    KpiDetail:
+      type: object
+      required: [metric_key, metric, period, territory, data_status, by_territory, records, reconciles]
+      properties:
+        metric_key:
+          type: string
+        metric:
+          type: string
+        period:
+          type: string
+        territory:
+          type: string
+        current:
+          type: ["number", "null"]
+        target:
+          type: ["number", "null"]
+        last_week:
+          type: ["number", "null"]
+        trend:
+          type: ["string", "null"]
+          enum: [up, down, flat, null]
+        status:
+          type: ["string", "null"]
+          enum: [green, amber, red, on_track, null]
+        data_status:
+          $ref: "#/components/schemas/DataStatus"
+        data_source:
+          type: ["string", "null"]
+        last_updated:
+          type: ["string", "null"]
+        what_changed:
+          type: ["string", "null"]
+        explanation:
+          type: ["string", "null"]
+        by_territory:
+          type: array
+          items:
+            $ref: "#/components/schemas/TerritoryContribution"
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/KpiDetailRecord"
+        reconciles:
+          type: boolean
+        reconciliation_note:
+          type: ["string", "null"]
+
+    AuthSessionInput:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          type: string
+
+    AuthSessionResponse:
+      type: object
+      required: [token, user, expires_at]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+        expires_at:
+          type: string
+
+    Connection:
+      type: object
+      required: [id, provider_type, provider_name, status, config_json, has_credential, credential_env_var]
+      properties:
+        id:
+          type: string
+        provider_type:
+          type: string
+          enum: [hubspot, web_search, web_reader, ai]
+        provider_name:
+          type: string
+        status:
+          type: string
+          enum: [not_configured, unverified, connected, error]
+        config_json:
+          type: object
+          additionalProperties: true
+        credential_env_var:
+          type: ["string", "null"]
+        has_credential:
+          type: boolean
+        last_tested_at:
+          type: ["string", "null"]
+        last_error:
+          type: ["string", "null"]
+
+    ConnectionUpdateInput:
+      type: object
+      properties:
+        provider_name:
+          type: string
+        config_json:
+          type: object
+          additionalProperties: true
+        credential_env_var:
+          type: ["string", "null"]
+
+    MetricMapping:
+      type: object
+      required: [id, metric_key, metric_label, source_type, connection_id, mapping_json, active, mapping_status, current_data_status, updated_at]
+      properties:
+        id:
+          type: string
+        metric_key:
+          type: string
+        metric_label:
+          type: string
+        source_type:
+          $ref: "#/components/schemas/SourceType"
+        connection_id:
+          type: ["string", "null"]
+        mapping_json:
+          type: ["object", "null"]
+          additionalProperties: true
+        active:
+          type: boolean
+        mapping_status:
+          $ref: "#/components/schemas/MappingStatus"
+        current_data_status:
+          $ref: "#/components/schemas/DataStatus"
+        updated_at:
+          type: string
+
+    MetricMappingInput:
+      type: object
+      required: [source_type]
+      properties:
+        source_type:
+          $ref: "#/components/schemas/SourceType"
+        connection_id:
+          type: ["string", "null"]
+        mapping_json:
+          type: ["object", "null"]
+          additionalProperties: true
+        active:
+          type: boolean
+
+    MetricMappingPreviewInput:
+      type: object
+      required: [source_type]
+      properties:
+        source_type:
+          $ref: "#/components/schemas/SourceType"
+        connection_id:
+          type: ["string", "null"]
+        mapping_json:
+          type: ["object", "null"]
+          additionalProperties: true
+        active:
+          type: boolean
+        territory:
+          type: ["string", "null"]
+        period:
+          type: ["string", "null"]
+
+    ManualMetricValue:
+      type: object
+      required: [id, metric_key, period, territory_id, territory_name, current_value, target_value, note, updated_at]
+      properties:
+        id:
+          type: string
+        metric_key:
+          type: string
+        period:
+          type: string
+        territory_id:
+          type: ["string", "null"]
+        territory_name:
+          type: string
+        current_value:
+          type: number
+        target_value:
+          type: ["number", "null"]
+        note:
+          type: ["string", "null"]
+        updated_at:
+          type: string
+
+    ManualMetricValueInput:
+      type: object
+      required: [metric_key, period, current_value]
+      properties:
+        metric_key:
+          type: string
+        period:
+          type: string
+        territory_id:
+          type: ["string", "null"]
+        current_value:
+          type: number
+        target_value:
+          type: ["number", "null"]
+        note:
+          type: ["string", "null"]
 
     Campaign:
       type: object

@@ -1,5 +1,11 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { ensureConnectionsSeeded } from "./services/connections";
+import { ensureMetricMappingsSeeded } from "./services/kpiService";
+
+await Promise.all([ensureConnectionsSeeded(), ensureMetricMappingsSeeded()]).catch((err) => {
+  logger.error({ err }, "Failed to seed connections/metric mappings");
+});
 
 const rawPort = process.env["PORT"];
 

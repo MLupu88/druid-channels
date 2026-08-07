@@ -9,6 +9,27 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Issue a signed session token for a user (demo "act as" switcher; no password exists yet)
+ */
+export const CreateAuthSessionBody = zod.object({
+  "user_id": zod.string()
+})
+
+export const CreateAuthSessionResponse = zod.object({
+  "token": zod.string(),
+  "user": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "active": zod.boolean()
+}),
+  "expires_at": zod.string()
+})
+
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -446,6 +467,7 @@ export const GetHeadOfChannelsKpisQueryParams = zod.object({
 
 export const GetHeadOfChannelsKpisResponse = zod.object({
   "partner_development": zod.array(zod.object({
+  "metric_key": zod.string(),
   "metric": zod.string(),
   "current": zod.number(),
   "target": zod.number(),
@@ -453,9 +475,11 @@ export const GetHeadOfChannelsKpisResponse = zod.object({
   "what_changed": zod.string().nullish(),
   "explanation": zod.string().nullish(),
   "data_source": zod.string().nullish(),
-  "last_updated": zod.string().nullish()
+  "last_updated": zod.string().nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED'])
 })),
   "weekly_commercial": zod.array(zod.object({
+  "metric_key": zod.string(),
   "metric": zod.string(),
   "current": zod.number(),
   "last_week": zod.number(),
@@ -463,21 +487,275 @@ export const GetHeadOfChannelsKpisResponse = zod.object({
   "trend": zod.enum(['up', 'down', 'flat']),
   "explanation": zod.string().nullish(),
   "data_source": zod.string().nullish(),
-  "last_updated": zod.string().nullish()
+  "last_updated": zod.string().nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED'])
 })),
   "weekly_marketing": zod.array(zod.object({
+  "metric_key": zod.string(),
   "metric": zod.string(),
   "this_week": zod.number(),
   "last_week": zod.number().nullish(),
   "trend": zod.enum(['up', 'down', 'flat']),
   "explanation": zod.string().nullish(),
   "data_source": zod.string().nullish(),
-  "last_updated": zod.string().nullish()
+  "last_updated": zod.string().nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED'])
 })),
   "period": zod.string(),
   "territory": zod.string(),
   "updated_at": zod.string()
 })
+
+
+/**
+ * @summary Get the drill-down detail for a single KPI, using the same source/period/territory as its row
+ */
+export const GetKpiDetailsQueryParams = zod.object({
+  "metric_key": zod.coerce.string(),
+  "territory": zod.coerce.string().nullish(),
+  "period": zod.coerce.string().nullish()
+})
+
+export const GetKpiDetailsResponse = zod.object({
+  "metric_key": zod.string(),
+  "metric": zod.string(),
+  "period": zod.string(),
+  "territory": zod.string(),
+  "current": zod.number().nullish(),
+  "target": zod.number().nullish(),
+  "last_week": zod.number().nullish(),
+  "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullish(),
+  "status": zod.union([zod.literal('green'),zod.literal('amber'),zod.literal('red'),zod.literal('on_track'),zod.literal(null)]).nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED']),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish(),
+  "what_changed": zod.string().nullish(),
+  "explanation": zod.string().nullish(),
+  "by_territory": zod.array(zod.object({
+  "territory_id": zod.string().nullable(),
+  "territory_name": zod.string(),
+  "value": zod.number()
+})),
+  "records": zod.array(zod.object({
+  "label": zod.string(),
+  "value": zod.number(),
+  "date": zod.string().nullish()
+})),
+  "reconciles": zod.boolean(),
+  "reconciliation_note": zod.string().nullish()
+})
+
+
+/**
+ * @summary List configured integration connections (HubSpot, web search, web reader, AI) with live status
+ */
+export const ListConnectionsResponseItem = zod.object({
+  "id": zod.string(),
+  "provider_type": zod.enum(['hubspot', 'web_search', 'web_reader', 'ai']),
+  "provider_name": zod.string(),
+  "status": zod.enum(['not_configured', 'unverified', 'connected', 'error']),
+  "config_json": zod.record(zod.string(), zod.unknown()),
+  "credential_env_var": zod.string().nullable(),
+  "has_credential": zod.boolean(),
+  "last_tested_at": zod.string().nullish(),
+  "last_error": zod.string().nullish()
+})
+export const ListConnectionsResponse = zod.array(ListConnectionsResponseItem)
+
+
+/**
+ * @summary Update a connection's non-secret configuration
+ */
+export const UpdateConnectionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateConnectionBody = zod.object({
+  "provider_name": zod.string().optional(),
+  "config_json": zod.record(zod.string(), zod.unknown()).optional(),
+  "credential_env_var": zod.string().nullish()
+})
+
+export const UpdateConnectionResponse = zod.object({
+  "id": zod.string(),
+  "provider_type": zod.enum(['hubspot', 'web_search', 'web_reader', 'ai']),
+  "provider_name": zod.string(),
+  "status": zod.enum(['not_configured', 'unverified', 'connected', 'error']),
+  "config_json": zod.record(zod.string(), zod.unknown()),
+  "credential_env_var": zod.string().nullable(),
+  "has_credential": zod.boolean(),
+  "last_tested_at": zod.string().nullish(),
+  "last_error": zod.string().nullish()
+})
+
+
+/**
+ * @summary Test a connection using its configured environment-variable credential
+ */
+export const TestConnectionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const TestConnectionResponse = zod.object({
+  "id": zod.string(),
+  "provider_type": zod.enum(['hubspot', 'web_search', 'web_reader', 'ai']),
+  "provider_name": zod.string(),
+  "status": zod.enum(['not_configured', 'unverified', 'connected', 'error']),
+  "config_json": zod.record(zod.string(), zod.unknown()),
+  "credential_env_var": zod.string().nullable(),
+  "has_credential": zod.boolean(),
+  "last_tested_at": zod.string().nullish(),
+  "last_error": zod.string().nullish()
+})
+
+
+/**
+ * @summary List every canonical KPI's data-source mapping and status
+ */
+export const ListMetricMappingsResponseItem = zod.object({
+  "id": zod.string(),
+  "metric_key": zod.string(),
+  "metric_label": zod.string(),
+  "source_type": zod.enum(['PARTNER_RADAR', 'HUBSPOT', 'ACTIVITIES', 'MANUAL', 'DEMO', 'NOT_CONNECTED']),
+  "connection_id": zod.string().nullable(),
+  "mapping_json": zod.record(zod.string(), zod.unknown()).nullable(),
+  "active": zod.boolean(),
+  "mapping_status": zod.enum(['connected', 'needs_mapping', 'not_connected', 'demo']),
+  "current_data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED']),
+  "updated_at": zod.string()
+})
+export const ListMetricMappingsResponse = zod.array(ListMetricMappingsResponseItem)
+
+
+/**
+ * @summary Save how a KPI's value should be sourced
+ */
+export const UpsertMetricMappingParams = zod.object({
+  "metric_key": zod.coerce.string()
+})
+
+export const UpsertMetricMappingBody = zod.object({
+  "source_type": zod.enum(['PARTNER_RADAR', 'HUBSPOT', 'ACTIVITIES', 'MANUAL', 'DEMO', 'NOT_CONNECTED']),
+  "connection_id": zod.string().nullish(),
+  "mapping_json": zod.record(zod.string(), zod.unknown()).nullish(),
+  "active": zod.boolean().optional()
+})
+
+export const UpsertMetricMappingResponse = zod.object({
+  "id": zod.string(),
+  "metric_key": zod.string(),
+  "metric_label": zod.string(),
+  "source_type": zod.enum(['PARTNER_RADAR', 'HUBSPOT', 'ACTIVITIES', 'MANUAL', 'DEMO', 'NOT_CONNECTED']),
+  "connection_id": zod.string().nullable(),
+  "mapping_json": zod.record(zod.string(), zod.unknown()).nullable(),
+  "active": zod.boolean(),
+  "mapping_status": zod.enum(['connected', 'needs_mapping', 'not_connected', 'demo']),
+  "current_data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED']),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Preview what a candidate mapping would produce, without saving it
+ */
+export const PreviewMetricMappingParams = zod.object({
+  "metric_key": zod.coerce.string()
+})
+
+export const PreviewMetricMappingBody = zod.object({
+  "source_type": zod.enum(['PARTNER_RADAR', 'HUBSPOT', 'ACTIVITIES', 'MANUAL', 'DEMO', 'NOT_CONNECTED']),
+  "connection_id": zod.string().nullish(),
+  "mapping_json": zod.record(zod.string(), zod.unknown()).nullish(),
+  "active": zod.boolean().optional(),
+  "territory": zod.string().nullish(),
+  "period": zod.string().nullish()
+})
+
+export const PreviewMetricMappingResponse = zod.object({
+  "metric_key": zod.string(),
+  "metric": zod.string(),
+  "period": zod.string(),
+  "territory": zod.string(),
+  "current": zod.number().nullish(),
+  "target": zod.number().nullish(),
+  "last_week": zod.number().nullish(),
+  "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullish(),
+  "status": zod.union([zod.literal('green'),zod.literal('amber'),zod.literal('red'),zod.literal('on_track'),zod.literal(null)]).nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED']),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish(),
+  "what_changed": zod.string().nullish(),
+  "explanation": zod.string().nullish(),
+  "by_territory": zod.array(zod.object({
+  "territory_id": zod.string().nullable(),
+  "territory_name": zod.string(),
+  "value": zod.number()
+})),
+  "records": zod.array(zod.object({
+  "label": zod.string(),
+  "value": zod.number(),
+  "date": zod.string().nullish()
+})),
+  "reconciles": zod.boolean(),
+  "reconciliation_note": zod.string().nullish()
+})
+
+
+/**
+ * @summary List manually entered KPI values
+ */
+export const ListManualMetricValuesQueryParams = zod.object({
+  "metric_key": zod.coerce.string().nullish()
+})
+
+export const ListManualMetricValuesResponseItem = zod.object({
+  "id": zod.string(),
+  "metric_key": zod.string(),
+  "period": zod.string(),
+  "territory_id": zod.string().nullable(),
+  "territory_name": zod.string(),
+  "current_value": zod.number(),
+  "target_value": zod.number().nullable(),
+  "note": zod.string().nullable(),
+  "updated_at": zod.string()
+})
+export const ListManualMetricValuesResponse = zod.array(ListManualMetricValuesResponseItem)
+
+
+/**
+ * @summary Create or update a manually entered KPI value for a metric/period/territory
+ */
+export const UpsertManualMetricValueBody = zod.object({
+  "metric_key": zod.string(),
+  "period": zod.string(),
+  "territory_id": zod.string().nullish(),
+  "current_value": zod.number(),
+  "target_value": zod.number().nullish(),
+  "note": zod.string().nullish()
+})
+
+export const UpsertManualMetricValueResponse = zod.object({
+  "id": zod.string(),
+  "metric_key": zod.string(),
+  "period": zod.string(),
+  "territory_id": zod.string().nullable(),
+  "territory_name": zod.string(),
+  "current_value": zod.number(),
+  "target_value": zod.number().nullable(),
+  "note": zod.string().nullable(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Export the quarterly Head of Channels report as a PowerPoint deck
+ */
+export const ExportQuarterlyPptxQueryParams = zod.object({
+  "territory": zod.coerce.string().nullish(),
+  "period": zod.coerce.string().nullish()
+})
+
+export const ExportQuarterlyPptxResponse = zod.unknown()
 
 
 /**
@@ -631,22 +909,6 @@ export const UpdateTerritoryResponse = zod.object({
   "owner_user_id": zod.string().nullish(),
   "countries": zod.array(zod.string()),
   "languages": zod.array(zod.string())
-})
-
-
-/**
- * @summary Get mocked integration connection status (HubSpot, etc.)
- */
-export const GetIntegrationsStatusResponse = zod.object({
-  "integrations": zod.array(zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "connected": zod.boolean(),
-  "mode": zod.enum(['mock', 'live']),
-  "records_synced": zod.number(),
-  "last_sync_at": zod.string().nullable(),
-  "description": zod.string().nullish()
-}))
 })
 
 

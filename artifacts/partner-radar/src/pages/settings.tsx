@@ -7,12 +7,23 @@ import {
   useListScanConfigs,
   useGetScanConfig,
   useUpdateScanConfig,
-  useGetIntegrationsStatus,
+  useListConnections,
+  useTestConnection,
+  useListMetricMappings,
+  useUpsertMetricMapping,
+  usePreviewMetricMapping,
+  useListManualMetricValues,
+  useUpsertManualMetricValue,
   getListUsersQueryKey,
   getListTerritoriesQueryKey,
   getListScanConfigsQueryKey,
   getGetScanConfigQueryKey,
+  getListConnectionsQueryKey,
+  getListMetricMappingsQueryKey,
+  getListManualMetricValuesQueryKey,
+  SourceType,
 } from '@workspace/api-client-react';
+import type { Connection, MetricMapping, KpiDetail } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Table,
@@ -47,7 +58,10 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Pencil, Save, Database, Sparkles, Unplug, CheckCircle2 } from 'lucide-react';
+import { Pencil, Save, Database, Sparkles, Unplug, CheckCircle2, Search, Bot, Loader2, XCircle, Eye } from 'lucide-react';
+import {
+  Textarea,
+} from '@/components/ui/textarea';
 import { format } from 'date-fns';
 import type { User } from '@workspace/api-client-react';
 
@@ -59,11 +73,6 @@ const SIGNAL_OPTIONS = [
   { id: 'customer_wins', label: 'Customer wins' },
   { id: 'partnerships', label: 'Partnership announcements' },
 ];
-
-const INTEGRATION_ICONS: Record<string, React.ElementType> = {
-  hubspot: Database,
-  ai_scanner: Sparkles,
-};
 
 function TeamTab() {
   const { toast } = useToast();
@@ -478,73 +487,385 @@ function WhatToLookForTab() {
   );
 }
 
-function IntegrationsTab() {
-  const { data, isLoading } = useGetIntegrationsStatus();
+const CONNECTION_ICONS: Record<string, React.ElementType> = {
+  hubspot: Database,
+  web_search: Search,
+  web_reader: Sparkles,
+  ai: Bot,
+};
+
+function ConnectionStatusBadge({ status }: { status: string }) {
+  if (status === 'connected') return <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 font-normal shrink-0"><span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Connected</span></Badge>;
+  if (status === 'unverified') return <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-normal shrink-0"><span className="flex items-center gap-1"><Eye className="h-3 w-3" /> Credential set (unverified)</span></Badge>;
+  if (status === 'error') return <Badge variant="outline" className="text-rose-700 bg-rose-50 border-rose-200 font-normal shrink-0"><span className="flex items-center gap-1"><XCircle className="h-3 w-3" /> Error</span></Badge>;
+  return <Badge variant="outline" className="text-muted-foreground font-normal shrink-0">Not connected</Badge>;
+}
+
+function DataStatusPill({ status }: { status: string }) {
+  if (status === 'CONNECTED') return <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 font-normal">Connected</Badge>;
+  if (status === 'MANUAL') return <Badge variant="outline" className="text-sky-700 bg-sky-50 border-sky-200 font-normal">Manual</Badge>;
+  if (status === 'DEMO') return <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-normal">Demo data</Badge>;
+  return <Badge variant="outline" className="text-muted-foreground font-normal">Not connected</Badge>;
+}
+
+function ConnectionCard({ connection }: { connection: Connection }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const Icon = CONNECTION_ICONS[connection.provider_type] ?? Unplug;
+
+  const testMutation = useTestConnection({
+    mutation: {
+      onSuccess: (result) => {
+        queryClient.invalidateQueries({ queryKey: getListConnectionsQueryKey() });
+        const ok = result.status === 'connected' || result.status === 'unverified';
+        toast({
+          title: ok ? 'Test complete' : 'Connection failed',
+          description: result.last_error ?? undefined,
+          variant: ok ? 'default' : 'destructive',
+        });
+      },
+      onError: (err: any) => {
+        toast({ title: 'Test failed', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      },
+    },
+  });
 
   return (
-    <div className="space-y-4 max-w-3xl">
-      <p className="text-sm text-muted-foreground">
-        Phase 0 integrations run in mock mode — no live third-party API calls are made yet, but the
-        connection state below reflects real activity recorded in Partner Radar.
-      </p>
-      {isLoading ? (
-        <div className="space-y-4">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
+    <Card className="shadow-none border-border/60">
+      <CardHeader className="flex flex-row items-start justify-between py-4 px-5 border-b border-border/50 bg-muted/20 space-y-0">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center text-primary">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div>
+            <CardTitle className="text-base font-medium">{connection.provider_name}</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Credential: <code className="text-[11px]">{connection.credential_env_var}</code>
+              {connection.has_credential ? ' (set)' : ' (not set)'}
+            </p>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {data?.integrations.map((integration) => {
-            const Icon = INTEGRATION_ICONS[integration.id] ?? Unplug;
-            return (
-              <Card key={integration.id} className="shadow-none border-border/60">
-                <CardHeader className="flex flex-row items-start justify-between py-4 px-5 border-b border-border/50 bg-muted/20 space-y-0">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center text-primary">
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base font-medium">{integration.name}</CardTitle>
-                      <p className="text-xs text-muted-foreground mt-0.5">{integration.description}</p>
-                    </div>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={
-                      integration.connected
-                        ? 'text-emerald-700 bg-emerald-50 border-emerald-200 font-normal shrink-0'
-                        : 'text-muted-foreground font-normal shrink-0'
-                    }
-                  >
-                    {integration.connected ? (
-                      <span className="flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" /> Connected
-                      </span>
-                    ) : (
-                      'Not connected'
-                    )}
-                  </Badge>
-                </CardHeader>
-                <CardContent className="p-5 grid grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Mode</p>
-                    <p className="text-sm font-medium mt-1 capitalize">{integration.mode}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Records synced</p>
-                    <p className="text-sm font-medium mt-1 tabular-nums">{integration.records_synced}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Last sync</p>
-                    <p className="text-sm font-medium mt-1">
-                      {integration.last_sync_at ? format(new Date(integration.last_sync_at), 'MMM d, HH:mm') : 'Never'}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+        <ConnectionStatusBadge status={connection.status} />
+      </CardHeader>
+      <CardContent className="p-5 flex items-center justify-between gap-4">
+        <div className="text-xs text-muted-foreground space-y-1">
+          <p>
+            <span className="font-medium text-foreground">Last tested: </span>
+            {connection.last_tested_at ? format(new Date(connection.last_tested_at), 'MMM d, HH:mm') : 'Never'}
+          </p>
+          {connection.last_error && (
+            <p className="text-rose-600">{connection.last_error}</p>
+          )}
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={testMutation.isPending}
+          onClick={() => testMutation.mutate({ id: connection.id })}
+        >
+          {testMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
+          Test connection
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetricMappingDrawer({ mapping, onClose }: { mapping: MetricMapping; onClose: () => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: connections } = useListConnections();
+
+  const [sourceType, setSourceType] = useState<string>(mapping.source_type);
+  const [connectionId, setConnectionId] = useState<string>(mapping.connection_id ?? '');
+  const [mappingJsonText, setMappingJsonText] = useState<string>(
+    mapping.mapping_json ? JSON.stringify(mapping.mapping_json, null, 2) : ''
+  );
+  const [active, setActive] = useState(mapping.active);
+  const [preview, setPreview] = useState<KpiDetail | null>(null);
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  const [manualCurrent, setManualCurrent] = useState('');
+  const [manualTarget, setManualTarget] = useState('');
+  const [manualNote, setManualNote] = useState('');
+
+  const parseMappingJson = (): { ok: boolean; value: any } => {
+    if (!mappingJsonText.trim()) return { ok: true, value: null };
+    try {
+      return { ok: true, value: JSON.parse(mappingJsonText) };
+    } catch {
+      setJsonError('Invalid JSON');
+      return { ok: false, value: null };
+    }
+  };
+
+  const previewMutation = usePreviewMetricMapping({
+    mutation: {
+      onSuccess: (result) => {
+        setPreview(result);
+        setJsonError(null);
+      },
+      onError: (err: any) => {
+        toast({ title: 'Preview failed', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      },
+    },
+  });
+
+  const saveMutation = useUpsertMetricMapping({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListMetricMappingsQueryKey() });
+        toast({ title: 'Mapping saved' });
+        onClose();
+      },
+      onError: (err: any) => {
+        toast({ title: 'Save failed', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      },
+    },
+  });
+
+  const manualMutation = useUpsertManualMetricValue({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListManualMetricValuesQueryKey() });
+        toast({ title: 'Manual value saved' });
+      },
+      onError: (err: any) => {
+        toast({ title: 'Save failed', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      },
+    },
+  });
+
+  const handlePreview = () => {
+    const parsed = parseMappingJson();
+    if (!parsed.ok) return;
+    previewMutation.mutate({
+      metricKey: mapping.metric_key,
+      data: {
+        source_type: sourceType as any,
+        connection_id: connectionId || null,
+        mapping_json: parsed.value,
+        active,
+        period: 'q3',
+      },
+    });
+  };
+
+  const handleSave = () => {
+    const parsed = parseMappingJson();
+    if (!parsed.ok) return;
+    saveMutation.mutate({
+      metricKey: mapping.metric_key,
+      data: {
+        source_type: sourceType as any,
+        connection_id: connectionId || null,
+        mapping_json: parsed.value,
+        active,
+      },
+    });
+  };
+
+  const relevantConnections = connections?.filter((c) => {
+    if (sourceType === 'HUBSPOT') return c.provider_type === 'hubspot';
+    return true;
+  });
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle>{mapping.metric_label}</DialogTitle>
+          <DialogDescription>Configure where this metric's value comes from.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-2 max-h-[60vh] overflow-y-auto pr-1">
+          <div className="space-y-2">
+            <Label>Source</Label>
+            <Select value={sourceType} onValueChange={setSourceType}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SourceType.PARTNER_RADAR}>Partner Radar (live app data)</SelectItem>
+                <SelectItem value={SourceType.ACTIVITIES}>Activities (live app data)</SelectItem>
+                <SelectItem value={SourceType.HUBSPOT}>HubSpot</SelectItem>
+                <SelectItem value={SourceType.MANUAL}>Manual entry</SelectItem>
+                <SelectItem value={SourceType.DEMO}>Demo data</SelectItem>
+                <SelectItem value={SourceType.NOT_CONNECTED}>Not connected</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {sourceType === 'HUBSPOT' && (
+            <div className="space-y-2">
+              <Label>Connection</Label>
+              <Select value={connectionId} onValueChange={setConnectionId}>
+                <SelectTrigger><SelectValue placeholder="Select a connection" /></SelectTrigger>
+                <SelectContent>
+                  {relevantConnections?.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.provider_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                HubSpot live data requires a credential and is not yet implemented in this environment — metrics
+                mapped here will show as "Not connected" until the integration is built.
+              </p>
+            </div>
+          )}
+
+          {sourceType === 'HUBSPOT' && (
+            <div className="space-y-2">
+              <Label>Mapping (JSON, optional)</Label>
+              <Textarea
+                rows={4}
+                value={mappingJsonText}
+                onChange={(e) => setMappingJsonText(e.target.value)}
+                placeholder='{"property": "deal_amount"}'
+                className="font-mono text-xs"
+              />
+              {jsonError && <p className="text-xs text-rose-600">{jsonError}</p>}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <Label>Active</Label>
+            <Switch checked={active} onCheckedChange={setActive} />
+          </div>
+
+          {sourceType === 'MANUAL' && (
+            <div className="space-y-3 rounded-md border border-border/60 p-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Enter value (Global, current period)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Current value</Label>
+                  <Input value={manualCurrent} onChange={(e) => setManualCurrent(e.target.value)} placeholder="0" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Target (optional)</Label>
+                  <Input value={manualTarget} onChange={(e) => setManualTarget(e.target.value)} placeholder="0" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Note (optional)</Label>
+                <Input value={manualNote} onChange={(e) => setManualNote(e.target.value)} placeholder="e.g. from Q3 board deck" />
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={manualMutation.isPending || !manualCurrent}
+                onClick={() => manualMutation.mutate({
+                  data: {
+                    metric_key: mapping.metric_key,
+                    period: 'q3',
+                    territory_id: null,
+                    current_value: Number(manualCurrent),
+                    target_value: manualTarget ? Number(manualTarget) : null,
+                    note: manualNote || null,
+                  },
+                })}
+              >
+                Save manual value
+              </Button>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between border-t border-border/50 pt-3">
+            <Button variant="outline" size="sm" onClick={handlePreview} disabled={previewMutation.isPending}>
+              <Eye className="h-3.5 w-3.5 mr-1.5" />
+              Preview
+            </Button>
+          </div>
+
+          {preview && (
+            <div className="rounded-md border border-border/60 bg-muted/10 p-3 space-y-1.5 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Preview result</span>
+                <DataStatusPill status={preview.data_status} />
+              </div>
+              <p className="text-muted-foreground">Current: <span className="text-foreground font-medium">{preview.current ?? '—'}</span></p>
+              <p className="text-muted-foreground text-xs">{preview.explanation}</p>
+              {preview.reconciles === false && (
+                <p className="text-xs text-rose-600">{preview.reconciliation_note}</p>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave} disabled={saveMutation.isPending}>Save mapping</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ConnectionsDataTab() {
+  const { data: connections, isLoading: connectionsLoading } = useListConnections();
+  const { data: mappings, isLoading: mappingsLoading } = useListMetricMappings();
+  const [editingMapping, setEditingMapping] = useState<MetricMapping | null>(null);
+
+  return (
+    <div className="space-y-8 max-w-4xl">
+      <div>
+        <h3 className="text-sm font-medium mb-1">Connections</h3>
+        <p className="text-xs text-muted-foreground mb-4">
+          Credentials are managed as environment variables and never touch the browser. Add the listed
+          variable in your environment secrets, then test the connection.
+        </p>
+        {connectionsLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {connections?.map((c) => <ConnectionCard key={c.id} connection={c} />)}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h3 className="text-sm font-medium mb-1">Metric setup</h3>
+        <p className="text-xs text-muted-foreground mb-4">
+          Every Overview KPI is backed by exactly one data source. Metrics without a live connection show
+          seeded demo data or a manual value — never fabricated numbers — and are labeled accordingly.
+        </p>
+        <div className="border border-border/60 rounded-md bg-card overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Metric</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Data status</TableHead>
+                <TableHead className="w-[60px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {mappingsLoading ? (
+                Array.from({ length: 8 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell colSpan={4}><Skeleton className="h-6 w-full" /></TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                mappings?.map((m) => (
+                  <TableRow key={m.metric_key}>
+                    <TableCell className="font-medium">{m.metric_label}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm capitalize">{m.source_type.toLowerCase().replace(/_/g, ' ')}</TableCell>
+                    <TableCell><DataStatusPill status={m.current_data_status} /></TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingMapping(m)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      {editingMapping && (
+        <MetricMappingDrawer mapping={editingMapping} onClose={() => setEditingMapping(null)} />
       )}
     </div>
   );
@@ -564,7 +885,7 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="what-to-look-for">What to look for</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
+          <TabsTrigger value="connections">Connections & data</TabsTrigger>
         </TabsList>
         <TabsContent value="team" className="mt-6">
           <TeamTab />
@@ -572,8 +893,8 @@ export default function SettingsPage() {
         <TabsContent value="what-to-look-for" className="mt-6">
           <WhatToLookForTab />
         </TabsContent>
-        <TabsContent value="integrations" className="mt-6">
-          <IntegrationsTab />
+        <TabsContent value="connections" className="mt-6">
+          <ConnectionsDataTab />
         </TabsContent>
       </Tabs>
     </div>

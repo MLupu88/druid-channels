@@ -11,3 +11,6 @@ export * from "./kpi_snapshots";
 export * from "./partner_research_items";
 export * from "./rfps";
 export * from "./partner_events";
+export * from "./connections";
+export * from "./metric_mappings";
+export * from "./manual_metric_values";
