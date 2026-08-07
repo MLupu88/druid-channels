@@ -1,0 +1,1311 @@
+Continue the EXISTING DRUID Partner Radar Lite application.
+
+DO NOT rebuild it from scratch.
+
+This iteration is focused ONLY on:
+
+1. Connections / integrations administration
+2. KPI data-source configuration
+3. Fixing KPI drill-down accuracy
+4. Quarterly PowerPoint export
+5. Making the code portable for later migration from Replit to a standard Ubuntu server
+
+Do NOT add more partner research features in this iteration.
+Do NOT redesign the UI.
+Do NOT add another dashboard.
+Do NOT expand the product scope.
+
+==================================================
+0. IMPORTANT FUTURE DEPLOYMENT REQUIREMENT
+==================================================
+
+The app is currently being prototyped in Replit.
+
+Once the product is stable, it will be moved to a self-managed Hetzner Ubuntu server and further maintained using GitHub + Claude Code + normal terminal workflows.
+
+Therefore:
+
+DO NOT introduce unnecessary Replit-specific dependencies.
+
+Keep the application portable.
+
+Requirements:
+
+- Standard Node.js / TypeScript
+- Standard React frontend
+- Standard PostgreSQL
+- Standard environment variables
+- No Replit proprietary database APIs
+- No Replit proprietary authentication dependency
+- No secrets embedded in source code
+- No API credentials stored in frontend code
+- No filesystem dependency that assumes Replit paths
+- No runtime dependency on Replit-specific services unless already unavoidable
+
+Use environment variables for all external integrations.
+
+Examples:
+
+DATABASE_URL
+HUBSPOT_ACCESS_TOKEN
+SEARCH_PROVIDER
+SEARCH_API_KEY
+EXTRACTION_PROVIDER
+EXTRACTION_API_KEY
+AI_PROVIDER
+AI_API_KEY
+
+Create/update:
+
+.env.example
+
+with all required variables but NO real credentials.
+
+Do NOT Dockerize or change deployment architecture in this iteration unless required.
+
+However, keep everything compatible with later Docker / Docker Compose deployment on Ubuntu.
+
+Also add/update:
+
+DEPLOYMENT.md
+
+Document:
+
+- required Node version
+- required environment variables
+- database requirements
+- build command
+- production start command
+- migration command
+- any persistent storage requirements
+- integrations used
+
+Keep this short and practical.
+
+==================================================
+1. KEEP THE EXECUTIVE TABLES EXACTLY AS THEY ARE
+==================================================
+
+The Overview must keep the three canonical tables.
+
+TABLE 1
+
+KPI | Current | Target | Status
+
+Rows:
+
+New Partner Prospects
+Signed Partners
+Active Onboarding
+Certified Partners
+Partner-Sourced Pipeline
+Partner-Influenced Pipeline
+Closed Revenue
+Renewals
+
+TABLE 2
+
+Metric | Current | Last Week | Target | Trend
+
+Rows:
+
+Partner-Sourced Pipeline
+Opportunities Created
+Closed Revenue
+Renewals Due
+Renewals Closed
+
+TABLE 3
+
+Metric | This Week | Trend
+
+Rows:
+
+Joint Campaigns
+Events
+Webinars
+Marketing Qualified Leads
+Partner Referrals
+
+IMPORTANT:
+
+Table 3 must NOT expose a permanent "Last Week" column.
+
+Last-week values may exist in the backend to calculate Trend.
+
+Do NOT:
+
+- add more columns
+- replace tables with KPI cards
+- add charts to Overview
+- redesign this into an analytics dashboard
+
+==================================================
+2. KEEP "WHAT CHANGED"
+==================================================
+
+"What changed" remains important.
+
+It should NOT be a permanent table column.
+
+Clicking any KPI row opens the existing right-side drawer.
+
+The drawer should show:
+
+- KPI name
+- Current
+- Target where applicable
+- Previous-period value where applicable
+- What changed
+- Territory contribution
+- Supporting records
+- Data source
+- Last updated
+- Data status
+
+Possible Data Status values:
+
+CONNECTED
+MANUAL
+DEMO
+NOT CONNECTED
+
+Example:
+
+Partner-Sourced Pipeline
+
+Current
+€1.42M
+
+Target
+€1.60M
+
+What changed
++€230K since last week
+
+Territory contribution
+
+DACH          €420K
+US            €390K
+UK&I          €310K
+CEE           €180K
+Other         €120K
+
+Source
+HubSpot Deals
+
+Last updated
+07 Aug 2026, 07:15
+
+==================================================
+3. FIX KPI DRILL-DOWN LOGIC
+==================================================
+
+THIS IS HIGH PRIORITY.
+
+The current implementation uses prospect statistics for multiple unrelated KPI drill-downs.
+
+Remove this behavior.
+
+A KPI detail MUST use the SAME:
+
+- metric definition
+- period
+- territory filter
+- underlying records
+
+as the KPI shown in the table.
+
+Create ONE common KPI detail contract.
+
+Suggested endpoint:
+
+GET /api/kpis/details
+
+Parameters:
+
+metric
+period
+territory
+
+Example:
+
+GET /api/kpis/details?metric=partner_sourced_pipeline&period=2026-Q3&territory=global
+
+Response example:
+
+{
+  "metric": "Partner-Sourced Pipeline",
+  "current": 1420000,
+  "target": 1600000,
+  "previous": 1190000,
+  "trend": "up",
+  "data_status": "connected",
+  "data_source": "HubSpot Deals",
+  "last_updated": "2026-08-07T04:15:00Z",
+  "what_changed": "+€230K since last week",
+  "by_territory": [
+    {
+      "territory": "DACH",
+      "value": 420000
+    }
+  ],
+  "records": []
+}
+
+Do not reuse prospect stats for unrelated metrics.
+
+==================================================
+4. KPI RECONCILIATION RULE
+==================================================
+
+The drill-down MUST reconcile with the KPI clicked.
+
+Example:
+
+Overview:
+
+Partner-Sourced Pipeline
+€1,420,000
+
+Then:
+
+SUM(detail.by_territory.value)
+
+must equal:
+
+€1,420,000
+
+and where records contain monetary contribution:
+
+SUM(records.value)
+
+must also reconcile unless the metric explicitly uses a different aggregation.
+
+If values do not reconcile:
+
+DO NOT silently show the result.
+
+Show:
+
+"Data does not reconcile"
+
+and provide the mismatch amount internally/admin-side.
+
+Add a reusable KPI reconciliation check.
+
+This is important because the Head of Channels must be able to trust every number.
+
+==================================================
+5. REMOVE FAKE KPI DERIVATIONS
+==================================================
+
+Do NOT infer unrelated metrics.
+
+Examples that are forbidden:
+
+MQLs from partner prospects
+
+Events from campaign count unless those records are actually events
+
+Renewals from meetings
+
+Opportunities from accepted partner prospects
+
+Partner Referrals from arbitrary campaign replies
+
+Every KPI needs an explicit source.
+
+Possible source types:
+
+PARTNER_RADAR
+HUBSPOT
+ACTIVITIES
+MANUAL
+DEMO
+NOT_CONNECTED
+
+==================================================
+6. ADD ADMIN: CONNECTIONS & DATA
+==================================================
+
+Add an Admin area.
+
+Do NOT make Admin part of the primary PAM workflow.
+
+Primary navigation remains:
+
+Overview
+New partners
+Partners
+Activities
+
+Admin/Settings should contain:
+
+Team
+What to look for
+Connections & data
+
+==================================================
+7. CONNECTIONS & DATA PAGE
+==================================================
+
+Create two sections:
+
+A. Connections
+
+B. Metric setup
+
+--------------------------------
+A. CONNECTIONS
+--------------------------------
+
+Show simple connection cards/rows.
+
+HUBSPOT
+
+Used for:
+
+- partners
+- opportunities
+- pipeline
+- revenue
+- renewals
+- campaign/MQL data where available
+
+Display:
+
+Provider
+HubSpot
+
+Status:
+Not configured / Connected / Error
+
+Credential:
+HUBSPOT_ACCESS_TOKEN
+
+Never display the token.
+
+Only display:
+
+Secret configured
+or
+Secret missing
+
+Actions:
+
+Configure
+Test connection
+
+--------------------------------
+
+WEB SEARCH
+
+Provider options:
+
+Mock
+Tavily
+Bing
+
+Configuration:
+
+Provider
+API environment variable
+Default result limit
+Default recency
+
+Actions:
+
+Test connection
+
+Example test:
+
+"Find three enterprise AI integrators in Germany."
+
+Do not expose secrets.
+
+--------------------------------
+
+WEB READER
+
+Provider options:
+
+Mock
+Firecrawl
+
+Configuration:
+
+Provider
+API environment variable
+
+Action:
+
+Test URL
+
+--------------------------------
+
+AI
+
+Provider:
+
+Mock
+Configured LLM provider
+
+Configuration should reference environment variables.
+
+Actions:
+
+Test connection
+
+Test output can be a simple structured response.
+
+==================================================
+8. SECRET HANDLING
+==================================================
+
+IMPORTANT SECURITY RULE.
+
+The browser must NEVER receive external API credentials.
+
+Do not store API tokens as plaintext database values.
+
+For the Replit version:
+
+credentials come from Replit Secrets / server environment variables.
+
+The Admin UI should configure:
+
+- provider
+- environment variable NAME
+- non-secret settings
+
+Example:
+
+Provider:
+HubSpot
+
+Credential environment variable:
+HUBSPOT_ACCESS_TOKEN
+
+Status:
+✓ configured
+
+Later, on Hetzner, the SAME environment variable should be supplied through server configuration / Docker secrets / .env deployment config.
+
+This avoids rewriting integration code during migration.
+
+==================================================
+9. CONNECTION SERVICE
+==================================================
+
+Create a lightweight server-side connections service.
+
+Do not overengineer this.
+
+It should support:
+
+getConnectionStatus()
+testConnection()
+
+for:
+
+HubSpot
+Search
+Web Reader
+AI
+
+Do NOT create a generic enterprise integration framework.
+
+Only support the integrations actually required by this application.
+
+==================================================
+10. METRIC SETUP
+==================================================
+
+Under:
+
+Admin → Connections & data → Metric setup
+
+show every canonical KPI.
+
+Example:
+
+New Partner Prospects
+Source: Partner Radar
+Status: Connected
+
+Signed Partners
+Source: HubSpot
+Status: Needs mapping
+
+Partner-Sourced Pipeline
+Source: HubSpot Deals
+Status: Needs mapping
+
+Joint Campaigns
+Source: Activities
+Status: Connected
+
+Marketing Qualified Leads
+Source: HubSpot
+Status: Not connected
+
+Each metric should show:
+
+Metric
+Source type
+Connection
+Mapping status
+Last updated
+
+==================================================
+11. METRIC MAPPING
+==================================================
+
+When an Admin clicks a metric, open a simple configuration drawer.
+
+Do NOT create a generic query builder.
+
+Use mapping fields appropriate to the metric.
+
+Example:
+
+PARTNER-SOURCED PIPELINE
+
+Source:
+HubSpot Deals
+
+Value field:
+[ HubSpot deal amount property ]
+
+Partner-sourced condition:
+
+Property:
+[ dropdown / text configuration ]
+
+Expected value:
+[ yes / true / sourced ]
+
+Date field:
+[ deal create date / close date / configured field ]
+
+Excluded stages:
+[ Closed Lost ]
+
+Territory field:
+[ configured property ]
+
+Partner field:
+[ configured association/property ]
+
+Period:
+Use selected Overview period
+
+Save mapping
+
+==================================================
+12. DATA PREVIEW BEFORE SAVE
+==================================================
+
+Every Connected metric mapping needs:
+
+PREVIEW DATA
+
+Example:
+
+Partner-Sourced Pipeline
+
+Matching records
+14
+
+Calculated value
+€1,428,000
+
+Territories
+
+DACH          €420,000
+US            €390,000
+UK&I          €318,000
+CEE           €180,000
+Other         €120,000
+
+[View matching records]
+
+Only after preview should the admin save the mapping.
+
+This is important because it lets an administrator verify that the number makes sense before it appears to Irina.
+
+==================================================
+13. MANUAL DATA
+==================================================
+
+Some KPIs may not be available from integrations initially.
+
+Allow ADMIN only to configure:
+
+Source = Manual
+
+Fields:
+
+Period
+Territory
+Value
+Target
+Optional note
+
+Example:
+
+Certified Partners
+Q3 2026
+Global
+Current = 18
+Target = 20
+
+Manual data must visibly show:
+
+Data status:
+MANUAL
+
+Do not make PAMs maintain these figures.
+
+==================================================
+14. DEMO DATA
+==================================================
+
+The current mockup can continue to use seeded demo data.
+
+But label it honestly.
+
+Data status:
+DEMO
+
+Do NOT label demo values as:
+
+HubSpot
+CRM export
+Manual quarterly snapshot
+
+unless that is actually true.
+
+Display a subtle global banner in demo mode:
+
+"Demo data"
+
+This can disappear automatically when production sources are configured.
+
+==================================================
+15. NOT CONNECTED
+==================================================
+
+If a metric has no configured source:
+
+show:
+
+--
+
+Status:
+Not connected
+
+Do NOT create a fake value.
+
+Clicking it should open the detail drawer:
+
+"This metric does not have a configured data source."
+
+For Admin users include:
+
+[Configure source]
+
+==================================================
+16. HUBSPOT STRUCTURE
+==================================================
+
+Do not deeply integrate HubSpot yet unless credentials are available.
+
+Build the configuration and service boundary.
+
+Prepare a server-side HubSpot service for later live integration.
+
+Functions should conceptually support:
+
+testConnection()
+
+findCompanyByDomain()
+
+getPartners()
+
+getDeals()
+
+getCampaignData()
+
+getRenewals()
+
+Do not assume HubSpot has specific custom property names.
+
+Those should come from Admin metric mapping.
+
+This is important because the actual DRUID HubSpot schema may use custom properties.
+
+==================================================
+17. POWERPOINT EXPORT
+==================================================
+
+Add to Overview:
+
+Export quarterly report
+
+Use the CURRENT selected:
+
+Quarter
+Territory
+
+Example:
+
+Q3 2026
+Global
+
+Button:
+
+[Export quarterly report]
+
+Generate a real .pptx file.
+
+Recommended Node library:
+
+PptxGenJS
+
+unless an existing compatible PPT library is already installed.
+
+IMPORTANT:
+
+The PowerPoint must use the SAME KPI service as the Overview.
+
+DO NOT create separate KPI calculations for PowerPoint.
+
+The PPT must therefore reconcile exactly with the application.
+
+==================================================
+18. POWERPOINT DESIGN
+==================================================
+
+Use a clean DRUID / Microsoft-style presentation.
+
+16:9.
+
+Professional.
+
+Minimal.
+
+White / light neutral background.
+
+DRUID accent color.
+
+Segoe UI / Aptos-compatible font stack.
+
+Avoid:
+
+- gradients
+- giant icons
+- decorative illustrations
+- unnecessary charts
+- overly dense slides
+
+The deck should look suitable for:
+
+- Quarterly Business Review
+- Leadership meeting
+- Board/management discussion
+- Channel review
+
+==================================================
+19. POWERPOINT STRUCTURE
+==================================================
+
+Generate approximately seven slides.
+
+--------------------------------
+SLIDE 1
+--------------------------------
+
+CHANNELS & ALLIANCES
+
+Quarterly Review
+
+Q3 2026
+
+Global
+
+Generated:
+07 August 2026
+
+--------------------------------
+SLIDE 2
+--------------------------------
+
+EXECUTIVE VIEW
+
+Reproduce the SAME three reporting tables.
+
+Table 1:
+Overall channel KPIs
+
+Table 2:
+Weekly/commercial performance where relevant to selected period
+
+Table 3:
+Channel marketing activity
+
+Do not invent another executive view.
+
+--------------------------------
+SLIDE 3
+--------------------------------
+
+WHAT CHANGED
+
+Summarize meaningful movement in:
+
+Partner development
+Commercial performance
+Marketing/activity
+
+Only use facts available from underlying KPI/detail data.
+
+Example:
+
+Partner development
++8 new partner prospects this quarter
+3 new partners signed
+
+Commercial
+€1.2M partner-sourced pipeline added
+6 new opportunities
+
+Marketing
+4 joint campaigns
+2 events
+3 webinars
+
+Do not allow AI to invent changes.
+
+--------------------------------
+SLIDE 4
+--------------------------------
+
+REGIONAL CONTRIBUTION
+
+Table:
+
+Region
+New partner prospects
+Signed partners
+Partner-sourced pipeline
+Closed revenue
+
+Rows:
+
+UK&I
+DACH
+CEE
+US
+Portugal / Canada / South America
+
+Use actual underlying data.
+
+--------------------------------
+SLIDE 5
+--------------------------------
+
+PARTNER HIGHLIGHTS
+
+Show up to 3–5 meaningful partner items.
+
+Examples:
+
+Partner
+Territory
+What happened
+Commercial impact / relevance
+
+Possible sources:
+
+HubSpot data
+Partner research
+Activities
+
+Label research-derived information appropriately.
+
+--------------------------------
+SLIDE 6
+--------------------------------
+
+ACTIVITIES
+
+Show:
+
+Joint Campaigns
+Events
+Webinars
+
+Suggested table:
+
+Activity
+Partner
+Territory
+Status
+MQLs
+Partner Referrals
+
+Use existing Activity records.
+
+--------------------------------
+SLIDE 7
+--------------------------------
+
+LOOKING AHEAD
+
+Two sections:
+
+Upcoming opportunities
+
+Examples:
+Relevant RFPs
+Relevant events
+Important partner updates
+
+Help needed from HQ
+
+Examples:
+
+Partner X
+RFP help
+
+Partner Y
+Executive intro
+
+Partner Z
+Marketing
+
+Only show records that actually exist.
+
+==================================================
+20. POWERPOINT DATA QUALITY
+==================================================
+
+Before generating PowerPoint:
+
+run KPI reconciliation.
+
+If the selected period contains unreconciled connected KPIs:
+
+show warning:
+
+"Some metrics do not reconcile with their underlying records."
+
+Allow Admin to inspect.
+
+For the mock/demo environment, export may still proceed if values are explicitly DEMO.
+
+Never silently generate a leadership presentation with inconsistent data.
+
+==================================================
+21. POWERPOINT FILE NAME
+==================================================
+
+Use:
+
+DRUID_Channels_Q3_2026_Global.pptx
+
+or:
+
+DRUID_Channels_Q3_2026_DACH.pptx
+
+based on selected filters.
+
+==================================================
+22. EXPORT API
+==================================================
+
+Suggested:
+
+GET /api/exports/quarterly-pptx?period=2026-Q3&territory=global
+
+Return the generated PPTX.
+
+Do not permanently store generated files unless necessary.
+
+Generate on demand.
+
+==================================================
+23. KEEP RESEARCH UNCHANGED
+==================================================
+
+Do NOT expand:
+
+New partners
+Partners research
+RFP research
+Events research
+What to look for
+
+in this iteration.
+
+Only make changes necessary to support:
+
+- data status
+- integrations admin
+- truthful executive KPIs
+- correct drill-down
+- PowerPoint export
+
+==================================================
+24. DATABASE CHANGES
+==================================================
+
+Keep schema additions minimal.
+
+Possible required entities:
+
+connections
+
+Fields:
+id
+provider_type
+provider_name
+status
+config_json
+credential_env_var
+last_tested_at
+last_error
+created_at
+updated_at
+
+IMPORTANT:
+config_json must NOT contain API secrets.
+
+metric_mappings
+
+Fields:
+id
+metric_key
+source_type
+connection_id
+mapping_json
+active
+created_at
+updated_at
+
+manual_metric_values
+
+Fields:
+id
+metric_key
+period
+territory_id nullable
+current_value
+target_value nullable
+note nullable
+created_at
+updated_at
+
+Do NOT add a complicated integration schema.
+
+==================================================
+25. AUDIT / DEBUG INFORMATION
+==================================================
+
+For every KPI calculation internally preserve:
+
+metric
+period
+territory
+source
+calculated_at
+record_count
+
+For connected metrics also preserve enough diagnostic information to understand where the number came from.
+
+Do NOT expose technical debug data to normal PAM users.
+
+Admin may access it through:
+
+Metric setup → Preview / Details
+
+==================================================
+26. PERFORMANCE
+==================================================
+
+Do not call HubSpot or external APIs separately for every KPI row on every page render.
+
+Design for:
+
+Sync / fetch
+        ↓
+Normalize result
+        ↓
+Calculate KPIs
+        ↓
+Serve Overview
+
+For now, mock this architecture where live integrations are unavailable.
+
+Later we may add scheduled synchronization.
+
+Do not build a large ETL system.
+
+==================================================
+27. UX
+==================================================
+
+Keep the existing Microsoft-style UI.
+
+Admin → Connections & data should look like a normal Microsoft 365 settings page.
+
+Use:
+
+compact sections
+tables
+drawers
+small badges
+test buttons
+preview
+
+Avoid:
+
+giant integration logos
+marketplace-style integration cards
+complex workflow builders
+technical JSON editors in the normal UI
+
+Advanced mapping JSON may exist internally but should not be the primary user experience.
+
+==================================================
+28. DO NOT OVERENGINEER
+==================================================
+
+This requirement is critical.
+
+We need a product that works, not another engineering project.
+
+Do NOT build:
+
+- generic integration marketplace
+- generic ETL engine
+- Zapier clone
+- workflow builder
+- custom reporting engine
+- BI layer
+- data warehouse
+- generic HubSpot query builder
+- secrets manager
+- background-job platform
+- enterprise observability platform
+
+Implement only the minimum necessary for this application.
+
+==================================================
+29. PORTABILITY CHECK
+==================================================
+
+Before completing the iteration, review all new code for migration portability.
+
+The future environment will be approximately:
+
+Ubuntu server
+Docker / Docker Compose eventually
+PostgreSQL
+Node.js
+reverse proxy
+environment-variable secrets
+GitHub repository
+
+Ensure nothing added in this iteration makes that migration materially harder.
+
+Add a short section to DEPLOYMENT.md:
+
+"Moving from Replit to Ubuntu"
+
+covering:
+
+1. clone repository
+2. configure DATABASE_URL
+3. configure environment variables
+4. run database migrations
+5. build
+6. start production server
+
+Do NOT perform the migration now.
+
+==================================================
+30. IMPLEMENTATION ORDER
+==================================================
+
+Implement in this order:
+
+1. Audit existing KPI calculation code.
+2. Fix misleading KPI derivations.
+3. Create unified KPI detail service.
+4. Add KPI reconciliation.
+5. Fix Overview drill-downs.
+6. Add data-status model.
+7. Add Connections & data Admin page.
+8. Add metric mappings.
+9. Add data preview.
+10. Add manual/not-connected behavior.
+11. Add PowerPoint export.
+12. Add portability documentation.
+13. Regression test existing research features.
+
+Do not work on unrelated features.
+
+==================================================
+31. ACCEPTANCE CRITERIA
+==================================================
+
+EXECUTIVE VIEW
+
+- Exact three table structures remain unchanged.
+- Every visible KPI has a defined source.
+- Every metric is marked internally as Connected, Manual, Demo or Not Connected.
+- No fake cross-metric derivation exists.
+
+DRILL-DOWN
+
+- Clicking a KPI shows the correct metric.
+- Same period.
+- Same territory.
+- Same source.
+- Breakdown reconciles with the number clicked.
+
+ADMIN
+
+- Connections & data page exists.
+- HubSpot/Search/Web Reader/AI can be configured.
+- Secrets are never exposed.
+- Connections can be tested.
+- KPI source mappings are visible.
+- Connected mappings can be previewed before save.
+- Manual values are supported.
+- Not-connected values remain blank.
+
+POWERPOINT
+
+- Export quarterly report exists.
+- Uses current quarter and territory.
+- Generates a real .pptx.
+- Uses the same KPI service as Overview.
+- Includes approximately seven slides.
+- Looks clean and executive-ready.
+- Data reconciles with the UI.
+
+PORTABILITY
+
+- No unnecessary Replit lock-in added.
+- .env.example updated.
+- DEPLOYMENT.md updated.
+- Code remains compatible with standard PostgreSQL and Node.js.
+- Later migration to Hetzner Ubuntu should require configuration/deployment work, not application rewrites.
+
+SCOPE
+
+Do not add anything outside these requirements.
