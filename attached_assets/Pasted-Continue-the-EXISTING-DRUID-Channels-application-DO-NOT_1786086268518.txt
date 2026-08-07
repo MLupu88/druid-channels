@@ -1,0 +1,796 @@
+Continue the EXISTING DRUID Channels application.
+
+DO NOT rebuild the application.
+
+This is PASS 1 ONLY.
+
+The purpose of this iteration is to establish:
+
+1. DRUID Channels & Alliances branding
+2. Mock login
+3. Correct user identity
+4. Server-side workspace isolation
+5. Irina global access
+6. PAM-specific access
+7. PAM/My Workspace navigation
+
+DO NOT work on:
+- currency conversion
+- charts
+- KPI target configuration
+- KPI catalogue changes
+- Signals redesign
+- n8n
+- Tavily
+- event sourcing
+- RFP sourcing
+- LinkedIn/social posting
+- live HubSpot integration
+- PowerPoint redesign
+- new research features
+
+Those will come in later iterations.
+
+The application will later be moved from Replit to a self-managed Ubuntu/Hetzner server.
+
+Therefore keep this implementation standard, portable and easy to maintain.
+
+==================================================
+1. BRANDING
+==================================================
+
+Replace the current Partner Radar application branding.
+
+Use the supplied DRUID logo.
+
+Below the logo display:
+
+Channels and alliances
+
+Do NOT use "Partner Radar" as the main application/product name.
+
+Partner Radar may remain an internal research concept, but the application itself is:
+
+DRUID
+Channels and alliances
+
+Keep the current light Microsoft / Fluent-inspired styling.
+
+Do not redesign the application.
+
+Do not create a splash page.
+
+LOGIN SCREEN
+
+Use the DRUID logo prominently but cleanly.
+
+Below:
+
+Channels and alliances
+
+Then:
+
+Email
+Password
+Sign in
+
+Small text:
+
+Internal workspace
+
+No marketing language.
+
+==================================================
+2. MOCK USERS
+==================================================
+
+Create these prototype users.
+
+HEAD OF CHANNELS
+
+Email:
+irina.dochitu@druidai.com
+
+Password:
+Irina2026
+
+Role:
+HEAD_OF_CHANNELS
+
+Access:
+GLOBAL
+
+
+PAM USERS
+
+Email:
+denny.morais@druidai.com
+Password:
+Denny
+
+Email:
+james.bradley@druidai.com
+Password:
+James
+
+Email:
+chase.baylor@druidai.com
+Password:
+Chase
+
+Email:
+vlad.greavu@druidai.com
+Password:
+Vlad
+
+Email:
+elena.panait@druidai.com
+Password:
+Elena
+
+Role:
+PAM
+
+Territories:
+
+Denny Morais
+Portugal / Canada / South America
+
+James Bradley
+UK & Ireland
+
+Chase Baylor
+United States
+
+Vlad Greavu
+DACH
+
+Elena Panait
+Central and Eastern Europe
+
+==================================================
+3. PASSWORD HANDLING
+==================================================
+
+Do NOT store these passwords as plaintext database values.
+
+Use a standard password hash.
+
+Prefer an existing lightweight dependency if already installed.
+
+If none exists, use a small conventional Node-compatible password hashing
+library.
+
+Do NOT introduce:
+- Auth0
+- Clerk
+- Replit Auth
+- Firebase Auth
+- external identity provider
+- OAuth infrastructure
+
+This is intentionally a simple prototype login.
+
+We will replace it with proper corporate authentication later.
+
+==================================================
+4. REUSE EXISTING SESSION LOGIC
+==================================================
+
+The existing project already has server session/token functionality.
+
+Reuse it where practical.
+
+Do NOT build a second parallel authentication framework.
+
+Login flow should be:
+
+POST /api/auth/login
+
+email
+password
+
+↓
+
+validate user
+
+↓
+
+issue existing signed session/token
+
+↓
+
+frontend stores/uses session using the existing application pattern
+
+Also support:
+
+GET /api/auth/me
+
+Return:
+
+id
+name
+email
+role
+territory/territories
+
+Logout should invalidate/remove the local session.
+
+==================================================
+5. REMOVE USER IMPERSONATION
+==================================================
+
+The current mock application must NOT allow the frontend/user to simply
+select or submit another user ID and become that user.
+
+Remove any existing user switcher used to simulate identities.
+
+The current authenticated user must come from the server-side session.
+
+Normal users must never be able to choose:
+
+user_id
+owner_id
+assigned_user_id
+
+to change their effective identity.
+
+==================================================
+6. SERVER-SIDE AUTHORIZATION
+==================================================
+
+THIS IS THE MOST IMPORTANT REQUIREMENT.
+
+Workspace separation must be enforced SERVER SIDE.
+
+Do not implement security only by hiding navigation/components.
+
+Every protected API must derive the current user from the authenticated
+session.
+
+PAM users may access ONLY records belonging to them / their territory.
+
+This applies to relevant endpoints for:
+
+prospects
+companies
+partner/company research
+activities
+KPIs
+signals where currently present
+scan configuration
+any PAM workspace information
+
+Irina can access everything.
+
+==================================================
+7. NEVER BROADEN AN INVALID SCOPE
+==================================================
+
+Review existing territory resolution logic.
+
+If:
+
+- territory is invalid
+- PAM requests another PAM's territory
+- PAM requests Global
+- PAM requests another user
+
+DO NOT silently fall back to Global.
+
+Return:
+
+403 Forbidden
+
+or:
+
+400 Bad Request
+
+as appropriate.
+
+Never broaden access because a filter was invalid.
+
+==================================================
+8. IRINA ACCESS
+==================================================
+
+When logged in as Irina:
+
+Default scope:
+
+Global
+
+She may see all:
+
+PAMs
+territories
+companies
+prospects
+activities
+existing KPI information
+existing research information
+
+Where the current application already supports territory filters, she may
+use them.
+
+Do NOT build new KPI functionality in this pass.
+
+Just ensure existing functionality is correctly accessible.
+
+==================================================
+9. PAM ACCESS
+==================================================
+
+When logged in as a PAM:
+
+Automatically scope application data to that user.
+
+Example:
+
+Denny logs in.
+
+He sees only:
+
+Denny's territory
+Denny's prospects
+Denny's companies
+Denny's activities
+Denny's existing KPI information
+
+He must not be shown a territory/user selector allowing access to another
+PAM.
+
+The server must reject manually altered API requests.
+
+==================================================
+10. NAVIGATION — IRINA
+==================================================
+
+For Irina, primary navigation should be:
+
+Overview
+Signals
+PAMs
+Activities
+
+Admin / Settings may remain available for Irina.
+
+Do NOT expand Admin in this iteration.
+
+Existing settings can remain where they are.
+
+==================================================
+11. NAVIGATION — PAM
+==================================================
+
+For PAM users:
+
+Overview
+Signals
+My workspace
+Activities
+
+Do NOT show:
+
+PAMs
+
+because the PAM does not need a directory of other PAMs.
+
+Do NOT expose Admin-only configuration.
+
+==================================================
+12. PAMs PAGE — IRINA
+==================================================
+
+Replace the existing "Partners" primary navigation concept with:
+
+PAMs
+
+This page is NOT partner management.
+
+It represents Irina's team.
+
+Show the five PAMs:
+
+James Bradley
+Denny Morais
+Vlad Greavu
+Chase Baylor
+Elena Panait
+
+For THIS pass, keep each row/card simple.
+
+Show:
+
+Name
+Territory
+Existing available high-level information if already present
+
+Do NOT add:
+- new charts
+- progress bars
+- new KPI calculations
+- scoring
+
+Those are Pass 2.
+
+Clicking a PAM opens that PAM's workspace.
+
+==================================================
+13. MY WORKSPACE / PAM WORKSPACE
+==================================================
+
+Reuse as much existing UI and data as possible.
+
+IRINA:
+
+Click a PAM from PAMs.
+
+She sees:
+
+PAM name
+territory
+
+Then existing relevant sections/data scoped to that PAM.
+
+PAM:
+
+My workspace opens the same underlying view but automatically for the
+logged-in PAM.
+
+Do not create two separate implementations.
+
+Use one reusable PAM workspace component.
+
+Do NOT build project management.
+
+Do NOT add complex workflow stages.
+
+This pass is primarily about identity and correct ownership.
+
+==================================================
+14. EXISTING "PARTNERS" DATA
+==================================================
+
+Do not delete existing research functionality.
+
+If there is currently a Partners page/component:
+
+reuse useful components internally where possible.
+
+But remove "Partners" from primary navigation.
+
+Do NOT attempt a large data-model redesign in this pass.
+
+Do NOT automatically treat an accepted prospect as a signed DRUID partner.
+
+If current logic does this, avoid making that relationship more deeply
+embedded.
+
+A clean relationship-type fix can be handled later if significant.
+
+==================================================
+15. SIGNALS
+==================================================
+
+Signals may remain in their CURRENT implementation.
+
+Add Signals to navigation if the screen already exists / can be exposed
+without significant development.
+
+Do NOT redesign signal workflow yet.
+
+Do NOT add routing, deduplication, review states or ingestion APIs in this
+pass.
+
+If Signals does not currently have a usable standalone page and creating one
+would require meaningful development:
+
+leave a simple placeholder page:
+
+Signals
+
+"Signal review will be enabled in the next iteration."
+
+Do not invent functionality.
+
+==================================================
+16. ADMIN ACCESS
+==================================================
+
+Admin/Settings routes must be protected server-side.
+
+Only Irina / HEAD_OF_CHANNELS may access Admin configuration that affects
+the whole application, including:
+
+Team
+Connections & data
+global settings
+
+PAM users requesting those APIs/routes directly must receive:
+
+403 Forbidden
+
+Do not rely only on hiding the Admin menu.
+
+==================================================
+17. TEAM ADMIN
+==================================================
+
+Existing Team configuration can remain.
+
+Do NOT create a generic permissions editor.
+
+Roles are fixed for now:
+
+HEAD_OF_CHANNELS
+PAM
+
+Do not allow arbitrary custom roles.
+
+Do not allow a PAM to promote themselves.
+
+==================================================
+18. UI USER IDENTITY
+==================================================
+
+Show the currently logged-in user unobtrusively in the application shell.
+
+Example:
+
+DM
+Denny Morais
+Portugal / Canada / South America
+
+or
+
+ID
+Irina Dochitu
+Global
+
+Click may provide:
+
+Account
+Sign out
+
+Do not create profile-management functionality.
+
+==================================================
+19. ROUTE PROTECTION
+==================================================
+
+Unauthenticated user:
+
+Any protected route should redirect to:
+
+/login
+
+Authenticated PAM trying to open an unauthorized route:
+
+show:
+
+You don't have access to this workspace.
+
+Do not expose underlying data before redirect/error.
+
+==================================================
+20. API TESTS
+==================================================
+
+Add focused authorization tests where practical.
+
+At minimum verify:
+
+Denny can access Denny data.
+
+Denny cannot access James data.
+
+Denny cannot request Global data.
+
+James cannot access Denny data.
+
+Irina can access Denny data.
+
+Irina can access James data.
+
+PAM cannot access Admin API.
+
+Unauthenticated caller cannot access protected data.
+
+Invalid territory does not become Global.
+
+Do not build a giant testing framework if none exists.
+
+Use the project's existing test setup where available.
+
+==================================================
+21. PORTABILITY
+==================================================
+
+Do not introduce Replit-specific authentication/services.
+
+Use:
+
+standard Node.js
+standard database
+standard environment variables
+existing PostgreSQL setup
+
+The future deployment is:
+
+Ubuntu
+Docker / Docker Compose
+PostgreSQL
+reverse proxy
+GitHub
+environment-variable secrets
+
+This pass must not make that migration harder.
+
+==================================================
+22. LOGO ASSET
+==================================================
+
+Keep the provided DRUID logo as a normal application asset.
+
+Do not reference a temporary Replit upload URL.
+
+Place/copy it into the repository's appropriate frontend assets directory.
+
+Use the same asset later for PowerPoint export.
+
+Do not modify the supplied logo artwork.
+
+==================================================
+23. DO NOT CHANGE
+==================================================
+
+In this pass, do NOT modify the conceptual structure or calculations of the
+three existing Head of Channels reporting tables.
+
+Do NOT add:
+
+currency
+FX APIs
+Frankfurter
+new charts
+Recharts visualizations
+KPI target setup
+target-to-date logic
+PAM progress bars
+LinkedIn post generation
+event discovery
+Tavily
+n8n
+HubSpot live integration
+signal workflow redesign
+PowerPoint redesign
+new database infrastructure
+
+Only make changes required for:
+
+branding
+authentication
+authorization
+navigation
+PAM workspace separation
+
+==================================================
+24. STOP CONDITION
+==================================================
+
+If any requirement would require:
+
+major framework changes
+large new dependency tree
+external authentication service
+major database rewrite
+Replit proprietary services
+
+STOP.
+
+Implement the simplest portable alternative or leave the existing behavior
+unchanged and document it.
+
+==================================================
+25. ACCEPTANCE CHECK
+==================================================
+
+Before completing the iteration verify manually:
+
+LOGIN
+
+Irina:
+irina.dochitu@druidai.com
+Irina2026
+
+works.
+
+Denny:
+denny.morais@druidai.com
+Denny
+
+works.
+
+James:
+james.bradley@druidai.com
+James
+
+works.
+
+Chase:
+chase.baylor@druidai.com
+Chase
+
+works.
+
+Vlad:
+vlad.greavu@druidai.com
+Vlad
+
+works.
+
+Elena:
+elena.panait@druidai.com
+Elena
+
+works.
+
+
+IRINA
+
+Sees:
+
+Overview
+Signals
+PAMs
+Activities
+
+Can open every PAM.
+
+Can access Global data.
+
+
+PAM
+
+Sees:
+
+Overview
+Signals
+My workspace
+Activities
+
+Cannot see PAMs list.
+
+Cannot access another PAM through the UI.
+
+Cannot access another PAM through manually changed API requests.
+
+
+BRANDING
+
+Uses the supplied DRUID logo.
+
+Below logo:
+
+Channels and alliances
+
+
+PORTABILITY
+
+No new Replit platform dependency was introduced.
+
+
+FINALLY:
+
+Provide a short summary of:
+
+- files changed
+- database changes
+- dependencies added
+- authentication approach
+- authorization approach
+- any requirement intentionally not implemented because it would increase
+  technical debt
+
+Do not work beyond this Pass 1 scope.

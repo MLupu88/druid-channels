@@ -1,30 +1,21 @@
 ---
-name: Orval codegen flow (partner-radar / api-spec)
-description: How this project's API types/hooks are generated; run before editing dependent code.
+name: Orval codegen flow
+description: How to safely add/change API endpoints with the openapi.yaml -> orval codegen pipeline, including a schema-naming collision gotcha.
 ---
 
-The API contract lives in `lib/api-spec/openapi.yaml`. Frontend/backend types and React Query
-hooks are generated from it, not hand-written.
+Edit `lib/api-spec/openapi.yaml` first, then run the api-spec codegen, before touching
+dependent frontend/backend code that consumes the generated client/zod types.
 
-Flow:
-1. Edit `lib/api-spec/openapi.yaml` (schemas, paths).
-2. Run `pnpm --filter @workspace/api-spec run codegen`. This regenerates
-   `lib/api-zod/src/generated` and `lib/api-client-react/src/generated`, and also runs
-   `typecheck:libs`.
-3. Only after codegen succeeds, write backend routes / frontend pages that use the new
-   types/hooks — editing them first just means redoing the edits when generated types shift.
+**Naming collision gotcha:** the TS-interface generator (in `lib/api-zod/src/generated/types/`)
+names types after the OpenAPI **component schema name** (e.g. `AuthLoginResponse`), but the
+**zod runtime schema** generator (in `lib/api-zod/src/generated/api.ts`) names schemas after the
+**operationId** instead (e.g. operationId `login` -> zod schema `LoginResponse`), ignoring the
+component schema name entirely. When both exist for the same operation, importing the schema
+name from `@workspace/api-zod` resolves to the type-only interface, not the zod value, and
+using it as `X.parse(...)` fails with "only refers to a type, but is being used as a value".
 
-**Why:** editing generated files directly is silently overwritten by the next codegen run, and
-consuming code written against a stale contract fails typecheck in confusing ways.
-
-**Preview/dry-run endpoints:** for an endpoint that computes a value under a hypothetical
-override (e.g. "preview this KPI mapping before saving"), pass the override as a parameter into
-the same pure compute function used by the real read path, instead of writing the override to the
-DB, computing, then reverting. The mutate/revert pattern is fragile (races, partial failures leave
-bad state) and duplicates logic that can drift from the real path.
-
-**Stale HMR after codegen:** after `codegen` regenerates client hook files, Vite's dev server can
-serve stale HMR state for pages that import the changed hooks (e.g. a hook that no longer exists
-throws `X is not defined` in the browser even though the file on disk is correct). A full workflow
-restart (not just waiting for HMR) clears it — always restart + refresh the browser screenshot
-after codegen touches consumed hooks, don't trust mid-edit HMR error logs as the final verdict.
+**How to apply:** when wiring a new/changed route to its zod schema for runtime validation,
+check what name `lib/api-zod/src/generated/api.ts` actually exported for that operationId
+(grep for `export const <Name>` there) rather than assuming it matches the OpenAPI component
+schema name — alias the import if the names differ, e.g.
+`import { LoginResponse as AuthLoginResponse } from "@workspace/api-zod"`.

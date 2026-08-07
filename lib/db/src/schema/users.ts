@@ -9,6 +9,10 @@ export const usersTable = pgTable("users", {
   role: text("role", { enum: ["head_of_channels", "pam", "admin"] }).notNull().default("pam"),
   territory: text("territory"),
   active: boolean("active").notNull().default(true),
+  // Salted hash (scrypt), never a plaintext password. Null only for legacy
+  // rows created before login existed; such a user cannot log in until an
+  // admin sets a password.
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

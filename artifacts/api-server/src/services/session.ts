@@ -1,15 +1,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-// Minimal signed-session tokens (HMAC-SHA256), used because this demo app
-// has no password/login system yet -- only a client-side "act as this team
-// member" switcher. Signing the token with a server-only secret means a
-// caller can no longer manufacture a valid identity claim just by knowing a
-// user's UUID (which is public via GET /users); they must go through
-// POST /auth/session, and only the server can mint a token that
-// requireAdmin will accept. This is a stopgap, not a full auth system: the
-// session-mint endpoint does not check a password because none exists in
-// this schema yet. If real login is added later, mint tokens only after
-// verifying credentials there instead of trusting the caller's user_id.
+// Minimal signed-session tokens (HMAC-SHA256), issued only after a real
+// password check in POST /auth/login (see routes/auth.ts and
+// services/password.ts). Signing with a server-only secret means a caller
+// cannot manufacture a valid identity claim without first proving they know
+// a user's password. Tokens are stateless (no server-side session store),
+// so "logout" simply asks the client to discard the token; a compromised
+// token remains valid until it expires (see SESSION_TTL_MS below).
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 function getSecret(): string {

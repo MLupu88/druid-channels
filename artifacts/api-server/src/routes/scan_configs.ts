@@ -8,6 +8,8 @@ import {
   UpdateScanConfigResponse,
 } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
+import { requireAuth } from "../middleware/auth";
+import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
 
 const router: IRouter = Router();
 
@@ -30,17 +32,30 @@ function shapeConfig(c: typeof scanConfigsTable.$inferSelect, territoryName: str
   };
 }
 
-router.get("/scan-configs", async (_req, res): Promise<void> => {
+router.get("/scan-configs", requireAuth, async (req, res): Promise<void> => {
+  const actingUser = req.actingUser!;
+  let ownTerritoryId: string | null = null;
+  if (!isGlobalUser(actingUser)) {
+    const own = await getOwnTerritory(actingUser.id);
+    if (!own) {
+      res.status(403).json({ error: "Your account has no territory assigned. Contact an admin." });
+      return;
+    }
+    ownTerritoryId = own.territoryId;
+  }
+
   const rows = await db
     .select({ config: scanConfigsTable, territory: territoriesTable })
     .from(scanConfigsTable)
     .leftJoin(territoriesTable, eq(scanConfigsTable.territoryId, territoriesTable.id))
     .orderBy(territoriesTable.name);
 
-  res.json(ListScanConfigsResponse.parse(rows.map((r) => shapeConfig(r.config, r.territory?.name ?? ""))));
+  const scoped = ownTerritoryId ? rows.filter((r) => r.config.territoryId === ownTerritoryId) : rows;
+
+  res.json(ListScanConfigsResponse.parse(scoped.map((r) => shapeConfig(r.config, r.territory?.name ?? ""))));
 });
 
-router.get("/scan-configs/:id", async (req, res): Promise<void> => {
+router.get("/scan-configs/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const [row] = await db
@@ -54,16 +69,41 @@ router.get("/scan-configs/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  try {
+    await assertRecordTerritoryAccess(req.actingUser!, row.config.territoryId, row.territory?.name);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+
   res.json(GetScanConfigResponse.parse(shapeConfig(row.config, row.territory?.name ?? "")));
 });
 
-router.put("/scan-configs/:id", async (req, res): Promise<void> => {
+router.put("/scan-configs/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const parsed = UpdateScanConfigBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
+  }
+
+  const [existingForAuth] = await db.select().from(scanConfigsTable).where(eq(scanConfigsTable.id, id));
+  if (!existingForAuth) {
+    res.status(404).json({ error: "Scan config not found" });
+    return;
+  }
+  try {
+    await assertRecordTerritoryAccess(req.actingUser!, existingForAuth.territoryId, null);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
 
   const data = parsed.data;

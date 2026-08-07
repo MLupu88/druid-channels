@@ -7,7 +7,7 @@
  */
 import type { User } from './user';
 
-export interface AuthSessionResponse {
+export interface AuthLoginResponse {
   token: string;
   user: User;
   expires_at: string;

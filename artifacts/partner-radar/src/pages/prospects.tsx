@@ -11,7 +11,8 @@ import {
   useUpdateProspect,
   useDeleteProspect,
   getListProspectsQueryKey,
-  getGetProspectQueryKey
+  getGetProspectQueryKey,
+  getListUsersQueryKey
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
@@ -67,7 +68,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from 'date-fns';
-import { useUser } from '@/contexts/user-context';
+import { useAuth } from '@/contexts/auth-context';
 import type { ProspectDecisionInputDecision } from '@workspace/api-client-react';
 
 function generateRecruitmentMessage(detail: {
@@ -110,7 +111,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function Prospects() {
-  const { activeUser } = useUser();
+  const { user: activeUser, isGlobalUser } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -141,7 +142,7 @@ export default function Prospects() {
   const [draftMessage, setDraftMessage] = useState('');
 
   const { data: territories } = useListTerritories();
-  const { data: users } = useListUsers();
+  const { data: users } = useListUsers({ query: { enabled: isGlobalUser, queryKey: getListUsersQueryKey() } });
   const { data: scanConfigs } = useListScanConfigs();
   
   const { data: prospects, isLoading } = useListProspects({
@@ -785,9 +786,13 @@ export default function Prospects() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {users?.map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                    ))}
+                    {isGlobalUser
+                      ? users?.map(u => (
+                          <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                        ))
+                      : activeUser && (
+                          <SelectItem key={activeUser.id} value={activeUser.id}>{activeUser.name}</SelectItem>
+                        )}
                   </SelectContent>
                 </Select>
               </div>

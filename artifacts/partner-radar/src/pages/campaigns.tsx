@@ -8,6 +8,7 @@ import {
   useListUsers,
   useListPartners,
   getListCampaignsQueryKey,
+  getListUsersQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
@@ -40,7 +41,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { useUser } from '@/contexts/user-context';
+import { useAuth } from '@/contexts/auth-context';
 import { Plus, Pencil, Trash2, MoreVertical, ExternalLink } from 'lucide-react';
 import {
   DropdownMenu,
@@ -75,13 +76,13 @@ function StatusBadge({ status }: { status: string }) {
 const NONE_PARTNER = 'none';
 
 export default function Campaigns() {
-  const { activeUser } = useUser();
+  const { user: activeUser, isGlobalUser } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: campaigns, isLoading } = useListCampaigns();
   const { data: territories } = useListTerritories();
-  const { data: users } = useListUsers();
+  const { data: users } = useListUsers({ query: { enabled: isGlobalUser, queryKey: getListUsersQueryKey() } });
   const { data: partners } = useListPartners();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -345,12 +346,16 @@ export default function Campaigns() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Owner</Label>
-                <Select value={editOwner} onValueChange={setEditOwner}>
+                <Select value={editOwner} onValueChange={setEditOwner} disabled={!isGlobalUser}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {users?.map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                    ))}
+                    {isGlobalUser
+                      ? users?.map(u => (
+                          <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                        ))
+                      : activeUser && (
+                          <SelectItem key={activeUser.id} value={activeUser.id}>{activeUser.name}</SelectItem>
+                        )}
                   </SelectContent>
                 </Select>
               </div>
@@ -458,12 +463,16 @@ export default function Campaigns() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Owner</Label>
-                <Select value={owner} onValueChange={setOwner}>
+                <Select value={owner} onValueChange={setOwner} disabled={!isGlobalUser}>
                   <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {users?.map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                    ))}
+                    {isGlobalUser
+                      ? users?.map(u => (
+                          <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                        ))
+                      : activeUser && (
+                          <SelectItem key={activeUser.id} value={activeUser.id}>{activeUser.name}</SelectItem>
+                        )}
                   </SelectContent>
                 </Select>
               </div>

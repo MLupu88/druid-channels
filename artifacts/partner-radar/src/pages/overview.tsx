@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   useGetHeadOfChannelsKpis, 
   useListTerritories, 
@@ -26,7 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowDown, ArrowUp, Minus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useUser } from '@/contexts/user-context';
+import { useAuth } from '@/contexts/auth-context';
 
 function StatusBadge({ status }: { status: string }) {
   if (status === 'green' || status === 'on_track') return <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 font-normal">On track</Badge>;
@@ -49,12 +49,22 @@ function DataStatusBadge({ status }: { status: string }) {
 }
 
 export default function Overview() {
-  const { activeUser } = useUser();
+  const { user: activeUser, isGlobalUser, sessionToken } = useAuth();
+  const { data: territories } = useListTerritories();
+  const ownTerritoryId = !isGlobalUser
+    ? territories?.find((t) => t.name === activeUser?.territory)?.id
+    : undefined;
   const [territory, setTerritory] = useState<string>('global');
   const [period, setPeriod] = useState<string>('q3');
   const [selectedKpi, setSelectedKpi] = useState<string | null>(null);
 
-  const { data: territories } = useListTerritories();
+  // PAMs only ever see their own territory's KPIs -- the server enforces
+  // this too, but default the selector to it so there's nothing to pick.
+  useEffect(() => {
+    if (ownTerritoryId && territory === 'global') {
+      setTerritory(ownTerritoryId);
+    }
+  }, [ownTerritoryId]);
   const { data: kpis, isLoading: isLoadingKpis } = useGetHeadOfChannelsKpis({ 
     territory: territory === 'global' ? null : territory, 
     period 
@@ -110,7 +120,8 @@ export default function Overview() {
               onClick={() => {
                 const params = new URLSearchParams({ period });
                 if (territory !== 'global') params.set('territory', territory);
-                window.open(`/api/exports/quarterly-pptx?${params.toString()}`, '_blank');
+                if (sessionToken) params.set('token', sessionToken);
+                window.open(`${import.meta.env.BASE_URL}api/exports/quarterly-pptx?${params.toString()}`, '_blank');
               }}
             >
               Export quarterly report

@@ -35,7 +35,7 @@ async function mappingStatusFor(mapping: typeof metricMappingsTable.$inferSelect
   return "not_connected" as const;
 }
 
-router.get("/metric-mappings", async (_req, res): Promise<void> => {
+router.get("/metric-mappings", requireAdmin, async (_req, res): Promise<void> => {
   const rows = await db.select().from(metricMappingsTable);
   const byKey = new Map(rows.map((r) => [r.metricKey, r]));
   const target = await resolveTerritory(null);
@@ -118,7 +118,7 @@ router.put("/metric-mappings/:metric_key", requireAdmin, async (req, res): Promi
   }));
 });
 
-router.post("/metric-mappings/:metric_key/preview", async (req, res): Promise<void> => {
+router.post("/metric-mappings/:metric_key/preview", requireAdmin, async (req, res): Promise<void> => {
   const metricKey = Array.isArray(req.params.metric_key) ? req.params.metric_key[0] : req.params.metric_key;
   const def = METRIC_BY_KEY.get(metricKey);
   if (!def) {
@@ -161,7 +161,7 @@ router.post("/metric-mappings/:metric_key/preview", async (req, res): Promise<vo
   });
 });
 
-router.get("/manual-metric-values", async (req, res): Promise<void> => {
+router.get("/manual-metric-values", requireAdmin, async (req, res): Promise<void> => {
   const { metric_key } = req.query as { metric_key?: string };
   const rows = metric_key
     ? await db.select().from(manualMetricValuesTable).where(eq(manualMetricValuesTable.metricKey, metric_key))

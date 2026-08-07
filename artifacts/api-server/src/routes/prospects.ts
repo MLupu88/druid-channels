@@ -20,6 +20,8 @@ import {
   DeleteProspectResponse,
 } from "@workspace/api-zod";
 import { eq, and, sql, count } from "drizzle-orm";
+import { requireAuth } from "../middleware/auth";
+import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
 
 const router: IRouter = Router();
 
@@ -80,14 +82,26 @@ function buildProspectShape(
   };
 }
 
-router.get("/prospects/stats/summary", async (_req, res): Promise<void> => {
-  const all = await db
+router.get("/prospects/stats/summary", requireAuth, async (req, res): Promise<void> => {
+  const actingUser = req.actingUser!;
+  let ownTerritoryId: string | null = null;
+  if (!isGlobalUser(actingUser)) {
+    const own = await getOwnTerritory(actingUser.id);
+    if (!own) {
+      res.status(403).json({ error: "Your account has no territory assigned. Contact an admin." });
+      return;
+    }
+    ownTerritoryId = own.territoryId;
+  }
+
+  const allRows = await db
     .select({
       prospect: prospectsTable,
       territory: territoriesTable,
     })
     .from(prospectsTable)
     .leftJoin(territoriesTable, eq(prospectsTable.territoryId, territoriesTable.id));
+  const all = ownTerritoryId ? allRows.filter((r) => r.prospect.territoryId === ownTerritoryId) : allRows;
 
   const byTerritory: Record<string, { territory: string; total: number; new: number; accepted: number; rejected: number; deferred: number; pushed_to_hubspot: number; priority_a: number; priority_b: number }> = {};
 
@@ -119,8 +133,27 @@ router.get("/prospects/stats/summary", async (_req, res): Promise<void> => {
   }));
 });
 
-router.get("/prospects", async (req, res): Promise<void> => {
+router.get("/prospects", requireAuth, async (req, res): Promise<void> => {
   const { territory, pam_user_id, priority, partner_type, signal_type, status, search } = req.query as Record<string, string | undefined>;
+  const actingUser = req.actingUser!;
+
+  let scopedTerritoryId: string | null = null;
+  if (!isGlobalUser(actingUser)) {
+    const own = await getOwnTerritory(actingUser.id);
+    if (!own) {
+      res.status(403).json({ error: "Your account has no territory assigned. Contact an admin." });
+      return;
+    }
+    if (territory && territory !== own.territoryId && territory !== own.territoryName) {
+      res.status(403).json({ error: "You do not have access to that territory." });
+      return;
+    }
+    if (pam_user_id && pam_user_id !== actingUser.id) {
+      res.status(403).json({ error: "You do not have access to that PAM's prospects." });
+      return;
+    }
+    scopedTerritoryId = own.territoryId;
+  }
 
   const rows = await db
     .select({
@@ -144,7 +177,10 @@ router.get("/prospects", async (req, res): Promise<void> => {
 
   let filtered = rows.filter((row) => row.company !== null);
 
-  if (territory) {
+  if (scopedTerritoryId) {
+    // PAM: hard scope to their own territory regardless of any client-supplied filter.
+    filtered = filtered.filter((r) => r.prospect.territoryId === scopedTerritoryId);
+  } else if (territory) {
     // support filter by territory name OR territory id
     filtered = filtered.filter((r) => r.territory?.name === territory || r.prospect.territoryId === territory);
   }
@@ -183,7 +219,7 @@ router.get("/prospects", async (req, res): Promise<void> => {
   res.json(ListProspectsResponse.parse(shaped));
 });
 
-router.get("/prospects/:id", async (req, res): Promise<void> => {
+router.get("/prospects/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const [row] = await db
@@ -202,6 +238,16 @@ router.get("/prospects/:id", async (req, res): Promise<void> => {
   if (!row || !row.company) {
     res.status(404).json({ error: "Prospect not found" });
     return;
+  }
+
+  try {
+    await assertRecordTerritoryAccess(req.actingUser!, row.prospect.territoryId, row.territory?.name);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
 
   const signals = await db
@@ -250,7 +296,7 @@ router.get("/prospects/:id", async (req, res): Promise<void> => {
   }));
 });
 
-router.post("/prospects/:id/decision", async (req, res): Promise<void> => {
+router.post("/prospects/:id/decision", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const parsed = MakeProspectDecisionBody.safeParse(req.body);
@@ -264,6 +310,20 @@ router.post("/prospects/:id/decision", async (req, res): Promise<void> => {
   const [existing] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, id));
   if (!existing) {
     res.status(404).json({ error: "Prospect not found" });
+    return;
+  }
+
+  try {
+    await assertRecordTerritoryAccess(req.actingUser!, existing.territoryId, null);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+  if (!isGlobalUser(req.actingUser!) && assigned_user_id && assigned_user_id !== req.actingUser!.id) {
+    res.status(403).json({ error: "You cannot assign a prospect to another PAM." });
     return;
   }
 
@@ -314,7 +374,7 @@ router.post("/prospects/:id/decision", async (req, res): Promise<void> => {
   ));
 });
 
-router.patch("/prospects/:id", async (req, res): Promise<void> => {
+router.patch("/prospects/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const parsed = UpdateProspectBody.safeParse(req.body);
@@ -326,6 +386,20 @@ router.patch("/prospects/:id", async (req, res): Promise<void> => {
   const [existing] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, id));
   if (!existing) {
     res.status(404).json({ error: "Prospect not found" });
+    return;
+  }
+
+  try {
+    await assertRecordTerritoryAccess(req.actingUser!, existing.territoryId, null);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+  if (!isGlobalUser(req.actingUser!) && parsed.data.assigned_user_id && parsed.data.assigned_user_id !== req.actingUser!.id) {
+    res.status(403).json({ error: "You cannot assign a prospect to another PAM." });
     return;
   }
 
@@ -368,7 +442,7 @@ router.patch("/prospects/:id", async (req, res): Promise<void> => {
   ));
 });
 
-router.delete("/prospects/:id", async (req, res): Promise<void> => {
+router.delete("/prospects/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const [existing] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, id));
@@ -377,19 +451,39 @@ router.delete("/prospects/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  try {
+    await assertRecordTerritoryAccess(req.actingUser!, existing.territoryId, null);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+
   await db.delete(prospectActivityTable).where(eq(prospectActivityTable.prospectId, id));
   await db.delete(prospectsTable).where(eq(prospectsTable.id, id));
 
   res.json(DeleteProspectResponse.parse({ id, deleted: true }));
 });
 
-router.post("/prospects/:id/hubspot", async (req, res): Promise<void> => {
+router.post("/prospects/:id/hubspot", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const [existing] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, id));
   if (!existing) {
     res.status(404).json({ error: "Prospect not found" });
     return;
+  }
+
+  try {
+    await assertRecordTerritoryAccess(req.actingUser!, existing.territoryId, null);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
   if (existing.status !== "accepted" && existing.status !== "pushed_to_hubspot") {
     res.status(400).json({ error: "Prospect must be accepted before pushing to HubSpot" });

@@ -8,7 +8,7 @@ import { requireAdmin } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-router.get("/connections", async (_req, res): Promise<void> => {
+router.get("/connections", requireAdmin, async (_req, res): Promise<void> => {
   const rows = await db.select().from(connectionsTable);
   res.json(ListConnectionsResponse.parse(rows.map(toConnectionResponse)));
 });

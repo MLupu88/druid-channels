@@ -1,15 +1,26 @@
 import { Router, type IRouter } from "express";
 import { GetHeadOfChannelsKpisResponse, GetKpiDetailsResponse } from "@workspace/api-zod";
 import { METRIC_BY_KEY } from "../services/kpiRegistry";
-import { computeMetric, reconcile, resolvePeriodKey, resolveTerritory, PERIODS, buildHeadOfChannelsData } from "../services/kpiService";
+import { computeMetric, reconcile, resolvePeriodKey, PERIODS, buildHeadOfChannelsData } from "../services/kpiService";
+import { requireAuth } from "../middleware/auth";
+import { resolveScopedTerritory, ForbiddenScopeError } from "../services/authz";
 
 const router: IRouter = Router();
 
-router.get("/kpis/head-of-channels", async (req, res): Promise<void> => {
+router.get("/kpis/head-of-channels", requireAuth, async (req, res): Promise<void> => {
   const { territory, period } = req.query as { territory?: string; period?: string };
   const periodKey = resolvePeriodKey(period);
   const periodInfo = PERIODS[periodKey];
-  const target = await resolveTerritory(territory);
+  let target;
+  try {
+    target = await resolveScopedTerritory(req.actingUser!, territory);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 
   const { partnerDevelopment, weeklyCommercial, weeklyMarketing } = await buildHeadOfChannelsData(periodKey, target);
 
@@ -23,7 +34,7 @@ router.get("/kpis/head-of-channels", async (req, res): Promise<void> => {
   }));
 });
 
-router.get("/kpis/details", async (req, res): Promise<void> => {
+router.get("/kpis/details", requireAuth, async (req, res): Promise<void> => {
   const { metric_key, territory, period } = req.query as { metric_key?: string; territory?: string; period?: string };
   const def = metric_key ? METRIC_BY_KEY.get(metric_key) : undefined;
   if (!def) {
@@ -33,7 +44,16 @@ router.get("/kpis/details", async (req, res): Promise<void> => {
 
   const periodKey = resolvePeriodKey(period);
   const periodInfo = PERIODS[periodKey];
-  const target = await resolveTerritory(territory);
+  let target;
+  try {
+    target = await resolveScopedTerritory(req.actingUser!, territory);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
   const c = await computeMetric(def.key, periodKey, target);
   const { reconciles, note } = reconcile(c.current, c.by_territory);
 

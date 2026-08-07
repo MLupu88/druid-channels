@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import PptxGenJS from "pptxgenjs";
-import { resolvePeriodKey, resolveTerritory, PERIODS, buildHeadOfChannelsData } from "../services/kpiService";
+import { resolvePeriodKey, PERIODS, buildHeadOfChannelsData } from "../services/kpiService";
+import { requireAuth } from "../middleware/auth";
+import { resolveScopedTerritory, ForbiddenScopeError } from "../services/authz";
 
 const router: IRouter = Router();
 
@@ -18,11 +20,20 @@ function dataStatusLabel(status: string): string {
   }
 }
 
-router.get("/exports/quarterly-pptx", async (req, res): Promise<void> => {
+router.get("/exports/quarterly-pptx", requireAuth, async (req, res): Promise<void> => {
   const { territory, period } = req.query as { territory?: string; period?: string };
   const periodKey = resolvePeriodKey(period);
   const periodInfo = PERIODS[periodKey];
-  const target = await resolveTerritory(territory);
+  let target;
+  try {
+    target = await resolveScopedTerritory(req.actingUser!, territory);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 
   const { partnerDevelopment, weeklyCommercial, weeklyMarketing } = await buildHeadOfChannelsData(periodKey, target);
   const generatedAt = new Date();

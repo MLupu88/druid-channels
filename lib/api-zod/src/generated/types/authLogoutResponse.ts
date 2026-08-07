@@ -6,6 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface AuthSessionInput {
-  user_id: string;
+export interface AuthLogoutResponse {
+  success: boolean;
 }

@@ -3,10 +3,12 @@ import { db } from "@workspace/db";
 import { scanRunsTable, scanConfigsTable } from "@workspace/db";
 import { RunScanBody, RunScanResponse } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
+import { requireAuth } from "../middleware/auth";
+import { assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
 
 const router: IRouter = Router();
 
-router.post("/scans/run", async (req, res): Promise<void> => {
+router.post("/scans/run", requireAuth, async (req, res): Promise<void> => {
   const parsed = RunScanBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -19,6 +21,16 @@ router.post("/scans/run", async (req, res): Promise<void> => {
   if (!config) {
     res.status(404).json({ error: "Scan config not found" });
     return;
+  }
+
+  try {
+    await assertRecordTerritoryAccess(req.actingUser!, config.territoryId, null);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
 
   // In mock mode, simulate a completed scan

@@ -64,6 +64,8 @@ import {
 } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 import type { User } from '@workspace/api-client-react';
+import { useAuth } from '@/contexts/auth-context';
+import AccessDenied from '@/pages/access-denied';
 
 const SIGNAL_OPTIONS = [
   { id: 'new_partners', label: 'New partner prospects' },
@@ -872,6 +874,10 @@ function ConnectionsDataTab() {
 }
 
 export default function SettingsPage() {
+  const { isGlobalUser } = useAuth();
+  if (!isGlobalUser) {
+    return <AccessDenied />;
+  }
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       <div>

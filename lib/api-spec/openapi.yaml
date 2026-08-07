@@ -27,7 +27,7 @@ tags:
   - name: partners
     description: Existing partner research briefings
   - name: auth
-    description: Demo session issuance (no password login exists yet; see AuthSessionInput)
+    description: Email/password login, current-session lookup, and logout
   - name: connections
     description: Third-party connection admin (HubSpot, web search/reader, AI)
   - name: metric-mappings
@@ -36,26 +36,54 @@ tags:
     description: Quarterly report export
 
 paths:
-  /auth/session:
+  /auth/login:
     post:
-      operationId: createAuthSession
+      operationId: login
       tags: [auth]
-      summary: Issue a signed session token for a user (demo "act as" switcher; no password exists yet)
+      summary: Verify email + password and issue a signed session token
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AuthSessionInput"
+              $ref: "#/components/schemas/LoginInput"
       responses:
         "200":
           description: Signed session token
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthSessionResponse"
-        "404":
-          description: Unknown or inactive user
+                $ref: "#/components/schemas/AuthLoginResponse"
+        "401":
+          description: Invalid email or password
+
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Return the user for the current session token
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Invalidate the client's local session (tokens are stateless; this is a no-op acknowledgement)
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthLogoutResponse"
 
   /healthz:
     get:
@@ -1392,14 +1420,16 @@ components:
         reconciliation_note:
           type: ["string", "null"]
 
-    AuthSessionInput:
+    LoginInput:
       type: object
-      required: [user_id]
+      required: [email, password]
       properties:
-        user_id:
+        email:
+          type: string
+        password:
           type: string
 
-    AuthSessionResponse:
+    AuthLoginResponse:
       type: object
       required: [token, user, expires_at]
       properties:
@@ -1409,6 +1439,13 @@ components:
           $ref: "#/components/schemas/User"
         expires_at:
           type: string
+
+    AuthLogoutResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
 
     Connection:
       type: object

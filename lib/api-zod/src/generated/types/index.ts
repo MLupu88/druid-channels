@@ -8,8 +8,8 @@
 
 export * from './activityItem';
 export * from './activityItemEventType';
-export * from './authSessionInput';
-export * from './authSessionResponse';
+export * from './authLoginResponse';
+export * from './authLogoutResponse';
 export * from './campaign';
 export * from './campaignEditInput';
 export * from './campaignEditInputStatus';
@@ -46,6 +46,7 @@ export * from './kpiRowStatus';
 export * from './listManualMetricValuesParams';
 export * from './listPartnersParams';
 export * from './listProspectsParams';
+export * from './loginInput';
 export * from './manualMetricValue';
 export * from './manualMetricValueInput';
 export * from './mappingStatus';

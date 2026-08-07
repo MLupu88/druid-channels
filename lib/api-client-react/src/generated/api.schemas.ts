@@ -568,14 +568,19 @@ export interface KpiDetail {
   reconciliation_note?: string | null;
 }
 
-export interface AuthSessionInput {
-  user_id: string;
+export interface LoginInput {
+  email: string;
+  password: string;
 }
 
-export interface AuthSessionResponse {
+export interface AuthLoginResponse {
   token: string;
   user: User;
   expires_at: string;
+}
+
+export interface AuthLogoutResponse {
+  success: boolean;
 }
 
 export type ConnectionProviderType = typeof ConnectionProviderType[keyof typeof ConnectionProviderType];

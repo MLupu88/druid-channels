@@ -16,6 +16,8 @@ import {
   UpdatePartnerHelpNeededResponse,
 } from "@workspace/api-zod";
 import { eq, and, or, inArray } from "drizzle-orm";
+import { requireAuth } from "../middleware/auth";
+import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
 
 const router: IRouter = Router();
 
@@ -66,8 +68,23 @@ function shapePartner(
   };
 }
 
-router.get("/partners", async (req, res): Promise<void> => {
+router.get("/partners", requireAuth, async (req, res): Promise<void> => {
   const { territory } = req.query as { territory?: string };
+  const actingUser = req.actingUser!;
+
+  let scopedTerritoryId: string | null = null;
+  if (!isGlobalUser(actingUser)) {
+    const own = await getOwnTerritory(actingUser.id);
+    if (!own) {
+      res.status(403).json({ error: "Your account has no territory assigned. Contact an admin." });
+      return;
+    }
+    if (territory && territory !== "global" && territory !== "Global" && territory !== own.territoryId && territory !== own.territoryName) {
+      res.status(403).json({ error: "You do not have access to that territory." });
+      return;
+    }
+    scopedTerritoryId = own.territoryId;
+  }
 
   const rows = await db
     .select({ prospect: prospectsTable, company: companiesTable, territoryRow: territoriesTable, assignedUser: usersTable })
@@ -77,7 +94,9 @@ router.get("/partners", async (req, res): Promise<void> => {
     .leftJoin(usersTable, eq(prospectsTable.assignedUserId, usersTable.id))
     .where(or(eq(prospectsTable.status, "accepted"), eq(prospectsTable.status, "pushed_to_hubspot")));
 
-  const filtered = territory && territory !== "global" && territory !== "Global"
+  let filtered = scopedTerritoryId
+    ? rows.filter((r) => r.territoryRow?.id === scopedTerritoryId)
+    : territory && territory !== "global" && territory !== "Global"
     ? rows.filter((r) => r.territoryRow?.name === territory || r.territoryRow?.id === territory)
     : rows;
 
@@ -102,7 +121,7 @@ router.get("/partners", async (req, res): Promise<void> => {
   );
 });
 
-router.get("/partners/:id", async (req, res): Promise<void> => {
+router.get("/partners/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const [row] = await db
@@ -116,6 +135,16 @@ router.get("/partners/:id", async (req, res): Promise<void> => {
   if (!row) {
     res.status(404).json({ error: "Partner not found" });
     return;
+  }
+
+  try {
+    await assertRecordTerritoryAccess(req.actingUser!, row.prospect.territoryId, row.territoryRow?.name);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
 
   const [researchItems, rfpRows, eventRows] = await Promise.all([
@@ -187,7 +216,7 @@ router.get("/partners/:id", async (req, res): Promise<void> => {
   );
 });
 
-router.patch("/partners/:id/help-needed", async (req, res): Promise<void> => {
+router.patch("/partners/:id/help-needed", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const parsed = UpdatePartnerHelpNeededBody.safeParse(req.body);
@@ -200,6 +229,16 @@ router.patch("/partners/:id/help-needed", async (req, res): Promise<void> => {
   if (!existing || (existing.status !== "accepted" && existing.status !== "pushed_to_hubspot")) {
     res.status(404).json({ error: "Partner not found" });
     return;
+  }
+
+  try {
+    await assertRecordTerritoryAccess(req.actingUser!, existing.territoryId, null);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
 
   const [updated] = await db

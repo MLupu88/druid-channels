@@ -9,13 +9,14 @@ import * as zod from 'zod';
 
 
 /**
- * @summary Issue a signed session token for a user (demo "act as" switcher; no password exists yet)
+ * @summary Verify email + password and issue a signed session token
  */
-export const CreateAuthSessionBody = zod.object({
-  "user_id": zod.string()
+export const LoginBody = zod.object({
+  "email": zod.string(),
+  "password": zod.string()
 })
 
-export const CreateAuthSessionResponse = zod.object({
+export const LoginResponse = zod.object({
   "token": zod.string(),
   "user": zod.object({
   "id": zod.string(),
@@ -26,6 +27,27 @@ export const CreateAuthSessionResponse = zod.object({
   "active": zod.boolean()
 }),
   "expires_at": zod.string()
+})
+
+
+/**
+ * @summary Return the user for the current session token
+ */
+export const GetCurrentUserResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "active": zod.boolean()
+})
+
+
+/**
+ * @summary Invalidate the client's local session (tokens are stateless; this is a no-op acknowledgement)
+ */
+export const LogoutResponse = zod.object({
+  "success": zod.boolean()
 })
 
 

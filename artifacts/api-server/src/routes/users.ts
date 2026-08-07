@@ -3,10 +3,14 @@ import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { ListUsersResponse, UpdateUserBody, UpdateUserResponse } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
+import { requireAdmin } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-router.get("/users", async (_req, res): Promise<void> => {
+// Team directory / roster: only head_of_channels/admin may list the full
+// team (used by the Team admin tab and the PAMs directory page). A PAM's
+// own identity comes from GET /auth/me, not this endpoint.
+router.get("/users", requireAdmin, async (_req, res): Promise<void> => {
   const users = await db.select().from(usersTable).orderBy(usersTable.name);
   res.json(ListUsersResponse.parse(users.map((u) => ({
     id: u.id,
@@ -18,7 +22,7 @@ router.get("/users", async (_req, res): Promise<void> => {
   }))));
 });
 
-router.patch("/users/:id", async (req, res): Promise<void> => {
+router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const parsed = UpdateUserBody.safeParse(req.body);

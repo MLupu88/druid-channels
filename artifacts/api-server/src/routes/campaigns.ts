@@ -10,6 +10,8 @@ import {
   DeleteCampaignResponse,
 } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
+import { requireAuth } from "../middleware/auth";
+import { isGlobalUser, assertOwnUserAccess, ForbiddenScopeError } from "../services/authz";
 
 const router: IRouter = Router();
 
@@ -33,7 +35,8 @@ function shapeCampaign(c: typeof campaignsTable.$inferSelect, ownerName: string,
   };
 }
 
-router.get("/campaigns", async (_req, res): Promise<void> => {
+router.get("/campaigns", requireAuth, async (req, res): Promise<void> => {
+  const actingUser = req.actingUser!;
   const rows = await db
     .select({ campaign: campaignsTable, owner: usersTable, partnerCompany: companiesTable })
     .from(campaignsTable)
@@ -41,14 +44,16 @@ router.get("/campaigns", async (_req, res): Promise<void> => {
     .leftJoin(companiesTable, eq(campaignsTable.partnerCompanyId, companiesTable.id))
     .orderBy(campaignsTable.activityDate);
 
+  const scoped = isGlobalUser(actingUser) ? rows : rows.filter((r) => r.campaign.ownerUserId === actingUser.id);
+
   res.json(
     ListCampaignsResponse.parse(
-      rows.map((r) => shapeCampaign(r.campaign, r.owner?.name ?? "", r.partnerCompany?.name ?? null)),
+      scoped.map((r) => shapeCampaign(r.campaign, r.owner?.name ?? "", r.partnerCompany?.name ?? null)),
     ),
   );
 });
 
-router.post("/campaigns", async (req, res): Promise<void> => {
+router.post("/campaigns", requireAuth, async (req, res): Promise<void> => {
   const parsed = CreateCampaignBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -56,6 +61,16 @@ router.post("/campaigns", async (req, res): Promise<void> => {
   }
 
   const { name, type, territory, owner_user_id, partner_company_id, activity_date, status, hubspot_link, notes } = parsed.data;
+
+  try {
+    assertOwnUserAccess(req.actingUser!, owner_user_id);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 
   const [campaign] = await db
     .insert(campaignsTable)
@@ -82,7 +97,7 @@ router.post("/campaigns", async (req, res): Promise<void> => {
     .json(CreateCampaignResponse.parse(shapeCampaign(campaign, owner?.name ?? "", partnerCompany?.name ?? null)));
 });
 
-router.patch("/campaigns/:id", async (req, res): Promise<void> => {
+router.patch("/campaigns/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const parsed = UpdateCampaignBody.safeParse(req.body);
@@ -95,6 +110,19 @@ router.patch("/campaigns/:id", async (req, res): Promise<void> => {
   if (!existing) {
     res.status(404).json({ error: "Activity not found" });
     return;
+  }
+
+  try {
+    assertOwnUserAccess(req.actingUser!, existing.ownerUserId);
+    if (parsed.data.owner_user_id !== undefined) {
+      assertOwnUserAccess(req.actingUser!, parsed.data.owner_user_id);
+    }
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
 
   const data = parsed.data;
@@ -121,13 +149,23 @@ router.patch("/campaigns/:id", async (req, res): Promise<void> => {
   res.json(UpdateCampaignResponse.parse(shapeCampaign(updated, owner?.name ?? "", partnerCompany?.name ?? null)));
 });
 
-router.delete("/campaigns/:id", async (req, res): Promise<void> => {
+router.delete("/campaigns/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const [existing] = await db.select().from(campaignsTable).where(eq(campaignsTable.id, id));
   if (!existing) {
     res.status(404).json({ error: "Activity not found" });
     return;
+  }
+
+  try {
+    assertOwnUserAccess(req.actingUser!, existing.ownerUserId);
+  } catch (err) {
+    if (err instanceof ForbiddenScopeError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
 
   await db.delete(campaignsTable).where(eq(campaignsTable.id, id));

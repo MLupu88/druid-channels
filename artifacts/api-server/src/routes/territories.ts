@@ -3,10 +3,13 @@ import { db } from "@workspace/db";
 import { territoriesTable, usersTable } from "@workspace/db";
 import { ListTerritoriesResponse, UpdateTerritoryBody, UpdateTerritoryResponse } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
+import { requireAuth, requireAdmin } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-router.get("/territories", async (_req, res): Promise<void> => {
+// Any authenticated user can list territories (needed to render names in
+// the UI); only head_of_channels/admin can reassign ownership below.
+router.get("/territories", requireAuth, async (_req, res): Promise<void> => {
   const territories = await db.select().from(territoriesTable).orderBy(territoriesTable.name);
   res.json(ListTerritoriesResponse.parse(territories.map((t) => ({
     id: t.id,
@@ -17,7 +20,7 @@ router.get("/territories", async (_req, res): Promise<void> => {
   }))));
 });
 
-router.patch("/territories/:id", async (req, res): Promise<void> => {
+router.patch("/territories/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const parsed = UpdateTerritoryBody.safeParse(req.body);
