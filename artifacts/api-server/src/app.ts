@@ -25,7 +25,12 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// CORS_ALLOWED_ORIGIN locks the API to a single origin in production. Left
+// unset, cors() falls back to its permissive default so local development
+// (frontend and API on different dev-server ports/origins) keeps working
+// exactly as before.
+const corsAllowedOrigin = process.env.CORS_ALLOWED_ORIGIN;
+app.use(cors(corsAllowedOrigin ? { origin: corsAllowedOrigin } : undefined));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

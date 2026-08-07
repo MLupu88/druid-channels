@@ -1,0 +1,56 @@
+# Production app compose file for DRUID Channels & Alliances.
+#
+# Only the application services live here. The PostgreSQL database
+# (druid-channels-db) and the druid-channels-internal network already exist
+# outside this file and are never created, recreated, or modified by it.
+#
+# Usage:
+#   docker compose --env-file .env config   # validate
+#   docker compose --env-file .env up -d --build
+
+name: druid-channels
+
+services:
+  druid-channels-api:
+    build:
+      context: .
+      dockerfile: artifacts/api-server/Dockerfile
+    image: druid-channels-api:${IMAGE_TAG:-local}
+    container_name: druid-channels-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: ${API_PORT:-8080}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-}
+      HUBSPOT_ACCESS_TOKEN: ${HUBSPOT_ACCESS_TOKEN:-}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-}
+      SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+      EXTRACTION_PROVIDER: ${EXTRACTION_PROVIDER:-}
+      EXTRACTION_API_KEY: ${EXTRACTION_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+    ports:
+      - "${API_BIND_ADDRESS:-127.0.0.1}:${API_HOST_PORT:?API_HOST_PORT is required}:${API_PORT:-8080}"
+    networks:
+      - druid-channels-internal
+
+  druid-channels-web:
+    build:
+      context: .
+      dockerfile: artifacts/partner-radar/Dockerfile
+      args:
+        PORT: ${WEB_BUILD_PORT:-8080}
+        BASE_PATH: ${WEB_BASE_PATH:-/}
+    image: druid-channels-web:${IMAGE_TAG:-local}
+    container_name: druid-channels-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_HOST_PORT:?WEB_HOST_PORT is required}:8080"
+    networks:
+      - druid-channels-internal
+
+networks:
+  druid-channels-internal:
+    external: true

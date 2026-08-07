@@ -1,0 +1,33 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies / build output (rebuilt fresh inside the image)
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+
+# Local/session state and agent tooling -- not part of the application
+.local
+.agents
+
+# Replit-specific tooling and docs -- not used outside Replit
+.replit
+.replitignore
+replit.md
+**/.replit-artifact
+
+# Env files / secrets -- never bake credentials into an image
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Dev-session artifacts, not runtime assets
+attached_assets
+
+# Editor / OS
+.vscode
+.DS_Store
