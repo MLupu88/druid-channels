@@ -5,6 +5,7 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { ScanRun } from './scanRun';
 
 export interface ScanConfig {
   id: string;
@@ -21,4 +22,5 @@ export interface ScanConfig {
   min_checks_required?: number;
   recency_window_days?: number;
   active: boolean;
+  last_run?: ScanRun | null;
 }

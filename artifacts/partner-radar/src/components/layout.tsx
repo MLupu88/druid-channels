@@ -54,13 +54,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navItems: NavItem[] = isGlobalUser
     ? [
         { href: '/', label: 'Overview', icon: LayoutDashboard },
-        { href: '/new-partners', label: 'Signals', icon: Radio },
+        { href: '/new-partners', label: 'Discovery', icon: Radio },
         { href: '/pams', label: 'PAMs', icon: Users },
         { href: '/activities', label: 'Activities', icon: ListOrdered },
       ]
     : [
         { href: '/', label: 'Overview', icon: LayoutDashboard },
-        { href: '/new-partners', label: 'Signals', icon: Radio },
+        { href: '/new-partners', label: 'Discovery', icon: Radio },
         { href: '/my-workspace', label: 'My workspace', icon: Briefcase },
         { href: '/activities', label: 'Activities', icon: ListOrdered },
       ];

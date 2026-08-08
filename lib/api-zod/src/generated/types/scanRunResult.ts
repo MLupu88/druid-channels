@@ -5,6 +5,7 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { DiscoveryDataStatus } from './discoveryDataStatus';
 import type { ScanRunResultStatus } from './scanRunResultStatus';
 
 export interface ScanRunResult {
@@ -12,6 +13,7 @@ export interface ScanRunResult {
   status: ScanRunResultStatus;
   results_found: number;
   results_qualified: number;
+  data_status: DiscoveryDataStatus;
   /** @nullable */
   message?: string | null;
 }

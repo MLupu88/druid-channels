@@ -15,6 +15,20 @@
       "when": 1786162512362,
       "tag": "0001_outgoing_reavers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786192886123,
+      "tag": "0002_parallel_excalibur",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786194084638,
+      "tag": "0003_absent_tag",
+      "breakpoints": true
     }
   ]
 }

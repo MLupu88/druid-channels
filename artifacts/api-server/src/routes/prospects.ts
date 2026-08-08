@@ -7,8 +7,10 @@ import {
   usersTable,
   signalsTable,
   prospectActivityTable,
+  scanConfigsTable,
 } from "@workspace/db";
 import {
+  ListProspectsQueryParams,
   ListProspectsResponse,
   GetProspectResponse,
   MakeProspectDecisionBody,
@@ -19,11 +21,78 @@ import {
   UpdateProspectResponse,
   DeleteProspectResponse,
 } from "@workspace/api-zod";
-import { eq, and, sql, count } from "drizzle-orm";
+import { eq, and, sql, count, max, inArray, desc, asc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
 
 const router: IRouter = Router();
+
+const DEFAULT_RECENCY_WINDOW_DAYS = 90;
+
+type NextAction = "review" | "refresh_evidence" | "send_to_hubspot" | "none";
+
+function computeNextAction(status: string, isStale: boolean): NextAction {
+  if (status === "accepted") return "send_to_hubspot";
+  if (status === "pushed_to_hubspot" || status === "rejected") return "none";
+  // "new" or "deferred"
+  return isStale ? "refresh_evidence" : "review";
+}
+
+// freshnessDays reflects actual research/evidence activity only -- never a
+// generic record edit. If there's no research timestamp and no signal yet,
+// freshness is unknown (null) and the prospect is treated as needing a
+// refresh rather than fabricated as "fresh" just because the row is new.
+function computeFreshness(
+  lastResearchedAt: Date | null,
+  latestSignalAt: Date | null,
+  recencyWindowDays: number,
+): { freshnessDays: number | null; isStale: boolean } {
+  const candidates = [lastResearchedAt, latestSignalAt].filter((d): d is Date => d !== null);
+  if (candidates.length === 0) {
+    return { freshnessDays: null, isStale: true };
+  }
+  const reference = candidates.reduce((latest, d) => (d > latest ? d : latest));
+  const freshnessDays = Math.max(0, Math.floor((Date.now() - reference.getTime()) / 86_400_000));
+  return { freshnessDays, isStale: freshnessDays > recencyWindowDays };
+}
+
+// One scan config is expected per territory, but this stays deterministic
+// even if that's ever violated: prefer the active config, tie-broken by id,
+// rather than depending on incidental DB row order.
+async function loadRecencyWindowsByTerritory(territoryIds: string[]): Promise<Map<string, number>> {
+  if (territoryIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      territoryId: scanConfigsTable.territoryId,
+      recencyWindowDays: scanConfigsTable.recencyWindowDays,
+    })
+    .from(scanConfigsTable)
+    .where(inArray(scanConfigsTable.territoryId, territoryIds))
+    .orderBy(desc(scanConfigsTable.active), asc(scanConfigsTable.id));
+  const byTerritory = new Map<string, number>();
+  for (const row of rows) {
+    if (!byTerritory.has(row.territoryId)) byTerritory.set(row.territoryId, row.recencyWindowDays);
+  }
+  return byTerritory;
+}
+
+async function getSignalStatsForCompany(companyId: string): Promise<{ count: number; latestAt: Date | null }> {
+  const [row] = await db
+    .select({ count: count(), latest: max(signalsTable.discoveredAt) })
+    .from(signalsTable)
+    .where(eq(signalsTable.companyId, companyId));
+  return { count: Number(row?.count ?? 0), latestAt: row?.latest ?? null };
+}
+
+async function loadLatestSignalByCompany(companyIds: string[]): Promise<Map<string, Date>> {
+  if (companyIds.length === 0) return new Map();
+  const rows = await db
+    .select({ companyId: signalsTable.companyId, latest: max(signalsTable.discoveredAt) })
+    .from(signalsTable)
+    .where(inArray(signalsTable.companyId, companyIds))
+    .groupBy(signalsTable.companyId);
+  return new Map(rows.map((r) => [r.companyId, r.latest!]));
+}
 
 function buildProspectShape(
   p: typeof prospectsTable.$inferSelect,
@@ -31,7 +100,10 @@ function buildProspectShape(
   territory: typeof territoriesTable.$inferSelect | null,
   assignedUser: typeof usersTable.$inferSelect | null,
   signalCount: number,
+  latestSignalAt: Date | null,
+  recencyWindowDays: number,
 ) {
+  const { freshnessDays, isStale } = computeFreshness(p.lastResearchedAt ?? null, latestSignalAt, recencyWindowDays);
   return {
     id: p.id,
     company: {
@@ -66,6 +138,7 @@ function buildProspectShape(
     technology_adjacency: p.technologyAdjacency,
     partnership_openness: p.partnershipOpenness,
     recent_trigger: p.recentTrigger,
+    priority_rationale: p.priorityRationale,
     why_it_fits: p.whyItFits,
     why_now: p.whyNow,
     suggested_angle: p.suggestedAngle,
@@ -77,6 +150,9 @@ function buildProspectShape(
     accepted_at: p.acceptedAt?.toISOString() ?? null,
     hubspot_company_id: p.hubspotCompanyId,
     signal_count: signalCount,
+    freshness_days: freshnessDays,
+    is_stale: isStale,
+    next_action: computeNextAction(p.status, isStale),
     created_at: p.createdAt.toISOString(),
     updated_at: p.updatedAt?.toISOString() ?? null,
   };
@@ -134,7 +210,12 @@ router.get("/prospects/stats/summary", requireAuth, async (req, res): Promise<vo
 });
 
 router.get("/prospects", requireAuth, async (req, res): Promise<void> => {
-  const { territory, pam_user_id, priority, partner_type, signal_type, status, search } = req.query as Record<string, string | undefined>;
+  const parsedQuery = ListProspectsQueryParams.safeParse(req.query);
+  if (!parsedQuery.success) {
+    res.status(400).json({ error: parsedQuery.error.message });
+    return;
+  }
+  const { territory, pam_user_id, priority, partner_type, signal_type, status, search, next_action, freshness } = parsedQuery.data;
   const actingUser = req.actingUser!;
 
   let scopedTerritoryId: string | null = null;
@@ -206,15 +287,33 @@ router.get("/prospects", requireAuth, async (req, res): Promise<void> => {
     );
   }
 
-  const shaped = filtered.map((r) =>
+  const companyIds = [...new Set(filtered.map((r) => r.prospect.companyId))];
+  const territoryIds = [...new Set(filtered.map((r) => r.prospect.territoryId))];
+  const [latestSignalByCompany, recencyWindowsByTerritory] = await Promise.all([
+    loadLatestSignalByCompany(companyIds),
+    loadRecencyWindowsByTerritory(territoryIds),
+  ]);
+
+  let shaped = filtered.map((r) =>
     buildProspectShape(
       r.prospect,
       r.company!,
       r.territory ?? null,
       r.assignedUser ?? null,
       signalCountMap.get(r.prospect.companyId) ?? 0,
+      latestSignalByCompany.get(r.prospect.companyId) ?? null,
+      recencyWindowsByTerritory.get(r.prospect.territoryId) ?? DEFAULT_RECENCY_WINDOW_DAYS,
     )
   );
+
+  if (next_action) {
+    shaped = shaped.filter((p) => p.next_action === next_action);
+  }
+  if (freshness === "stale") {
+    shaped = shaped.filter((p) => p.is_stale);
+  } else if (freshness === "fresh") {
+    shaped = shaped.filter((p) => !p.is_stale);
+  }
 
   res.json(ListProspectsResponse.parse(shaped));
 });
@@ -263,12 +362,17 @@ router.get("/prospects/:id", requireAuth, async (req, res): Promise<void> => {
     .where(eq(prospectActivityTable.prospectId, id))
     .orderBy(prospectActivityTable.timestamp);
 
+  const latestSignalAt = signals.reduce<Date | null>((latest, s) => (!latest || s.discoveredAt > latest ? s.discoveredAt : latest), null);
+  const recencyWindowsByTerritory = await loadRecencyWindowsByTerritory([row.prospect.territoryId]);
+
   const base = buildProspectShape(
     row.prospect,
     row.company,
     row.territory ?? null,
     row.assignedUser ?? null,
     signals.length,
+    latestSignalAt,
+    recencyWindowsByTerritory.get(row.prospect.territoryId) ?? DEFAULT_RECENCY_WINDOW_DAYS,
   );
 
   res.json(GetProspectResponse.parse({
@@ -366,11 +470,21 @@ router.post("/prospects/:id/decision", requireAuth, async (req, res): Promise<vo
     .leftJoin(usersTable, eq(usersTable.id, updated.assignedUserId!))
     .where(eq(companiesTable.id, updated.companyId));
 
-  const signalRows = await db.select({ count: count() }).from(signalsTable).where(eq(signalsTable.companyId, updated.companyId));
-  const sigCount = Number(signalRows[0]?.count ?? 0);
+  const [signalStats, recencyWindowsByTerritory] = await Promise.all([
+    getSignalStatsForCompany(updated.companyId),
+    loadRecencyWindowsByTerritory([updated.territoryId]),
+  ]);
 
   res.json(MakeProspectDecisionResponse.parse(
-    buildProspectShape(updated, row.company, row.territory ?? null, row.assignedUser ?? null, sigCount)
+    buildProspectShape(
+      updated,
+      row.company,
+      row.territory ?? null,
+      row.assignedUser ?? null,
+      signalStats.count,
+      signalStats.latestAt,
+      recencyWindowsByTerritory.get(updated.territoryId) ?? DEFAULT_RECENCY_WINDOW_DAYS,
+    )
   ));
 });
 
@@ -434,11 +548,21 @@ router.patch("/prospects/:id", requireAuth, async (req, res): Promise<void> => {
     .leftJoin(usersTable, eq(usersTable.id, updated.assignedUserId!))
     .where(eq(companiesTable.id, updated.companyId));
 
-  const signalRows = await db.select({ count: count() }).from(signalsTable).where(eq(signalsTable.companyId, updated.companyId));
-  const sigCount = Number(signalRows[0]?.count ?? 0);
+  const [signalStats, recencyWindowsByTerritory] = await Promise.all([
+    getSignalStatsForCompany(updated.companyId),
+    loadRecencyWindowsByTerritory([updated.territoryId]),
+  ]);
 
   res.json(UpdateProspectResponse.parse(
-    buildProspectShape(updated, row.company, row.territory ?? null, row.assignedUser ?? null, sigCount)
+    buildProspectShape(
+      updated,
+      row.company,
+      row.territory ?? null,
+      row.assignedUser ?? null,
+      signalStats.count,
+      signalStats.latestAt,
+      recencyWindowsByTerritory.get(updated.territoryId) ?? DEFAULT_RECENCY_WINDOW_DAYS,
+    )
   ));
 });
 

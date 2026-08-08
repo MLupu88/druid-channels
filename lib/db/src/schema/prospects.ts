@@ -35,6 +35,16 @@ export const prospectsTable = pgTable("prospects", {
   }).notNull().default("none"),
   helpNeededNote: text("help_needed_note"),
   lastResearchedAt: timestamp("last_researched_at", { withTimezone: true }),
+  // Provenance of the discovery run that created this prospect: "demo" when
+  // no live search/reader/AI provider was connected at discovery time,
+  // "connected" once a live provider chain produced it. Never fabricated --
+  // mirrors the DataStatus convention used for KPIs (see kpi-honesty memory).
+  discoverySourceStatus: text("discovery_source_status", { enum: ["demo", "connected"] }).notNull().default("demo"),
+  // The literal spec-section-10 rule that produced this prospect's priority
+  // at discovery time (e.g. "3 of 5 checks passed..."). Stored rather than
+  // re-derived, since re-deriving would need the originating scan config's
+  // min_checks_required and prospects don't carry a scan-config link.
+  priorityRationale: text("priority_rationale"),
   pipelineSourced: numeric("pipeline_sourced"),
   pipelineInfluenced: numeric("pipeline_influenced"),
   revenueClosed: numeric("revenue_closed"),

@@ -116,6 +116,16 @@ export const ProspectStatus = {
   pushed_to_hubspot: 'pushed_to_hubspot',
 } as const;
 
+export type ProspectNextAction = typeof ProspectNextAction[keyof typeof ProspectNextAction];
+
+
+export const ProspectNextAction = {
+  review: 'review',
+  refresh_evidence: 'refresh_evidence',
+  send_to_hubspot: 'send_to_hubspot',
+  none: 'none',
+} as const;
+
 export interface Prospect {
   id: string;
   company: Company;
@@ -130,6 +140,11 @@ export interface Prospect {
   technology_adjacency: boolean;
   partnership_openness: boolean;
   recent_trigger: boolean;
+  /**
+     * The literal spec-section-10 rule that produced this prospect's priority at discovery time.
+     * @nullable
+     */
+  priority_rationale?: string | null;
   why_it_fits: string;
   why_now: string;
   /** @nullable */
@@ -148,6 +163,14 @@ export interface Prospect {
   /** @nullable */
   hubspot_company_id?: string | null;
   signal_count?: number;
+  /**
+     * Days since the most recent evidence or update on this prospect.
+     * @nullable
+     */
+  freshness_days?: number | null;
+  /** freshness_days exceeds the territory's scan config recency window. */
+  is_stale?: boolean;
+  next_action?: ProspectNextAction;
   created_at: string;
   /** @nullable */
   updated_at?: string | null;
@@ -209,6 +232,11 @@ export interface ProspectDetail {
   technology_adjacency: boolean;
   partnership_openness: boolean;
   recent_trigger: boolean;
+  /**
+     * The literal spec-section-10 rule that produced this prospect's priority at discovery time.
+     * @nullable
+     */
+  priority_rationale?: string | null;
   why_it_fits: string;
   why_now: string;
   /** @nullable */
@@ -226,6 +254,14 @@ export interface ProspectDetail {
   accepted_at?: string | null;
   /** @nullable */
   hubspot_company_id?: string | null;
+  /**
+     * Days since the most recent evidence or update on this prospect.
+     * @nullable
+     */
+  freshness_days?: number | null;
+  /** freshness_days exceeds the territory's scan config recency window. */
+  is_stale?: boolean;
+  next_action?: ProspectNextAction;
   signals: Signal[];
   activity: ActivityItem[];
   created_at: string;
@@ -268,6 +304,43 @@ export interface HubspotPushResult {
   message?: string | null;
 }
 
+export type ScanRunStatus = typeof ScanRunStatus[keyof typeof ScanRunStatus];
+
+
+export const ScanRunStatus = {
+  queued: 'queued',
+  running: 'running',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+/**
+ * Whether this scan ran against a live provider chain ("connected") or the deterministic fallback generator ("demo") -- never fabricated as connected.
+ */
+export type DiscoveryDataStatus = typeof DiscoveryDataStatus[keyof typeof DiscoveryDataStatus];
+
+
+export const DiscoveryDataStatus = {
+  demo: 'demo',
+  connected: 'connected',
+} as const;
+
+export interface ScanRun {
+  id: string;
+  scan_config_id: string;
+  /** @nullable */
+  territory_name?: string | null;
+  status: ScanRunStatus;
+  results_found: number;
+  results_qualified: number;
+  data_status: DiscoveryDataStatus;
+  /** @nullable */
+  error_message?: string | null;
+  started_at: string;
+  /** @nullable */
+  completed_at?: string | null;
+}
+
 export interface ScanConfig {
   id: string;
   territory_id: string;
@@ -283,6 +356,7 @@ export interface ScanConfig {
   min_checks_required?: number;
   recency_window_days?: number;
   active: boolean;
+  last_run?: ScanRun | null;
 }
 
 export interface ScanConfigInput {
@@ -387,6 +461,7 @@ export interface ScanRunResult {
   status: ScanRunResultStatus;
   results_found: number;
   results_qualified: number;
+  data_status: DiscoveryDataStatus;
   /** @nullable */
   message?: string | null;
 }
@@ -1128,6 +1203,30 @@ status?: string | null;
  * @nullable
  */
 search?: string | null;
+/**
+ * @nullable
+ */
+next_action?: string | null;
+/**
+ * Freshness is based on the territory scan config recency window.
+ * @nullable
+ */
+freshness?: ListProspectsFreshness;
+};
+
+export type ListProspectsFreshness = typeof ListProspectsFreshness[keyof typeof ListProspectsFreshness] | null;
+
+
+export const ListProspectsFreshness = {
+  fresh: 'fresh',
+  stale: 'stale',
+} as const;
+
+export type ListScanRunsParams = {
+/**
+ * @nullable
+ */
+scan_config_id?: string | null;
 };
 
 export type GetHeadOfChannelsKpisParams = {

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Company } from './company';
+import type { ProspectNextAction } from './prospectNextAction';
 import type { ProspectPriority } from './prospectPriority';
 import type { ProspectStatus } from './prospectStatus';
 import type { User } from './user';
@@ -24,6 +25,11 @@ export interface Prospect {
   technology_adjacency: boolean;
   partnership_openness: boolean;
   recent_trigger: boolean;
+  /**
+     * The literal spec-section-10 rule that produced this prospect's priority at discovery time.
+     * @nullable
+     */
+  priority_rationale?: string | null;
   why_it_fits: string;
   why_now: string;
   /** @nullable */
@@ -42,6 +48,14 @@ export interface Prospect {
   /** @nullable */
   hubspot_company_id?: string | null;
   signal_count?: number;
+  /**
+     * Days since the most recent evidence or update on this prospect.
+     * @nullable
+     */
+  freshness_days?: number | null;
+  /** freshness_days exceeds the territory's scan config recency window. */
+  is_stale?: boolean;
+  next_action?: ProspectNextAction;
   created_at: string;
   /** @nullable */
   updated_at?: string | null;
