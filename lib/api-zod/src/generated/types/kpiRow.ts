@@ -11,8 +11,11 @@ import type { KpiRowStatus } from './kpiRowStatus';
 export interface KpiRow {
   metric_key: string;
   metric: string;
-  current: number;
-  target: number;
+  /** @nullable */
+  current: number | null;
+  /** @nullable */
+  target: number | null;
+  /** @nullable */
   status: KpiRowStatus;
   /** @nullable */
   what_changed?: string | null;

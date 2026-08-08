@@ -8,6 +8,7 @@ export * from "./scan_configs";
 export * from "./scan_runs";
 export * from "./campaigns";
 export * from "./kpi_snapshots";
+export * from "./fx_snapshots";
 export * from "./partner_research_items";
 export * from "./rfps";
 export * from "./partner_events";

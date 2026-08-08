@@ -507,18 +507,21 @@ export const RunScanResponse = zod.object({
 /**
  * @summary Get KPI tables for the Head of Channels view
  */
+export const getHeadOfChannelsKpisQueryCurrencyDefault = `USD`;
+
 export const GetHeadOfChannelsKpisQueryParams = zod.object({
   "territory": zod.coerce.string().nullish(),
-  "period": zod.coerce.string().nullish()
+  "period": zod.coerce.string().nullish(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']).default(getHeadOfChannelsKpisQueryCurrencyDefault)
 })
 
 export const GetHeadOfChannelsKpisResponse = zod.object({
   "partner_development": zod.array(zod.object({
   "metric_key": zod.string(),
   "metric": zod.string(),
-  "current": zod.number(),
-  "target": zod.number(),
-  "status": zod.enum(['green', 'amber', 'red', 'on_track']),
+  "current": zod.number().nullable(),
+  "target": zod.number().nullable(),
+  "status": zod.union([zod.literal('green'),zod.literal('amber'),zod.literal('red'),zod.literal('on_track'),zod.literal(null)]).nullable(),
   "what_changed": zod.string().nullish(),
   "explanation": zod.string().nullish(),
   "data_source": zod.string().nullish(),
@@ -528,10 +531,10 @@ export const GetHeadOfChannelsKpisResponse = zod.object({
   "weekly_commercial": zod.array(zod.object({
   "metric_key": zod.string(),
   "metric": zod.string(),
-  "current": zod.number(),
-  "last_week": zod.number(),
-  "target": zod.number(),
-  "trend": zod.enum(['up', 'down', 'flat']),
+  "current": zod.number().nullable(),
+  "last_week": zod.number().nullable(),
+  "target": zod.number().nullable(),
+  "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullable(),
   "explanation": zod.string().nullish(),
   "data_source": zod.string().nullish(),
   "last_updated": zod.string().nullish(),
@@ -540,9 +543,9 @@ export const GetHeadOfChannelsKpisResponse = zod.object({
   "weekly_marketing": zod.array(zod.object({
   "metric_key": zod.string(),
   "metric": zod.string(),
-  "this_week": zod.number(),
+  "this_week": zod.number().nullable(),
   "last_week": zod.number().nullish(),
-  "trend": zod.enum(['up', 'down', 'flat']),
+  "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullable(),
   "explanation": zod.string().nullish(),
   "data_source": zod.string().nullish(),
   "last_updated": zod.string().nullish(),
@@ -550,17 +553,27 @@ export const GetHeadOfChannelsKpisResponse = zod.object({
 })),
   "period": zod.string(),
   "territory": zod.string(),
-  "updated_at": zod.string()
+  "updated_at": zod.string(),
+  "fx": zod.object({
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "usd_to_currency_rate": zod.number(),
+  "as_of": zod.string().nullable(),
+  "source": zod.string().nullable(),
+  "stale": zod.boolean()
+})
 })
 
 
 /**
  * @summary Get the drill-down detail for a single KPI, using the same source/period/territory as its row
  */
+export const getKpiDetailsQueryCurrencyDefault = `USD`;
+
 export const GetKpiDetailsQueryParams = zod.object({
   "metric_key": zod.coerce.string(),
   "territory": zod.coerce.string().nullish(),
-  "period": zod.coerce.string().nullish()
+  "period": zod.coerce.string().nullish(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']).default(getKpiDetailsQueryCurrencyDefault)
 })
 
 export const GetKpiDetailsResponse = zod.object({
@@ -589,7 +602,25 @@ export const GetKpiDetailsResponse = zod.object({
   "date": zod.string().nullish()
 })),
   "reconciles": zod.boolean(),
-  "reconciliation_note": zod.string().nullish()
+  "reconciliation_note": zod.string().nullish(),
+  "target_to_date": zod.number().nullable(),
+  "full_period_target": zod.number().nullable(),
+  "full_period_target_label": zod.enum(['Full-quarter target', 'Full-year target']),
+  "variance": zod.number().nullable(),
+  "pam_contribution": zod.array(zod.object({
+  "pam_user_id": zod.string().nullable(),
+  "pam_name": zod.string().nullable(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "value": zod.number()
+})),
+  "fx": zod.object({
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "usd_to_currency_rate": zod.number(),
+  "as_of": zod.string().nullable(),
+  "source": zod.string().nullable(),
+  "stale": zod.boolean()
+})
 })
 
 
@@ -744,7 +775,25 @@ export const PreviewMetricMappingResponse = zod.object({
   "date": zod.string().nullish()
 })),
   "reconciles": zod.boolean(),
-  "reconciliation_note": zod.string().nullish()
+  "reconciliation_note": zod.string().nullish(),
+  "target_to_date": zod.number().nullable(),
+  "full_period_target": zod.number().nullable(),
+  "full_period_target_label": zod.enum(['Full-quarter target', 'Full-year target']),
+  "variance": zod.number().nullable(),
+  "pam_contribution": zod.array(zod.object({
+  "pam_user_id": zod.string().nullable(),
+  "pam_name": zod.string().nullable(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "value": zod.number()
+})),
+  "fx": zod.object({
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "usd_to_currency_rate": zod.number(),
+  "as_of": zod.string().nullable(),
+  "source": zod.string().nullable(),
+  "stale": zod.boolean()
+})
 })
 
 
@@ -797,9 +846,12 @@ export const UpsertManualMetricValueResponse = zod.object({
 /**
  * @summary Export the quarterly Head of Channels report as a PowerPoint deck
  */
+export const exportQuarterlyPptxQueryCurrencyDefault = `USD`;
+
 export const ExportQuarterlyPptxQueryParams = zod.object({
   "territory": zod.coerce.string().nullish(),
-  "period": zod.coerce.string().nullish()
+  "period": zod.coerce.string().nullish(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']).default(exportQuarterlyPptxQueryCurrencyDefault)
 })
 
 export const ExportQuarterlyPptxResponse = zod.unknown()

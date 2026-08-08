@@ -5,6 +5,7 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { GetHeadOfChannelsKpisCurrency } from './getHeadOfChannelsKpisCurrency';
 
 export type GetHeadOfChannelsKpisParams = {
 /**
@@ -15,4 +16,5 @@ territory?: string | null;
  * @nullable
  */
 period?: string | null;
+currency?: GetHeadOfChannelsKpisCurrency;
 };

@@ -391,7 +391,10 @@ export interface ScanRunResult {
   message?: string | null;
 }
 
-export type KpiRowStatus = typeof KpiRowStatus[keyof typeof KpiRowStatus];
+/**
+ * @nullable
+ */
+export type KpiRowStatus = typeof KpiRowStatus[keyof typeof KpiRowStatus] | null;
 
 
 export const KpiRowStatus = {
@@ -414,8 +417,11 @@ export const DataStatus = {
 export interface KpiRow {
   metric_key: string;
   metric: string;
-  current: number;
-  target: number;
+  /** @nullable */
+  current: number | null;
+  /** @nullable */
+  target: number | null;
+  /** @nullable */
   status: KpiRowStatus;
   /** @nullable */
   what_changed?: string | null;
@@ -428,7 +434,10 @@ export interface KpiRow {
   data_status: DataStatus;
 }
 
-export type WeeklyKpiRowTrend = typeof WeeklyKpiRowTrend[keyof typeof WeeklyKpiRowTrend];
+/**
+ * @nullable
+ */
+export type WeeklyKpiRowTrend = typeof WeeklyKpiRowTrend[keyof typeof WeeklyKpiRowTrend] | null;
 
 
 export const WeeklyKpiRowTrend = {
@@ -440,9 +449,13 @@ export const WeeklyKpiRowTrend = {
 export interface WeeklyKpiRow {
   metric_key: string;
   metric: string;
-  current: number;
-  last_week: number;
-  target: number;
+  /** @nullable */
+  current: number | null;
+  /** @nullable */
+  last_week: number | null;
+  /** @nullable */
+  target: number | null;
+  /** @nullable */
   trend: WeeklyKpiRowTrend;
   /** @nullable */
   explanation?: string | null;
@@ -453,7 +466,10 @@ export interface WeeklyKpiRow {
   data_status: DataStatus;
 }
 
-export type MarketingKpiRowTrend = typeof MarketingKpiRowTrend[keyof typeof MarketingKpiRowTrend];
+/**
+ * @nullable
+ */
+export type MarketingKpiRowTrend = typeof MarketingKpiRowTrend[keyof typeof MarketingKpiRowTrend] | null;
 
 
 export const MarketingKpiRowTrend = {
@@ -465,9 +481,11 @@ export const MarketingKpiRowTrend = {
 export interface MarketingKpiRow {
   metric_key: string;
   metric: string;
-  this_week: number;
+  /** @nullable */
+  this_week: number | null;
   /** @nullable */
   last_week?: number | null;
+  /** @nullable */
   trend: MarketingKpiRowTrend;
   /** @nullable */
   explanation?: string | null;
@@ -478,6 +496,25 @@ export interface MarketingKpiRow {
   data_status: DataStatus;
 }
 
+export type FxInfoCurrency = typeof FxInfoCurrency[keyof typeof FxInfoCurrency];
+
+
+export const FxInfoCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
+export interface FxInfo {
+  currency: FxInfoCurrency;
+  usd_to_currency_rate: number;
+  /** @nullable */
+  as_of: string | null;
+  /** @nullable */
+  source: string | null;
+  stale: boolean;
+}
+
 export interface HeadOfChannelsKpis {
   partner_development: KpiRow[];
   weekly_commercial: WeeklyKpiRow[];
@@ -485,6 +522,7 @@ export interface HeadOfChannelsKpis {
   period: string;
   territory: string;
   updated_at: string;
+  fx: FxInfo;
 }
 
 export type SourceType = typeof SourceType[keyof typeof SourceType];
@@ -512,6 +550,16 @@ export const MappingStatus = {
 export interface TerritoryContribution {
   /** @nullable */
   territory_id: string | null;
+  territory_name: string;
+  value: number;
+}
+
+export interface PamContribution {
+  /** @nullable */
+  pam_user_id: string | null;
+  /** @nullable */
+  pam_name: string | null;
+  territory_id: string;
   territory_name: string;
   value: number;
 }
@@ -548,6 +596,14 @@ export const KpiDetailStatus = {
   on_track: 'on_track',
 } as const;
 
+export type KpiDetailFullPeriodTargetLabel = typeof KpiDetailFullPeriodTargetLabel[keyof typeof KpiDetailFullPeriodTargetLabel];
+
+
+export const KpiDetailFullPeriodTargetLabel = {
+  'Full-quarter_target': 'Full-quarter target',
+  'Full-year_target': 'Full-year target',
+} as const;
+
 export interface KpiDetail {
   metric_key: string;
   metric: string;
@@ -577,6 +633,15 @@ export interface KpiDetail {
   reconciles: boolean;
   /** @nullable */
   reconciliation_note?: string | null;
+  /** @nullable */
+  target_to_date: number | null;
+  /** @nullable */
+  full_period_target: number | null;
+  full_period_target_label: KpiDetailFullPeriodTargetLabel;
+  /** @nullable */
+  variance: number | null;
+  pam_contribution: PamContribution[];
+  fx: FxInfo;
 }
 
 export interface LoginInput {
@@ -1074,7 +1139,17 @@ territory?: string | null;
  * @nullable
  */
 period?: string | null;
+currency?: GetHeadOfChannelsKpisCurrency;
 };
+
+export type GetHeadOfChannelsKpisCurrency = typeof GetHeadOfChannelsKpisCurrency[keyof typeof GetHeadOfChannelsKpisCurrency];
+
+
+export const GetHeadOfChannelsKpisCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
 
 export type GetKpiDetailsParams = {
 metric_key: string;
@@ -1086,7 +1161,17 @@ territory?: string | null;
  * @nullable
  */
 period?: string | null;
+currency?: GetKpiDetailsCurrency;
 };
+
+export type GetKpiDetailsCurrency = typeof GetKpiDetailsCurrency[keyof typeof GetKpiDetailsCurrency];
+
+
+export const GetKpiDetailsCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
 
 export type ListManualMetricValuesParams = {
 /**
@@ -1104,7 +1189,17 @@ territory?: string | null;
  * @nullable
  */
 period?: string | null;
+currency?: ExportQuarterlyPptxCurrency;
 };
+
+export type ExportQuarterlyPptxCurrency = typeof ExportQuarterlyPptxCurrency[keyof typeof ExportQuarterlyPptxCurrency];
+
+
+export const ExportQuarterlyPptxCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
 
 export type ListPartnersParams = {
 /**

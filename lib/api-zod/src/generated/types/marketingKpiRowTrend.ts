@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type MarketingKpiRowTrend = typeof MarketingKpiRowTrend[keyof typeof MarketingKpiRowTrend];
+/**
+ * @nullable
+ */
+export type MarketingKpiRowTrend = typeof MarketingKpiRowTrend[keyof typeof MarketingKpiRowTrend] | null;
 
 
 export const MarketingKpiRowTrend = {

@@ -6,9 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DataStatus } from './dataStatus';
+import type { FxInfo } from './fxInfo';
+import type { KpiDetailFullPeriodTargetLabel } from './kpiDetailFullPeriodTargetLabel';
 import type { KpiDetailRecord } from './kpiDetailRecord';
 import type { KpiDetailStatus } from './kpiDetailStatus';
 import type { KpiDetailTrend } from './kpiDetailTrend';
+import type { PamContribution } from './pamContribution';
 import type { TerritoryContribution } from './territoryContribution';
 
 export interface KpiDetail {
@@ -40,4 +43,13 @@ export interface KpiDetail {
   reconciles: boolean;
   /** @nullable */
   reconciliation_note?: string | null;
+  /** @nullable */
+  target_to_date: number | null;
+  /** @nullable */
+  full_period_target: number | null;
+  full_period_target_label: KpiDetailFullPeriodTargetLabel;
+  /** @nullable */
+  variance: number | null;
+  pam_contribution: PamContribution[];
+  fx: FxInfo;
 }

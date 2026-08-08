@@ -5,6 +5,7 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { FxInfo } from './fxInfo';
 import type { KpiRow } from './kpiRow';
 import type { MarketingKpiRow } from './marketingKpiRow';
 import type { WeeklyKpiRow } from './weeklyKpiRow';
@@ -16,4 +17,5 @@ export interface HeadOfChannelsKpis {
   period: string;
   territory: string;
   updated_at: string;
+  fx: FxInfo;
 }

@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type KpiRowStatus = typeof KpiRowStatus[keyof typeof KpiRowStatus];
+/**
+ * @nullable
+ */
+export type KpiRowStatus = typeof KpiRowStatus[keyof typeof KpiRowStatus] | null;
 
 
 export const KpiRowStatus = {

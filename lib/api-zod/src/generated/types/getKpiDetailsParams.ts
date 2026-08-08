@@ -5,6 +5,7 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { GetKpiDetailsCurrency } from './getKpiDetailsCurrency';
 
 export type GetKpiDetailsParams = {
 metric_key: string;
@@ -16,4 +17,5 @@ territory?: string | null;
  * @nullable
  */
 period?: string | null;
+currency?: GetKpiDetailsCurrency;
 };
