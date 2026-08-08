@@ -16,13 +16,13 @@ export interface MetricDefinition {
 
 export const METRIC_REGISTRY: MetricDefinition[] = [
   { key: "new_partner_prospects", label: "New Partner Prospects", views: ["partner_development"], defaultSourceType: "PARTNER_RADAR" },
-  { key: "signed_partners", label: "Signed Partners", views: ["partner_development"], defaultSourceType: "DEMO" },
+  { key: "signed_partners", label: "Signed Partners", views: ["partner_development"], defaultSourceType: "PARTNER_RADAR" },
   { key: "active_onboarding", label: "Active Onboarding", views: ["partner_development"], defaultSourceType: "DEMO" },
   { key: "certified_partners", label: "Certified Partners", views: ["partner_development"], defaultSourceType: "DEMO" },
-  { key: "partner_sourced_pipeline", label: "Partner-Sourced Pipeline", views: ["partner_development", "weekly_commercial"], defaultSourceType: "DEMO" },
-  { key: "partner_influenced_pipeline", label: "Partner-Influenced Pipeline", views: ["partner_development"], defaultSourceType: "DEMO" },
-  { key: "closed_revenue", label: "Closed Revenue", views: ["partner_development", "weekly_commercial"], defaultSourceType: "DEMO" },
-  { key: "renewals", label: "Renewals", views: ["partner_development"], defaultSourceType: "DEMO" },
+  { key: "partner_sourced_pipeline", label: "Partner-Sourced Pipeline", views: ["partner_development", "weekly_commercial"], defaultSourceType: "PARTNER_RADAR" },
+  { key: "partner_influenced_pipeline", label: "Partner-Influenced Pipeline", views: ["partner_development"], defaultSourceType: "PARTNER_RADAR" },
+  { key: "closed_revenue", label: "Closed Revenue", views: ["partner_development", "weekly_commercial"], defaultSourceType: "PARTNER_RADAR" },
+  { key: "renewals", label: "Renewals", views: ["partner_development"], defaultSourceType: "PARTNER_RADAR" },
   { key: "opportunities_created", label: "Opportunities Created", views: ["weekly_commercial"], defaultSourceType: "DEMO" },
   { key: "renewals_due", label: "Renewals Due", views: ["weekly_commercial"], defaultSourceType: "DEMO" },
   { key: "renewals_closed", label: "Renewals Closed", views: ["weekly_commercial"], defaultSourceType: "DEMO" },
@@ -34,6 +34,16 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
 ];
 
 export const METRIC_BY_KEY = new Map(METRIC_REGISTRY.map((m) => [m.key, m]));
+
+// Metrics whose current/target/last_week values are USD-denominated money,
+// as opposed to a plain count (signed_partners, renewals, everything else).
+// Only these get currency-converted for display; a count must never be
+// multiplied by an FX rate.
+const MONEY_METRIC_KEYS = new Set(["partner_sourced_pipeline", "partner_influenced_pipeline", "closed_revenue"]);
+
+export function isMoneyMetric(metricKey: string): boolean {
+  return MONEY_METRIC_KEYS.has(metricKey);
+}
 
 export const PERIODS: Record<string, { start: string; end: string; label: string }> = {
   q1: { start: "2026-01-01", end: "2026-03-31", label: "Q1 2026" },

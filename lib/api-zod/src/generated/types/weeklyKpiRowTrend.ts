@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type WeeklyKpiRowTrend = typeof WeeklyKpiRowTrend[keyof typeof WeeklyKpiRowTrend];
+/**
+ * @nullable
+ */
+export type WeeklyKpiRowTrend = typeof WeeklyKpiRowTrend[keyof typeof WeeklyKpiRowTrend] | null;
 
 
 export const WeeklyKpiRowTrend = {

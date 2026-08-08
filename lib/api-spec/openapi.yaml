@@ -402,6 +402,12 @@ paths:
           in: query
           schema:
             type: ["string", "null"]
+        - name: currency
+          in: query
+          schema:
+            type: string
+            enum: [USD, EUR, GBP]
+            default: USD
       responses:
         "200":
           description: KPI data for the three tables
@@ -429,6 +435,12 @@ paths:
           in: query
           schema:
             type: ["string", "null"]
+        - name: currency
+          in: query
+          schema:
+            type: string
+            enum: [USD, EUR, GBP]
+            default: USD
       responses:
         "200":
           description: KPI drill-down detail
@@ -620,6 +632,12 @@ paths:
           in: query
           schema:
             type: ["string", "null"]
+        - name: currency
+          in: query
+          schema:
+            type: string
+            enum: [USD, EUR, GBP]
+            default: USD
       responses:
         "200":
           description: PowerPoint file
@@ -1320,12 +1338,12 @@ components:
         metric:
           type: string
         current:
-          type: number
+          type: ["number", "null"]
         target:
-          type: number
+          type: ["number", "null"]
         status:
-          type: string
-          enum: [green, amber, red, on_track]
+          type: ["string", "null"]
+          enum: [green, amber, red, on_track, null]
         what_changed:
           type: ["string", "null"]
         explanation:
@@ -1346,14 +1364,14 @@ components:
         metric:
           type: string
         current:
-          type: number
+          type: ["number", "null"]
         last_week:
-          type: number
+          type: ["number", "null"]
         target:
-          type: number
+          type: ["number", "null"]
         trend:
-          type: string
-          enum: [up, down, flat]
+          type: ["string", "null"]
+          enum: [up, down, flat, null]
         explanation:
           type: ["string", "null"]
         data_source:
@@ -1372,12 +1390,12 @@ components:
         metric:
           type: string
         this_week:
-          type: number
+          type: ["number", "null"]
         last_week:
           type: ["number", "null"]
         trend:
-          type: string
-          enum: [up, down, flat]
+          type: ["string", "null"]
+          enum: [up, down, flat, null]
         explanation:
           type: ["string", "null"]
         data_source:
@@ -1389,7 +1407,7 @@ components:
 
     HeadOfChannelsKpis:
       type: object
-      required: [partner_development, weekly_commercial, weekly_marketing, period, territory, updated_at]
+      required: [partner_development, weekly_commercial, weekly_marketing, period, territory, updated_at, fx]
       properties:
         partner_development:
           type: array
@@ -1409,6 +1427,8 @@ components:
           type: string
         updated_at:
           type: string
+        fx:
+          $ref: "#/components/schemas/FxInfo"
 
     DataStatus:
       type: string
@@ -1433,6 +1453,37 @@ components:
         value:
           type: number
 
+    PamContribution:
+      type: object
+      required: [pam_user_id, pam_name, territory_id, territory_name, value]
+      properties:
+        pam_user_id:
+          type: ["string", "null"]
+        pam_name:
+          type: ["string", "null"]
+        territory_id:
+          type: string
+        territory_name:
+          type: string
+        value:
+          type: number
+
+    FxInfo:
+      type: object
+      required: [currency, usd_to_currency_rate, as_of, source, stale]
+      properties:
+        currency:
+          type: string
+          enum: [USD, EUR, GBP]
+        usd_to_currency_rate:
+          type: number
+        as_of:
+          type: ["string", "null"]
+        source:
+          type: ["string", "null"]
+        stale:
+          type: boolean
+
     KpiDetailRecord:
       type: object
       required: [label, value]
@@ -1446,7 +1497,7 @@ components:
 
     KpiDetail:
       type: object
-      required: [metric_key, metric, period, territory, data_status, by_territory, records, reconciles]
+      required: [metric_key, metric, period, territory, data_status, by_territory, records, reconciles, target_to_date, full_period_target, full_period_target_label, variance, pam_contribution, fx]
       properties:
         metric_key:
           type: string
@@ -1490,6 +1541,21 @@ components:
           type: boolean
         reconciliation_note:
           type: ["string", "null"]
+        target_to_date:
+          type: ["number", "null"]
+        full_period_target:
+          type: ["number", "null"]
+        full_period_target_label:
+          type: string
+          enum: ["Full-quarter target", "Full-year target"]
+        variance:
+          type: ["number", "null"]
+        pam_contribution:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamContribution"
+        fx:
+          $ref: "#/components/schemas/FxInfo"
 
     LoginInput:
       type: object

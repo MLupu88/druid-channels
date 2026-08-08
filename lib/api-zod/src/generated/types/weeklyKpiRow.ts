@@ -11,9 +11,13 @@ import type { WeeklyKpiRowTrend } from './weeklyKpiRowTrend';
 export interface WeeklyKpiRow {
   metric_key: string;
   metric: string;
-  current: number;
-  last_week: number;
-  target: number;
+  /** @nullable */
+  current: number | null;
+  /** @nullable */
+  last_week: number | null;
+  /** @nullable */
+  target: number | null;
+  /** @nullable */
   trend: WeeklyKpiRowTrend;
   /** @nullable */
   explanation?: string | null;
