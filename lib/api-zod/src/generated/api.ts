@@ -121,7 +121,9 @@ export const ListProspectsQueryParams = zod.object({
   "partner_type": zod.coerce.string().nullish(),
   "signal_type": zod.coerce.string().nullish(),
   "status": zod.coerce.string().nullish(),
-  "search": zod.coerce.string().nullish()
+  "search": zod.coerce.string().nullish(),
+  "next_action": zod.coerce.string().nullish(),
+  "freshness": zod.union([zod.literal('fresh'),zod.literal('stale'),zod.literal(null)]).nullish().describe('Freshness is based on the territory scan config recency window.')
 })
 
 export const ListProspectsResponseItem = zod.object({
@@ -156,6 +158,7 @@ export const ListProspectsResponseItem = zod.object({
   "technology_adjacency": zod.boolean(),
   "partnership_openness": zod.boolean(),
   "recent_trigger": zod.boolean(),
+  "priority_rationale": zod.string().nullish().describe('The literal spec-section-10 rule that produced this prospect\'s priority at discovery time.'),
   "why_it_fits": zod.string(),
   "why_now": zod.string(),
   "suggested_angle": zod.string().nullish(),
@@ -167,6 +170,9 @@ export const ListProspectsResponseItem = zod.object({
   "accepted_at": zod.string().nullish(),
   "hubspot_company_id": zod.string().nullish(),
   "signal_count": zod.number().optional(),
+  "freshness_days": zod.number().nullish().describe('Days since the most recent evidence or update on this prospect.'),
+  "is_stale": zod.boolean().optional().describe('freshness_days exceeds the territory\'s scan config recency window.'),
+  "next_action": zod.enum(['review', 'refresh_evidence', 'send_to_hubspot', 'none']).optional(),
   "created_at": zod.string(),
   "updated_at": zod.string().nullish()
 })
@@ -212,6 +218,7 @@ export const GetProspectResponse = zod.object({
   "technology_adjacency": zod.boolean(),
   "partnership_openness": zod.boolean(),
   "recent_trigger": zod.boolean(),
+  "priority_rationale": zod.string().nullish().describe('The literal spec-section-10 rule that produced this prospect\'s priority at discovery time.'),
   "why_it_fits": zod.string(),
   "why_now": zod.string(),
   "suggested_angle": zod.string().nullish(),
@@ -222,6 +229,9 @@ export const GetProspectResponse = zod.object({
   "pam_note": zod.string().nullish(),
   "accepted_at": zod.string().nullish(),
   "hubspot_company_id": zod.string().nullish(),
+  "freshness_days": zod.number().nullish().describe('Days since the most recent evidence or update on this prospect.'),
+  "is_stale": zod.boolean().optional().describe('freshness_days exceeds the territory\'s scan config recency window.'),
+  "next_action": zod.enum(['review', 'refresh_evidence', 'send_to_hubspot', 'none']).optional(),
   "signals": zod.array(zod.object({
   "id": zod.string(),
   "company_id": zod.string(),
@@ -297,6 +307,7 @@ export const UpdateProspectResponse = zod.object({
   "technology_adjacency": zod.boolean(),
   "partnership_openness": zod.boolean(),
   "recent_trigger": zod.boolean(),
+  "priority_rationale": zod.string().nullish().describe('The literal spec-section-10 rule that produced this prospect\'s priority at discovery time.'),
   "why_it_fits": zod.string(),
   "why_now": zod.string(),
   "suggested_angle": zod.string().nullish(),
@@ -308,6 +319,9 @@ export const UpdateProspectResponse = zod.object({
   "accepted_at": zod.string().nullish(),
   "hubspot_company_id": zod.string().nullish(),
   "signal_count": zod.number().optional(),
+  "freshness_days": zod.number().nullish().describe('Days since the most recent evidence or update on this prospect.'),
+  "is_stale": zod.boolean().optional().describe('freshness_days exceeds the territory\'s scan config recency window.'),
+  "next_action": zod.enum(['review', 'refresh_evidence', 'send_to_hubspot', 'none']).optional(),
   "created_at": zod.string(),
   "updated_at": zod.string().nullish()
 })
@@ -372,6 +386,7 @@ export const MakeProspectDecisionResponse = zod.object({
   "technology_adjacency": zod.boolean(),
   "partnership_openness": zod.boolean(),
   "recent_trigger": zod.boolean(),
+  "priority_rationale": zod.string().nullish().describe('The literal spec-section-10 rule that produced this prospect\'s priority at discovery time.'),
   "why_it_fits": zod.string(),
   "why_now": zod.string(),
   "suggested_angle": zod.string().nullish(),
@@ -383,6 +398,9 @@ export const MakeProspectDecisionResponse = zod.object({
   "accepted_at": zod.string().nullish(),
   "hubspot_company_id": zod.string().nullish(),
   "signal_count": zod.number().optional(),
+  "freshness_days": zod.number().nullish().describe('Days since the most recent evidence or update on this prospect.'),
+  "is_stale": zod.boolean().optional().describe('freshness_days exceeds the territory\'s scan config recency window.'),
+  "next_action": zod.enum(['review', 'refresh_evidence', 'send_to_hubspot', 'none']).optional(),
   "created_at": zod.string(),
   "updated_at": zod.string().nullish()
 })
@@ -419,7 +437,19 @@ export const ListScanConfigsResponseItem = zod.object({
   "max_results": zod.number(),
   "min_checks_required": zod.number().optional(),
   "recency_window_days": zod.number().optional(),
-  "active": zod.boolean()
+  "active": zod.boolean(),
+  "last_run": zod.union([zod.object({
+  "id": zod.string(),
+  "scan_config_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "results_found": zod.number(),
+  "results_qualified": zod.number(),
+  "data_status": zod.enum(['demo', 'connected']).describe('Whether this scan ran against a live provider chain (\"connected\") or the deterministic fallback generator (\"demo\") -- never fabricated as connected.'),
+  "error_message": zod.string().nullish(),
+  "started_at": zod.string(),
+  "completed_at": zod.string().nullish()
+}),zod.null()]).optional()
 })
 export const ListScanConfigsResponse = zod.array(ListScanConfigsResponseItem)
 
@@ -445,7 +475,19 @@ export const GetScanConfigResponse = zod.object({
   "max_results": zod.number(),
   "min_checks_required": zod.number().optional(),
   "recency_window_days": zod.number().optional(),
-  "active": zod.boolean()
+  "active": zod.boolean(),
+  "last_run": zod.union([zod.object({
+  "id": zod.string(),
+  "scan_config_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "results_found": zod.number(),
+  "results_qualified": zod.number(),
+  "data_status": zod.enum(['demo', 'connected']).describe('Whether this scan ran against a live provider chain (\"connected\") or the deterministic fallback generator (\"demo\") -- never fabricated as connected.'),
+  "error_message": zod.string().nullish(),
+  "started_at": zod.string(),
+  "completed_at": zod.string().nullish()
+}),zod.null()]).optional()
 })
 
 
@@ -483,12 +525,24 @@ export const UpdateScanConfigResponse = zod.object({
   "max_results": zod.number(),
   "min_checks_required": zod.number().optional(),
   "recency_window_days": zod.number().optional(),
-  "active": zod.boolean()
+  "active": zod.boolean(),
+  "last_run": zod.union([zod.object({
+  "id": zod.string(),
+  "scan_config_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "results_found": zod.number(),
+  "results_qualified": zod.number(),
+  "data_status": zod.enum(['demo', 'connected']).describe('Whether this scan ran against a live provider chain (\"connected\") or the deterministic fallback generator (\"demo\") -- never fabricated as connected.'),
+  "error_message": zod.string().nullish(),
+  "started_at": zod.string(),
+  "completed_at": zod.string().nullish()
+}),zod.null()]).optional()
 })
 
 
 /**
- * @summary Run a scan (mock mode)
+ * @summary Run a discovery scan for a territory's scan config. Uses a live provider chain when web search/reader/AI connections are all configured, otherwise falls back to the deterministic demo generator (never fabricated as connected).
  */
 export const RunScanBody = zod.object({
   "scan_config_id": zod.string(),
@@ -500,8 +554,31 @@ export const RunScanResponse = zod.object({
   "status": zod.enum(['completed', 'failed', 'running']),
   "results_found": zod.number(),
   "results_qualified": zod.number(),
+  "data_status": zod.enum(['demo', 'connected']).describe('Whether this scan ran against a live provider chain (\"connected\") or the deterministic fallback generator (\"demo\") -- never fabricated as connected.'),
   "message": zod.string().nullish()
 })
+
+
+/**
+ * @summary List scan run history, optionally filtered by scan config, most recent first
+ */
+export const ListScanRunsQueryParams = zod.object({
+  "scan_config_id": zod.coerce.string().nullish()
+})
+
+export const ListScanRunsResponseItem = zod.object({
+  "id": zod.string(),
+  "scan_config_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "results_found": zod.number(),
+  "results_qualified": zod.number(),
+  "data_status": zod.enum(['demo', 'connected']).describe('Whether this scan ran against a live provider chain (\"connected\") or the deterministic fallback generator (\"demo\") -- never fabricated as connected.'),
+  "error_message": zod.string().nullish(),
+  "started_at": zod.string(),
+  "completed_at": zod.string().nullish()
+})
+export const ListScanRunsResponse = zod.array(ListScanRunsResponseItem)
 
 
 /**

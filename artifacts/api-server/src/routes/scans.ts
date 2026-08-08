@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { scanRunsTable, scanConfigsTable } from "@workspace/db";
-import { RunScanBody, RunScanResponse } from "@workspace/api-zod";
-import { eq } from "drizzle-orm";
+import { scanConfigsTable, scanRunsTable, territoriesTable } from "@workspace/db";
+import { RunScanBody, RunScanResponse, ListScanRunsQueryParams, ListScanRunsResponse } from "@workspace/api-zod";
+import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
-import { assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
+import { assertRecordTerritoryAccess, ForbiddenScopeError, isGlobalUser, getOwnTerritory } from "../services/authz";
+import { runDiscoveryForConfig } from "../services/discoveryEngine";
 
 const router: IRouter = Router();
 
@@ -33,28 +34,65 @@ router.post("/scans/run", requireAuth, async (req, res): Promise<void> => {
     throw err;
   }
 
-  // In mock mode, simulate a completed scan
-  const resultsFound = Math.floor(15 + Math.random() * 20);
-  const resultsQualified = Math.floor(resultsFound * 0.35);
+  try {
+    const { run, prospectsCreated } = await runDiscoveryForConfig(scan_config_id);
+    res.json(RunScanResponse.parse({
+      scan_run_id: run.id,
+      status: run.status,
+      results_found: run.resultsFound,
+      results_qualified: run.resultsQualified,
+      data_status: run.dataStatus,
+      message:
+        run.dataStatus === "connected"
+          ? `Scan completed against live sources. Found ${run.resultsFound}, ${prospectsCreated} qualified for review.`
+          : `Scan completed using demo data (no live search/reader/AI connection configured). Found ${run.resultsFound}, ${prospectsCreated} qualified for review.`,
+    }));
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Scan failed" });
+  }
+});
 
-  const [run] = await db
-    .insert(scanRunsTable)
-    .values({
-      scanConfigId: scan_config_id,
-      status: "completed",
-      completedAt: new Date(),
-      resultsFound,
-      resultsQualified,
-    })
-    .returning();
+router.get("/scan-runs", requireAuth, async (req, res): Promise<void> => {
+  const parsedQuery = ListScanRunsQueryParams.safeParse(req.query);
+  if (!parsedQuery.success) {
+    res.status(400).json({ error: parsedQuery.error.message });
+    return;
+  }
+  const { scan_config_id } = parsedQuery.data;
 
-  res.json(RunScanResponse.parse({
-    scan_run_id: run.id,
-    status: "completed",
-    results_found: resultsFound,
-    results_qualified: resultsQualified,
-    message: `Mock scan completed. Found ${resultsFound} candidates, ${resultsQualified} qualified for review.`,
-  }));
+  const rows = await db
+    .select({ run: scanRunsTable, config: scanConfigsTable, territory: territoriesTable })
+    .from(scanRunsTable)
+    .innerJoin(scanConfigsTable, eq(scanRunsTable.scanConfigId, scanConfigsTable.id))
+    .leftJoin(territoriesTable, eq(scanConfigsTable.territoryId, territoriesTable.id))
+    .orderBy(desc(scanRunsTable.startedAt));
+
+  const actingUser = req.actingUser!;
+  let scoped = rows;
+  if (!isGlobalUser(actingUser)) {
+    const own = await getOwnTerritory(actingUser.id);
+    if (!own) {
+      res.status(403).json({ error: "Your account has no territory assigned. Contact an admin." });
+      return;
+    }
+    scoped = scoped.filter((r) => r.config.territoryId === own.territoryId);
+  }
+  if (scan_config_id) {
+    scoped = scoped.filter((r) => r.run.scanConfigId === scan_config_id);
+  }
+
+  res.json(ListScanRunsResponse.parse(scoped.map((r) => ({
+    id: r.run.id,
+    scan_config_id: r.run.scanConfigId,
+    territory_name: r.territory?.name ?? null,
+    status: r.run.status,
+    results_found: r.run.resultsFound,
+    results_qualified: r.run.resultsQualified,
+    data_status: r.run.dataStatus,
+    error_message: r.run.errorMessage,
+    started_at: r.run.startedAt.toISOString(),
+    completed_at: r.run.completedAt ? r.run.completedAt.toISOString() : null,
+  }))));
 });
 
 export default router;

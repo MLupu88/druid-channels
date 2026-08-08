@@ -183,6 +183,16 @@ paths:
           in: query
           schema:
             type: ["string", "null"]
+        - name: next_action
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: freshness
+          in: query
+          description: Freshness is based on the territory scan config recency window.
+          schema:
+            type: ["string", "null"]
+            enum: [fresh, stale, null]
       responses:
         "200":
           description: List of prospects
@@ -373,7 +383,7 @@ paths:
     post:
       operationId: runScan
       tags: [scan-runs]
-      summary: Run a scan (mock mode)
+      summary: Run a discovery scan for a territory's scan config. Uses a live provider chain when web search/reader/AI connections are all configured, otherwise falls back to the deterministic demo generator (never fabricated as connected).
       requestBody:
         required: true
         content:
@@ -387,6 +397,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScanRunResult"
+
+  /scan-runs:
+    get:
+      operationId: listScanRuns
+      tags: [scan-runs]
+      summary: List scan run history, optionally filtered by scan config, most recent first
+      parameters:
+        - name: scan_config_id
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Scan run history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScanRun"
 
   /kpis/head-of-channels:
     get:
@@ -1015,6 +1045,9 @@ components:
           type: boolean
         recent_trigger:
           type: boolean
+        priority_rationale:
+          type: ["string", "null"]
+          description: The literal spec-section-10 rule that produced this prospect's priority at discovery time.
         why_it_fits:
           type: string
         why_now:
@@ -1038,10 +1071,22 @@ components:
           type: ["string", "null"]
         signal_count:
           type: number
+        freshness_days:
+          type: ["number", "null"]
+          description: Days since the most recent evidence or update on this prospect.
+        is_stale:
+          type: boolean
+          description: freshness_days exceeds the territory's scan config recency window.
+        next_action:
+          $ref: "#/components/schemas/ProspectNextAction"
         created_at:
           type: string
         updated_at:
           type: ["string", "null"]
+
+    ProspectNextAction:
+      type: string
+      enum: [review, refresh_evidence, send_to_hubspot, none]
 
     ProspectDetail:
       type: object
@@ -1072,6 +1117,9 @@ components:
           type: boolean
         recent_trigger:
           type: boolean
+        priority_rationale:
+          type: ["string", "null"]
+          description: The literal spec-section-10 rule that produced this prospect's priority at discovery time.
         why_it_fits:
           type: string
         why_now:
@@ -1093,6 +1141,14 @@ components:
           type: ["string", "null"]
         hubspot_company_id:
           type: ["string", "null"]
+        freshness_days:
+          type: ["number", "null"]
+          description: Days since the most recent evidence or update on this prospect.
+        is_stale:
+          type: boolean
+          description: freshness_days exceeds the territory's scan config recency window.
+        next_action:
+          $ref: "#/components/schemas/ProspectNextAction"
         signals:
           type: array
           items:
@@ -1192,6 +1248,10 @@ components:
           type: number
         active:
           type: boolean
+        last_run:
+          anyOf:
+            - $ref: "#/components/schemas/ScanRun"
+            - type: "null"
 
     ScanConfigInput:
       type: object
@@ -1315,7 +1375,7 @@ components:
 
     ScanRunResult:
       type: object
-      required: [scan_run_id, status, results_found, results_qualified]
+      required: [scan_run_id, status, results_found, results_qualified, data_status]
       properties:
         scan_run_id:
           type: string
@@ -1326,7 +1386,40 @@ components:
           type: number
         results_qualified:
           type: number
+        data_status:
+          $ref: "#/components/schemas/DiscoveryDataStatus"
         message:
+          type: ["string", "null"]
+
+    DiscoveryDataStatus:
+      type: string
+      enum: [demo, connected]
+      description: Whether this scan ran against a live provider chain ("connected") or the deterministic fallback generator ("demo") -- never fabricated as connected.
+
+    ScanRun:
+      type: object
+      required: [id, scan_config_id, status, results_found, results_qualified, data_status, started_at]
+      properties:
+        id:
+          type: string
+        scan_config_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        results_found:
+          type: number
+        results_qualified:
+          type: number
+        data_status:
+          $ref: "#/components/schemas/DiscoveryDataStatus"
+        error_message:
+          type: ["string", "null"]
+        started_at:
+          type: string
+        completed_at:
           type: ["string", "null"]
 
     KpiRow:

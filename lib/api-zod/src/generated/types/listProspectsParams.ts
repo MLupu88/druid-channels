@@ -5,6 +5,7 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListProspectsFreshness } from './listProspectsFreshness';
 
 export type ListProspectsParams = {
 /**
@@ -35,4 +36,13 @@ status?: string | null;
  * @nullable
  */
 search?: string | null;
+/**
+ * @nullable
+ */
+next_action?: string | null;
+/**
+ * Freshness is based on the territory scan config recency window.
+ * @nullable
+ */
+freshness?: ListProspectsFreshness;
 };

@@ -12,7 +12,8 @@ import {
   useDeleteProspect,
   getListProspectsQueryKey,
   getGetProspectQueryKey,
-  getListUsersQueryKey
+  getListUsersQueryKey,
+  getListScanConfigsQueryKey
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
@@ -59,7 +60,8 @@ import {
   Send,
   Minus,
   Pencil,
-  Trash2
+  Trash2,
+  Sparkles
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -67,9 +69,36 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { format } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
-import type { ProspectDecisionInputDecision } from '@workspace/api-client-react';
+import type { ProspectDecisionInputDecision, ScanConfig, ProspectNextAction, ListProspectsFreshness } from '@workspace/api-client-react';
+
+// UI-only filter types: the generated API param types plus a local "all"
+// sentinel that means "no filter" and is never sent to the API.
+type NextActionFilter = 'all' | ProspectNextAction;
+type FreshnessFilter = 'all' | Exclude<ListProspectsFreshness, null>;
+
+const NEXT_ACTION_FILTER_VALUES: readonly NextActionFilter[] = ['all', 'review', 'refresh_evidence', 'send_to_hubspot', 'none'];
+const FRESHNESS_FILTER_VALUES: readonly FreshnessFilter[] = ['all', 'fresh', 'stale'];
+
+function isNextActionFilter(value: string): value is NextActionFilter {
+  return (NEXT_ACTION_FILTER_VALUES as readonly string[]).includes(value);
+}
+function isFreshnessFilter(value: string): value is FreshnessFilter {
+  return (FRESHNESS_FILTER_VALUES as readonly string[]).includes(value);
+}
+
+// Selects the single active scan config for a territory (or, if territoryId
+// is omitted, the single active config across an already territory-scoped
+// list -- used for a PAM, whose /scan-configs is already server-scoped to
+// their own territory). Never falls back to an inactive config. If more
+// than one active config exists for the same territory (malformed data),
+// picks deterministically by id rather than depending on array order.
+function selectActiveScanConfig(configs: ScanConfig[] | undefined, territoryId: string | undefined): ScanConfig | undefined {
+  const candidates = (configs ?? []).filter((c) => c.active && (territoryId === undefined || c.territory_id === territoryId));
+  if (candidates.length === 0) return undefined;
+  return [...candidates].sort((a, b) => a.id.localeCompare(b.id))[0];
+}
 
 function generateRecruitmentMessage(detail: {
   company: { name: string };
@@ -110,6 +139,42 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+const NEXT_ACTION_LABELS: Record<string, string> = {
+  review: 'Review',
+  refresh_evidence: 'Refresh evidence',
+  send_to_hubspot: 'Send to HubSpot',
+  none: '—',
+};
+
+function NextActionBadge({ nextAction }: { nextAction: string }) {
+  if (nextAction === 'none') return <span className="text-muted-foreground text-sm">—</span>;
+  const styles: Record<string, string> = {
+    review: "bg-blue-50 text-blue-700 border-blue-200",
+    refresh_evidence: "bg-amber-50 text-amber-700 border-amber-200",
+    send_to_hubspot: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  };
+  return (
+    <Badge variant="outline" className={`font-normal ${styles[nextAction] || ""}`}>
+      {NEXT_ACTION_LABELS[nextAction] ?? nextAction}
+    </Badge>
+  );
+}
+
+function FreshnessLabel({ freshnessDays, isStale }: { freshnessDays: number | null | undefined; isStale: boolean }) {
+  if (freshnessDays === null || freshnessDays === undefined) {
+    return <span className="text-xs text-amber-700">No evidence date</span>;
+  }
+  const text = freshnessDays === 0 ? 'Today' : `${freshnessDays}d ago`;
+  return <span className={`text-xs ${isStale ? 'text-amber-700' : 'text-muted-foreground'}`}>{text}</span>;
+}
+
+function DataStatusBadge({ dataStatus }: { dataStatus: string }) {
+  if (dataStatus === 'connected') {
+    return <Badge variant="outline" className="font-normal text-emerald-700 bg-emerald-50 border-emerald-200">Live sources</Badge>;
+  }
+  return <Badge variant="outline" className="font-normal text-muted-foreground">Demo data</Badge>;
+}
+
 export default function Prospects() {
   const { user: activeUser, isGlobalUser } = useAuth();
   const { toast } = useToast();
@@ -120,6 +185,8 @@ export default function Prospects() {
   const [priority, setPriority] = useState<string>('all');
   const [partnerType, setPartnerType] = useState<string>('all');
   const [status, setStatus] = useState<string>('all');
+  const [nextAction, setNextAction] = useState<NextActionFilter>('all');
+  const [freshness, setFreshness] = useState<FreshnessFilter>('all');
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -151,6 +218,8 @@ export default function Prospects() {
     ...(priority !== 'all' ? { priority } : {}),
     ...(partnerType !== 'all' ? { partner_type: partnerType } : {}),
     ...(status !== 'all' ? { status } : {}),
+    ...(nextAction !== 'all' ? { next_action: nextAction } : {}),
+    ...(freshness !== 'all' ? { freshness } : {}),
   });
 
   const { data: detail, isLoading: isLoadingDetail } = useGetProspect(
@@ -258,15 +327,32 @@ export default function Prospects() {
 
   const runScanMutation = useRunScan({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: getListProspectsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListScanConfigsQueryKey() });
         toast({
-          title: "Mock scan complete",
-          description: "New prospects discovered."
+          title: data.data_status === 'connected' ? "Scan complete (live sources)" : "Scan complete (demo data)",
+          description: data.message ?? `Found ${data.results_found}, ${data.results_qualified} qualified for review.`,
         });
-      }
+      },
+      onError: () => {
+        toast({
+          variant: "destructive",
+          title: "Scan failed",
+          description: "The discovery scan could not complete. Existing prospects were not affected.",
+        });
+      },
     }
   });
+
+  // PAM: their /scan-configs list is already server-scoped to their own
+  // territory, so only the active-config filter matters. Global user: the
+  // scan must target whichever territory is currently selected in the
+  // filter -- with "All territories" selected there is no single target,
+  // so Run scan stays disabled rather than guessing.
+  const targetScanConfig = isGlobalUser
+    ? (territory !== 'all' ? selectActiveScanConfig(scanConfigs, territory) : undefined)
+    : selectActiveScanConfig(scanConfigs, undefined);
 
   const handleDecision = (decision: ProspectDecisionInputDecision) => {
     if (!selectedId) return;
@@ -286,12 +372,11 @@ export default function Prospects() {
     hubspotMutation.mutate({ id: selectedId });
   };
 
-  const runMockScan = () => {
-    const configId = scanConfigs?.[0]?.id;
-    if (!configId) return;
+  const runDiscoveryScan = () => {
+    if (!targetScanConfig) return;
     runScanMutation.mutate({
       data: {
-        scan_config_id: configId,
+        scan_config_id: targetScanConfig.id,
         mode: 'mock',
       }
     });
@@ -302,17 +387,60 @@ export default function Prospects() {
     toast({ description: "Copied to clipboard" });
   };
 
+  function renderScanStatus() {
+    if (!targetScanConfig) {
+      if (isGlobalUser && territory === 'all') {
+        return <span className="text-amber-700">Select a territory to run a discovery scan</span>;
+      }
+      return <span className="text-amber-700">No active scan config for this territory</span>;
+    }
+    const lastRun = targetScanConfig.last_run;
+    if (!lastRun) {
+      return <span>Never scanned yet</span>;
+    }
+    if (lastRun.status === 'running' || lastRun.status === 'queued') {
+      return (
+        <>
+          <span>Discovery scan running…</span>
+          <span>·</span>
+          <span>Started {formatDistanceToNowStrict(new Date(lastRun.started_at), { addSuffix: true })}</span>
+        </>
+      );
+    }
+    if (lastRun.status === 'failed') {
+      return (
+        <>
+          <span className="text-rose-700">Last scan failed</span>
+          {lastRun.error_message && <span className="text-rose-700">· {lastRun.error_message}</span>}
+        </>
+      );
+    }
+    return (
+      <>
+        <span>Last scanned {formatDistanceToNowStrict(new Date(lastRun.completed_at ?? lastRun.started_at), { addSuffix: true })}</span>
+        <span>·</span>
+        <span>Found {lastRun.results_found}, {lastRun.results_qualified} qualified</span>
+        <DataStatusBadge dataStatus={lastRun.data_status} />
+      </>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full w-full overflow-hidden relative">
       <div className="flex-none p-4 border-b border-border/50 bg-card z-10 space-y-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold tracking-tight">New partners</h1>
-          <Button onClick={runMockScan} disabled={runScanMutation.isPending} variant="outline" size="sm" className="h-8">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Discovery</h1>
+            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
+              {renderScanStatus()}
+            </div>
+          </div>
+          <Button onClick={runDiscoveryScan} disabled={runScanMutation.isPending || !targetScanConfig} variant="outline" size="sm" className="h-8">
             <Filter className="h-4 w-4 mr-2" />
-            Run mock scan
+            Run discovery scan
           </Button>
         </div>
-        
+
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-[250px]">
@@ -374,6 +502,30 @@ export default function Prospects() {
               <SelectItem value="rejected">Rejected</SelectItem>
             </SelectContent>
           </Select>
+
+          <Select value={nextAction} onValueChange={(v) => { if (isNextActionFilter(v)) setNextAction(v); }}>
+            <SelectTrigger className="w-[150px] h-8 bg-background border-border/60">
+              <SelectValue placeholder="Next action" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All next actions</SelectItem>
+              <SelectItem value="review">Review</SelectItem>
+              <SelectItem value="refresh_evidence">Refresh evidence</SelectItem>
+              <SelectItem value="send_to_hubspot">Send to HubSpot</SelectItem>
+              <SelectItem value="none">None</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={freshness} onValueChange={(v) => { if (isFreshnessFilter(v)) setFreshness(v); }}>
+            <SelectTrigger className="w-[130px] h-8 bg-background border-border/60">
+              <SelectValue placeholder="Freshness" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Any freshness</SelectItem>
+              <SelectItem value="fresh">Fresh</SelectItem>
+              <SelectItem value="stale">Stale</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -389,6 +541,8 @@ export default function Prospects() {
               <TableHead>PAM</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Freshness</TableHead>
+              <TableHead>Next action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -403,18 +557,20 @@ export default function Prospects() {
                   <TableCell><Skeleton className="h-5 w-[100px]" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-[40px]" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-[80px]" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-[60px]" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-[100px]" /></TableCell>
                 </TableRow>
               ))
             ) : prospects?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
                   No prospects found matching your filters.
                 </TableCell>
               </TableRow>
             ) : (
               prospects?.map(prospect => (
-                <TableRow 
-                  key={prospect.id} 
+                <TableRow
+                  key={prospect.id}
                   className={`cursor-pointer hover:bg-muted/30 transition-colors ${selectedId === prospect.id ? 'bg-muted/50' : ''}`}
                   onClick={() => setSelectedId(prospect.id)}
                 >
@@ -426,6 +582,12 @@ export default function Prospects() {
                   <TableCell className="text-sm text-muted-foreground">{prospect.assigned_user?.name || '-'}</TableCell>
                   <TableCell><PriorityBadge priority={prospect.priority} /></TableCell>
                   <TableCell><StatusBadge status={prospect.status} /></TableCell>
+                  <TableCell>
+                    <FreshnessLabel freshnessDays={prospect.freshness_days} isStale={!!prospect.is_stale} />
+                  </TableCell>
+                  <TableCell>
+                    <NextActionBadge nextAction={prospect.next_action ?? 'none'} />
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -557,6 +719,18 @@ export default function Prospects() {
                         {detail.recent_trigger ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Minus className="h-4 w-4 text-muted-foreground" />}
                         <span className={`text-sm ${detail.recent_trigger ? 'text-foreground' : 'text-muted-foreground'}`}>Recent trigger</span>
                       </div>
+                      {detail.priority_rationale && (
+                        <div className="pt-3 mt-1 border-t border-border/50 flex items-start gap-2">
+                          <Sparkles className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                          <p className="text-xs text-muted-foreground leading-relaxed">{detail.priority_rationale}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <FreshnessLabel freshnessDays={detail.freshness_days} isStale={!!detail.is_stale} />
+                      <span>·</span>
+                      <NextActionBadge nextAction={detail.next_action ?? 'none'} />
                     </div>
                   </TabsContent>
 

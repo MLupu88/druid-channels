@@ -9,6 +9,7 @@ import type { ActivityItem } from './activityItem';
 import type { Company } from './company';
 import type { ProspectDetailPriority } from './prospectDetailPriority';
 import type { ProspectDetailStatus } from './prospectDetailStatus';
+import type { ProspectNextAction } from './prospectNextAction';
 import type { Signal } from './signal';
 import type { User } from './user';
 
@@ -26,6 +27,11 @@ export interface ProspectDetail {
   technology_adjacency: boolean;
   partnership_openness: boolean;
   recent_trigger: boolean;
+  /**
+     * The literal spec-section-10 rule that produced this prospect's priority at discovery time.
+     * @nullable
+     */
+  priority_rationale?: string | null;
   why_it_fits: string;
   why_now: string;
   /** @nullable */
@@ -43,6 +49,14 @@ export interface ProspectDetail {
   accepted_at?: string | null;
   /** @nullable */
   hubspot_company_id?: string | null;
+  /**
+     * Days since the most recent evidence or update on this prospect.
+     * @nullable
+     */
+  freshness_days?: number | null;
+  /** freshness_days exceeds the territory's scan config recency window. */
+  is_stale?: boolean;
+  next_action?: ProspectNextAction;
   signals: Signal[];
   activity: ActivityItem[];
   created_at: string;

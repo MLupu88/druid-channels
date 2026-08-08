@@ -40,6 +40,7 @@ import type {
   ListManualMetricValuesParams,
   ListPartnersParams,
   ListProspectsParams,
+  ListScanRunsParams,
   LoginInput,
   ManualMetricValue,
   ManualMetricValueInput,
@@ -55,6 +56,7 @@ import type {
   ProspectStats,
   ScanConfig,
   ScanConfigInput,
+  ScanRun,
   ScanRunInput,
   ScanRunResult,
   Territory,
@@ -1294,7 +1296,7 @@ export const getRunScanUrl = () => {
 }
 
 /**
- * @summary Run a scan (mock mode)
+ * @summary Run a discovery scan for a territory's scan config. Uses a live provider chain when web search/reader/AI connections are all configured, otherwise falls back to the deterministic demo generator (never fabricated as connected).
  */
 export const runScan = async (scanRunInput: ScanRunInput, options?: Parameters<typeof customFetch>[1]): Promise<ScanRunResult> => {
 
@@ -1343,7 +1345,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RunScanMutationError = ErrorType<unknown>
 
     /**
- * @summary Run a scan (mock mode)
+ * @summary Run a discovery scan for a territory's scan config. Uses a live provider chain when web search/reader/AI connections are all configured, otherwise falls back to the deterministic demo generator (never fabricated as connected).
  */
 export const useRunScan = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runScan>>, TError,{data: BodyType<ScanRunInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1355,6 +1357,90 @@ export const useRunScan = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRunScanMutationOptions(options));
     }
+
+export const getListScanRunsUrl = (params?: ListScanRunsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/scan-runs?${stringifiedParams}` : `/api/scan-runs`
+}
+
+/**
+ * @summary List scan run history, optionally filtered by scan config, most recent first
+ */
+export const listScanRuns = async (params?: ListScanRunsParams, options?: Parameters<typeof customFetch>[1]): Promise<ScanRun[]> => {
+
+  return customFetch<ScanRun[]>(getListScanRunsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListScanRunsQueryKey = (params?: ListScanRunsParams,) => {
+    return [
+    `/api/scan-runs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListScanRunsQueryOptions = <TData = Awaited<ReturnType<typeof listScanRuns>>, TError = ErrorType<unknown>>(params?: ListScanRunsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listScanRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListScanRunsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listScanRuns>>> = ({ signal }) => listScanRuns(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listScanRuns>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListScanRunsQueryResult = NonNullable<Awaited<ReturnType<typeof listScanRuns>>>
+export type ListScanRunsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List scan run history, optionally filtered by scan config, most recent first
+ */
+
+export function useListScanRuns<TData = Awaited<ReturnType<typeof listScanRuns>>, TError = ErrorType<unknown>>(
+ params?: ListScanRunsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listScanRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListScanRunsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetHeadOfChannelsKpisUrl = (params?: GetHeadOfChannelsKpisParams,) => {
   const normalizedParams = new URLSearchParams();

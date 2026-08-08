@@ -12,6 +12,10 @@ export const scanRunsTable = pgTable("scan_runs", {
   resultsFound: integer("results_found").notNull().default(0),
   resultsQualified: integer("results_qualified").notNull().default(0),
   errorMessage: text("error_message"),
+  // "connected" only when every stage (search, extraction, AI structuring)
+  // actually ran against a live provider; "demo" whenever any stage fell
+  // back to the deterministic generator. Never fabricated as "connected".
+  dataStatus: text("data_status", { enum: ["demo", "connected"] }).notNull().default("demo"),
 });
 
 export const insertScanRunSchema = createInsertSchema(scanRunsTable).omit({ id: true, startedAt: true });
