@@ -41,7 +41,11 @@ export interface CandidateSignal {
   summary: string;
   sourceUrl: string;
   sourceDomain: string;
-  publishedAt: string;
+  // Nullable: Tavily's search response carries no per-result publish date,
+  // and this is never fabricated as "today" -- honestly null on the live
+  // path when the provider doesn't supply one. The demo generator below
+  // still produces a real (synthetic-but-consistent) date for demo mode.
+  publishedAt: string | null;
   confidence: Confidence;
   rawExcerpt: string | null;
 }
@@ -547,7 +551,54 @@ function buildPartnerSearchCriteria(config: ScanConfig, territory: Territory): a
   };
 }
 
-const REQUIRED_PROVIDER_TYPES = ["web_search", "web_reader", "ai"] as const;
+// Only web_search + ai are required live: extraction never makes its own
+// call (see discoveryProviders/extraction.ts) so a web_reader connection
+// has nothing to credential and would only ever block live discovery.
+const REQUIRED_PROVIDER_TYPES = ["web_search", "ai"] as const;
+
+// Only called for third-party evidence about a candidate that already
+// passed qualification (see the cost-control gate in attemptLiveDiscovery
+// below). Never invents a domain: DeepSeek is only ever shown the Tavily
+// results below and must say "unresolved" rather than recall a domain from
+// its own general knowledge. Any failure (search or AI call) is treated
+// the same as "could not resolve" -- logged and skipped, never allowed to
+// fail the whole scan over one candidate's identity lookup.
+async function resolveCompanyIdentity(subjectCompanyName: string): Promise<{ name: string; domain: string } | null> {
+  try {
+    const results = await searchProvider.search(`"${subjectCompanyName}" official website`, { maxResults: 3 });
+    if (results.length === 0) return null;
+    return await aiProvider.identifyCompany({
+      subjectCompanyName,
+      candidates: results.map((r) => ({ url: r.url, title: r.title, snippet: r.snippet })),
+    });
+  } catch (err) {
+    logger.warn(
+      { subjectCompanyName, errorName: err instanceof Error ? err.name : typeof err },
+      "Discovery: company identity resolution call failed; candidate skipped",
+    );
+    return null;
+  }
+}
+
+// Pure decision logic, exported for testing without a live search/AI call
+// or a DB connection: given a qualification's identity fields and the
+// evidence's own domain, decides the prospective-partner identity to
+// persist, or null if it can't/shouldn't be. `resolveIdentity` is injected
+// (defaults to the real resolveCompanyIdentity above) so tests can supply
+// canned results for the first-party / third-party-resolved /
+// third-party-unresolved cases.
+export async function resolveCandidateCompanyIdentity(
+  qualification: Pick<aiProvider.AiQualificationOutput, "sourceIsFirstParty" | "subjectCompanyName">,
+  evidenceDomain: string,
+  resolveIdentity: (subjectCompanyName: string) => Promise<{ name: string; domain: string } | null> = resolveCompanyIdentity,
+): Promise<{ companyName: string; companyDomain: string } | null> {
+  if (qualification.sourceIsFirstParty) {
+    return { companyName: qualification.subjectCompanyName, companyDomain: evidenceDomain };
+  }
+  const resolved = await resolveIdentity(qualification.subjectCompanyName);
+  if (!resolved) return null;
+  return { companyName: resolved.name, companyDomain: resolved.domain };
+}
 
 async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): Promise<Candidate[] | null> {
   const rows = await db.select().from(connectionsTable).where(inArray(connectionsTable.providerType, REQUIRED_PROVIDER_TYPES));
@@ -561,29 +612,61 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): P
     // literally share the same array, not just equal-by-construction copies.
     const criteria = buildPartnerSearchCriteria(config, territory);
     const candidates: Candidate[] = [];
+    // Cross-query dedup: the same URL can legitimately surface from more
+    // than one query variant (see buildAutomaticQueries) -- only qualify it
+    // once, both to avoid duplicate prospects and to avoid spending a
+    // second AI call on evidence already assessed.
+    const seenUrls = new Set<string>();
     for (const query of criteria.searchIntent) {
       const results = await searchProvider.search(query, { maxResults: config.maxResults });
       for (const result of results) {
-        const domain = extractDomain(result.url);
-        const page = await extractionProvider.extract(result.url);
+        if (seenUrls.has(result.url)) continue;
+        seenUrls.add(result.url);
+
+        const evidenceDomain = extractDomain(result.url);
+        // Tavily's search result already carries usable content -- no
+        // second external call. extract() only validates/bounds it.
+        const page = await extractionProvider.extract(result.url, { text: result.snippet, publishedAt: result.publishedAt });
         const qualification = await aiProvider.qualify({
           companyName: result.title,
-          domain,
+          domain: evidenceDomain,
           evidence: [{ url: result.url, text: page.text }],
           criteria,
         });
+
+        const checks: FiveChecks = {
+          enterpriseAccess: qualification.enterpriseAccess,
+          relevantCapability: qualification.relevantCapability,
+          technologyAdjacency: qualification.technologyAdjacency,
+          partnershipOpenness: qualification.partnershipOpenness,
+          recentTrigger: qualification.recentTrigger,
+        };
+
+        // Cost control: identity resolution (an extra search + AI call)
+        // only runs for evidence that already clears the qualification bar
+        // -- unqualified evidence is never persisted regardless of whose
+        // identity it names, so resolving it would be wasted spend.
+        if (qualifyChecks(checks, config.minChecksRequired).priority === null) continue;
+
+        // The evidence source (evidenceDomain, e.g. a news site or analyst
+        // firm) and the prospective partner (companyName/companyDomain
+        // below) are deliberately separate concepts -- see
+        // discoveryProviders/ai.ts's subjectCompanyName/sourceIsFirstParty.
+        const identity = await resolveCandidateCompanyIdentity(qualification, evidenceDomain);
+        if (!identity) {
+          logger.warn(
+            { subjectCompanyName: qualification.subjectCompanyName, evidenceUrl: result.url },
+            "Discovery: company identity could not be resolved; candidate skipped",
+          );
+          continue; // never persist the publisher's identity in place of the real company
+        }
+
         candidates.push({
-          companyName: result.title,
-          domain,
+          companyName: identity.companyName,
+          domain: identity.companyDomain,
           country: "Unknown",
           partnerType: qualification.partnerType,
-          checks: {
-            enterpriseAccess: qualification.enterpriseAccess,
-            relevantCapability: qualification.relevantCapability,
-            technologyAdjacency: qualification.technologyAdjacency,
-            partnershipOpenness: qualification.partnershipOpenness,
-            recentTrigger: qualification.recentTrigger,
-          },
+          checks,
           whyItFits: qualification.whyItFits,
           whyNow: qualification.whyNow,
           suggestedAngle: qualification.suggestedAngle,
@@ -591,12 +674,12 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): P
           signals: qualification.evidenceUrls
             .filter((url) => url === result.url) // never fabricate a source URL outside what was actually given as evidence
             .map((url) => ({
-              signalType: "ai_investment" as SignalType,
+              signalType: qualification.signalType,
               title: result.title,
               summary: result.snippet,
               sourceUrl: url,
-              sourceDomain: domain,
-              publishedAt: result.publishedAt ?? new Date().toISOString().slice(0, 10),
+              sourceDomain: evidenceDomain, // always the evidence source domain -- may legitimately differ from companyDomain above
+              publishedAt: page.publishedAt, // honest: null when the provider gave no date, never defaulted to "today"
               confidence: "medium" as Confidence,
               rawExcerpt: page.text.slice(0, 400),
             })),
@@ -716,6 +799,8 @@ function classifyDiscoveryError(err: unknown): string {
   if (err instanceof searchProvider.SearchNotImplementedError) return "Search provider not connected.";
   if (err instanceof extractionProvider.ExtractionNotImplementedError) return "Page extraction provider not connected.";
   if (err instanceof aiProvider.AiNotImplementedError) return "AI qualification provider not connected.";
+  if (err instanceof searchProvider.SearchProviderError) return "Web search provider call failed. Please try again.";
+  if (err instanceof aiProvider.AiProviderError) return "AI qualification call failed. Please try again.";
   return "Discovery scan could not be completed. Please try again or contact an administrator.";
 }
 

@@ -10,6 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:authz": "node --test tests/authz.test.mjs",
     "test:ai-brief-hash": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/aiChannelBriefHash.test.ts",
+    "test:discovery-providers": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryProviders.test.ts",
+    "test:discovery-identity": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryIdentity.test.ts",
     "seed": "tsx ./src/scripts/seed.ts"
   },
   "dependencies": {

@@ -84,6 +84,20 @@ async function getSignalStatsForCompany(companyId: string): Promise<{ count: num
   return { count: Number(row?.count ?? 0), latestAt: row?.latest ?? null };
 }
 
+async function loadSignalTypesByCompany(companyIds: string[]): Promise<Map<string, Set<string>>> {
+  if (companyIds.length === 0) return new Map();
+  const rows = await db
+    .select({ companyId: signalsTable.companyId, signalType: signalsTable.signalType })
+    .from(signalsTable)
+    .where(inArray(signalsTable.companyId, companyIds));
+  const map = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (!map.has(row.companyId)) map.set(row.companyId, new Set());
+    map.get(row.companyId)!.add(row.signalType);
+  }
+  return map;
+}
+
 async function loadLatestSignalByCompany(companyIds: string[]): Promise<Map<string, Date>> {
   if (companyIds.length === 0) return new Map();
   const rows = await db
@@ -128,6 +142,8 @@ function buildProspectShape(
           email: assignedUser.email,
           role: assignedUser.role,
           territory: assignedUser.territory,
+          location_label: assignedUser.locationLabel,
+          timezone: assignedUser.timezone,
           active: assignedUser.active,
         }
       : null,
@@ -285,6 +301,14 @@ router.get("/prospects", requireAuth, async (req, res): Promise<void> => {
       r.prospect.whyNow.toLowerCase().includes(q) ||
       r.prospect.whyItFits.toLowerCase().includes(q)
     );
+  }
+  if (signal_type) {
+    // A prospect matches if its company has at least one signal of this
+    // type -- signals are recorded per-company (evidence can predate or
+    // outlive any single prospect decision), not per-prospect.
+    const candidateCompanyIds = [...new Set(filtered.map((r) => r.prospect.companyId))];
+    const signalTypesByCompany = await loadSignalTypesByCompany(candidateCompanyIds);
+    filtered = filtered.filter((r) => signalTypesByCompany.get(r.prospect.companyId)?.has(signal_type));
   }
 
   const companyIds = [...new Set(filtered.map((r) => r.prospect.companyId))];

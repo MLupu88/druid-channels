@@ -1,10 +1,12 @@
-// Service boundary for a real web-page-extraction provider (e.g. Firecrawl,
-// Apify -- see the product spec, section 8.2). No live HTTP calls are
-// implemented yet: this function throws until a specific provider is chosen
-// and wired up, so discoveryEngine.ts never silently fabricates page
-// content. Once implemented, read the provider choice from
-// `connection.configJson.provider` and the API key from
-// `process.env[connection.credentialEnvVar]`.
+// Service boundary for turning a search result into page text for
+// qualification. Stage 3 completion deliberately does NOT add a second
+// external call here (no Firecrawl, no separate crawling/extraction
+// vendor): Tavily's search result already returns enough content, so
+// discoveryEngine.ts always calls this with `prefetched` set to what
+// Tavily returned, and this function only validates/bounds it -- no
+// network request happens inside it. Calling this WITHOUT prefetched
+// content still throws: there is no live extraction provider, and this
+// must never silently fabricate page content.
 
 export class ExtractionNotImplementedError extends Error {
   constructor() {
@@ -19,6 +21,16 @@ export interface ExtractedPage {
   publishedAt: string | null;
 }
 
-export async function extract(_url: string): Promise<ExtractedPage> {
-  throw new ExtractionNotImplementedError();
+// A safety cap on what gets forwarded to the AI qualifier -- Tavily's
+// `content` is already a search snippet, not a full page, so this rarely
+// actually truncates anything; it exists to bound worst-case prompt size.
+const MAX_TEXT_LENGTH = 4000;
+
+export async function extract(url: string, prefetched?: { text: string; publishedAt: string | null }): Promise<ExtractedPage> {
+  if (!prefetched || !prefetched.text.trim()) throw new ExtractionNotImplementedError();
+  return {
+    url,
+    text: prefetched.text.slice(0, MAX_TEXT_LENGTH),
+    publishedAt: prefetched.publishedAt,
+  };
 }
