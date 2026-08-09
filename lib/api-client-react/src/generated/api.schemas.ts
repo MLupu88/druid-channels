@@ -25,6 +25,13 @@ export interface User {
   role: UserRole;
   /** @nullable */
   territory: string | null;
+  /** @nullable */
+  location_label: string | null;
+  /**
+     * IANA zone name, e.g. "Europe/Bucharest". Null until explicitly configured -- never inferred from territory/country.
+     * @nullable
+     */
+  timezone: string | null;
   active: boolean;
 }
 
@@ -417,6 +424,13 @@ export interface UserEditInput {
   name?: string;
   /** @nullable */
   territory?: string | null;
+  /** @nullable */
+  location_label?: string | null;
+  /**
+     * Must be a valid IANA zone name if provided; validated server-side.
+     * @nullable
+     */
+  timezone?: string | null;
   active?: boolean;
 }
 
@@ -426,6 +440,13 @@ export interface CreateUserInput {
   email: string;
   /** @nullable */
   territory?: string | null;
+  /** @nullable */
+  location_label?: string | null;
+  /**
+     * Must be a valid IANA zone name if provided; validated server-side.
+     * @nullable
+     */
+  timezone?: string | null;
   /**
      * Initial access credential for the new PAM. Hashed server-side; never stored or returned in plaintext.
      * @minLength 16
@@ -915,6 +936,98 @@ export interface MetricTargetInput {
   note?: string | null;
 }
 
+/**
+ * Current cached-brief state. ready/stale are derived by comparing the cached generation-input hash with the current eligible-data hash; never_generated means no cached brief exists despite eligible data; insufficient_data means no cached brief exists and there is currently no eligible data.
+ */
+export type AiBriefState = typeof AiBriefState[keyof typeof AiBriefState];
+
+
+export const AiBriefState = {
+  never_generated: 'never_generated',
+  ready: 'ready',
+  stale: 'stale',
+  insufficient_data: 'insufficient_data',
+} as const;
+
+/**
+ * Whether the approved AI provider and credential are configured. This does not by itself verify live provider connectivity.
+ */
+export type AiBriefProviderStatus = typeof AiBriefProviderStatus[keyof typeof AiBriefProviderStatus];
+
+
+export const AiBriefProviderStatus = {
+  configured: 'configured',
+  not_configured: 'not_configured',
+} as const;
+
+export interface AiBriefEvidenceItem {
+  /**
+     * @minLength 1
+     * @maxLength 240
+     */
+  text: string;
+  /**
+     * metric_key values from the generation snapshot that support this item.
+     * @minItems 1
+     */
+  supporting_metrics: string[];
+}
+
+export interface AiChannelBriefContent {
+  /**
+     * @minLength 1
+     * @maxLength 800
+     */
+  executive_summary: string;
+  /** @maxItems 6 */
+  key_highlights: AiBriefEvidenceItem[];
+  /** @maxItems 6 */
+  risks: AiBriefEvidenceItem[];
+  /** @maxItems 6 */
+  opportunities: AiBriefEvidenceItem[];
+  /** @maxItems 6 */
+  recommended_actions: AiBriefEvidenceItem[];
+}
+
+export type AiChannelBriefCurrency = typeof AiChannelBriefCurrency[keyof typeof AiChannelBriefCurrency];
+
+
+export const AiChannelBriefCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
+export interface AiChannelBrief {
+  state: AiBriefState;
+  provider_status: AiBriefProviderStatus;
+  can_regenerate: boolean;
+  period: string;
+  territory_name: string;
+  currency: AiChannelBriefCurrency;
+  content: AiChannelBriefContent | null;
+  /** @nullable */
+  data_as_of: string | null;
+  /** @nullable */
+  generated_at: string | null;
+}
+
+export type RegenerateAiChannelBriefInputCurrency = typeof RegenerateAiChannelBriefInputCurrency[keyof typeof RegenerateAiChannelBriefInputCurrency];
+
+
+export const RegenerateAiChannelBriefInputCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
+export interface RegenerateAiChannelBriefInput {
+  /** @nullable */
+  territory?: string | null;
+  period?: KpiPeriod;
+  currency?: RegenerateAiChannelBriefInputCurrency;
+}
+
 export type CampaignType = typeof CampaignType[keyof typeof CampaignType];
 
 
@@ -1358,6 +1471,27 @@ export type ExportQuarterlyPptxCurrency = typeof ExportQuarterlyPptxCurrency[key
 
 
 export const ExportQuarterlyPptxCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
+export type GetAiChannelBriefParams = {
+/**
+ * @nullable
+ */
+territory?: string | null;
+/**
+ * @nullable
+ */
+period?: string | null;
+currency?: GetAiChannelBriefCurrency;
+};
+
+export type GetAiChannelBriefCurrency = typeof GetAiChannelBriefCurrency[keyof typeof GetAiChannelBriefCurrency];
+
+
+export const GetAiChannelBriefCurrency = {
   USD: 'USD',
   EUR: 'EUR',
   GBP: 'GBP',

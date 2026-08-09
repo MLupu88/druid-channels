@@ -36,6 +36,8 @@ tags:
     description: Management-configured KPI targets, independent of how each metric's actual value is computed
   - name: exports
     description: Quarterly report export
+  - name: ai-channel-brief
+    description: AI-generated executive brief for the Overview page, built from a controlled snapshot of trusted KPI data
 
 paths:
   /auth/login:
@@ -739,6 +741,67 @@ paths:
                 type: string
                 format: binary
 
+  /ai-channel-brief:
+    get:
+      operationId: getAiChannelBrief
+      tags: [ai-channel-brief]
+      summary: Get the current AI Channel Brief state and cached content (if any) for a period/territory/currency scope
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: period
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: currency
+          in: query
+          schema:
+            type: string
+            enum: [USD, EUR, GBP]
+            default: USD
+      responses:
+        "200":
+          description: Current brief state, independent of provider availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiChannelBrief"
+        "400":
+          description: Invalid period/currency or other invalid request parameter
+        "403":
+          description: Requested territory is outside the caller's scope
+        "503":
+          description: FX rate unavailable for the requested currency
+
+  /ai-channel-brief/regenerate:
+    post:
+      operationId: regenerateAiChannelBrief
+      tags: [ai-channel-brief]
+      summary: Regenerate the AI Channel Brief for a period/territory/currency scope, on demand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateAiChannelBriefInput"
+      responses:
+        "200":
+          description: Regenerated brief, or an honest insufficient_data/stale result if there was nothing eligible to regenerate from
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiChannelBrief"
+        "400":
+          description: AI provider is not configured, or the request contains an invalid period/currency value
+        "403":
+          description: Requested territory is outside the caller's scope
+        "502":
+          description: AI provider call failed -- any previously cached brief is left untouched
+        "503":
+          description: FX rate unavailable for the requested currency
+
   /campaigns:
     get:
       operationId: listCampaigns
@@ -987,7 +1050,7 @@ components:
 
     User:
       type: object
-      required: [id, name, email, role, territory, active]
+      required: [id, name, email, role, territory, location_label, timezone, active]
       properties:
         id:
           type: string
@@ -1000,6 +1063,11 @@ components:
           enum: [head_of_channels, pam, admin]
         territory:
           type: ["string", "null"]
+        location_label:
+          type: ["string", "null"]
+        timezone:
+          type: ["string", "null"]
+          description: IANA zone name, e.g. "Europe/Bucharest". Null until explicitly configured -- never inferred from territory/country.
         active:
           type: boolean
 
@@ -1403,6 +1471,11 @@ components:
           minLength: 1
         territory:
           type: ["string", "null"]
+        location_label:
+          type: ["string", "null"]
+        timezone:
+          type: ["string", "null"]
+          description: Must be a valid IANA zone name if provided; validated server-side.
         active:
           type: boolean
 
@@ -1418,6 +1491,11 @@ components:
           format: email
         territory:
           type: ["string", "null"]
+        location_label:
+          type: ["string", "null"]
+        timezone:
+          type: ["string", "null"]
+          description: Must be a valid IANA zone name if provided; validated server-side.
         password:
           type: string
           minLength: 16
@@ -1939,6 +2017,107 @@ components:
           description: No KPI in this product has a meaningful negative target.
         note:
           type: ["string", "null"]
+
+    AiBriefState:
+      type: string
+      enum: [never_generated, ready, stale, insufficient_data]
+      description: >-
+        Current cached-brief state. ready/stale are derived by comparing the
+        cached generation-input hash with the current eligible-data hash;
+        never_generated means no cached brief exists despite eligible data;
+        insufficient_data means no cached brief exists and there is currently
+        no eligible data.
+
+    AiBriefProviderStatus:
+      type: string
+      enum: [configured, not_configured]
+      description: >-
+        Whether the approved AI provider and credential are configured. This
+        does not by itself verify live provider connectivity.
+
+    AiBriefEvidenceItem:
+      type: object
+      required: [text, supporting_metrics]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 240
+        supporting_metrics:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: metric_key values from the generation snapshot that support this item.
+
+    AiChannelBriefContent:
+      type: object
+      required: [executive_summary, key_highlights, risks, opportunities, recommended_actions]
+      properties:
+        executive_summary:
+          type: string
+          minLength: 1
+          maxLength: 800
+        key_highlights:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiBriefEvidenceItem"
+          maxItems: 6
+        risks:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiBriefEvidenceItem"
+          maxItems: 6
+        opportunities:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiBriefEvidenceItem"
+          maxItems: 6
+        recommended_actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiBriefEvidenceItem"
+          maxItems: 6
+
+    AiChannelBrief:
+      type: object
+      required: [state, provider_status, can_regenerate, period, territory_name, currency, content, data_as_of, generated_at]
+      properties:
+        state:
+          $ref: "#/components/schemas/AiBriefState"
+        provider_status:
+          $ref: "#/components/schemas/AiBriefProviderStatus"
+        can_regenerate:
+          type: boolean
+        period:
+          type: string
+        territory_name:
+          type: string
+        currency:
+          type: string
+          enum: [USD, EUR, GBP]
+        content:
+          oneOf:
+            - $ref: "#/components/schemas/AiChannelBriefContent"
+            - type: "null"
+        data_as_of:
+          type: ["string", "null"]
+          format: date-time
+        generated_at:
+          type: ["string", "null"]
+          format: date-time
+
+    RegenerateAiChannelBriefInput:
+      type: object
+      properties:
+        territory:
+          type: ["string", "null"]
+        period:
+          $ref: "#/components/schemas/KpiPeriod"
+        currency:
+          type: string
+          enum: [USD, EUR, GBP]
+          default: USD
 
     Campaign:
       type: object

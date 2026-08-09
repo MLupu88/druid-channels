@@ -121,6 +121,22 @@ function PamFormDrawer({
   const [email, setEmail] = useState('');
   const [territory, setTerritory] = useState(user?.territory ?? '');
   const [password, setPassword] = useState('');
+  const [locationLabel, setLocationLabel] = useState(user?.location_label ?? '');
+  const [timezone, setTimezone] = useState(user?.timezone ?? '');
+
+  // Standard IANA-validity check (Intl throws on an unrecognized zone) --
+  // used both here for inline feedback and server-side before saving.
+  const isValidIanaTimezone = (tz: string): boolean => {
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: tz });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const timezoneError = timezone.trim() && !isValidIanaTimezone(timezone.trim())
+    ? 'Not a recognized IANA timezone (e.g. Europe/Bucharest).'
+    : null;
 
   const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
 
@@ -151,16 +167,32 @@ function PamFormDrawer({
   });
 
   const pending = createMutation.isPending || updateMutation.isPending;
-  const canSubmit = isEdit
+  const canSubmit = (isEdit
     ? name.trim().length > 0
-    : name.trim().length > 0 && email.trim().length > 0 && password.length >= 16;
+    : name.trim().length > 0 && email.trim().length > 0 && password.length >= 16
+  ) && timezoneError === null;
 
   const handleSubmit = () => {
     if (isEdit && user) {
-      updateMutation.mutate({ id: user.id, data: { name: name.trim(), territory: territory || null } });
+      updateMutation.mutate({
+        id: user.id,
+        data: {
+          name: name.trim(),
+          territory: territory || null,
+          location_label: locationLabel.trim() || null,
+          timezone: timezone.trim() || null,
+        },
+      });
     } else {
       createMutation.mutate({
-        data: { name: name.trim(), email: email.trim(), territory: territory || null, password },
+        data: {
+          name: name.trim(),
+          email: email.trim(),
+          territory: territory || null,
+          location_label: locationLabel.trim() || null,
+          timezone: timezone.trim() || null,
+          password,
+        },
       });
     }
   };
@@ -200,6 +232,26 @@ function PamFormDrawer({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Location label</Label>
+            <Input value={locationLabel} onChange={(e) => setLocationLabel(e.target.value)} placeholder="e.g. Bucharest, Romania" />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Timezone (IANA)</Label>
+            <Input
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              placeholder="e.g. Europe/Bucharest"
+              aria-invalid={timezoneError !== null}
+            />
+            {timezoneError ? (
+              <p className="text-xs text-rose-600">{timezoneError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Both fields are optional. Powers the PAM Local Time clock on Overview -- left blank, no clock is shown.</p>
+            )}
           </div>
 
           {!isEdit && (

@@ -36,6 +36,20 @@
       "when": 1786222140308,
       "tag": "0004_living_the_enforcers",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786267691757,
+      "tag": "0005_graceful_iron_monger",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786286947925,
+      "tag": "0006_purple_jamie_braddock",
+      "breakpoints": true
     }
   ]
 }

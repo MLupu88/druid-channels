@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AiChannelBrief,
   AuthLoginResponse,
   AuthLogoutResponse,
   Campaign,
@@ -30,6 +31,7 @@ import type {
   CreateUserInput,
   DeleteResult,
   ExportQuarterlyPptxParams,
+  GetAiChannelBriefParams,
   GetHeadOfChannelsKpisParams,
   GetKpiDetailsParams,
   HeadOfChannelsKpis,
@@ -57,6 +59,7 @@ import type {
   ProspectDetail,
   ProspectEditInput,
   ProspectStats,
+  RegenerateAiChannelBriefInput,
   ScanConfig,
   ScanConfigInput,
   ScanRun,
@@ -2518,6 +2521,161 @@ export function useExportQuarterlyPptx<TData = Awaited<ReturnType<typeof exportQ
 
 
 
+
+export const getGetAiChannelBriefUrl = (params?: GetAiChannelBriefParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/ai-channel-brief?${stringifiedParams}` : `/api/ai-channel-brief`
+}
+
+/**
+ * @summary Get the current AI Channel Brief state and cached content (if any) for a period/territory/currency scope
+ */
+export const getAiChannelBrief = async (params?: GetAiChannelBriefParams, options?: Parameters<typeof customFetch>[1]): Promise<AiChannelBrief> => {
+
+  return customFetch<AiChannelBrief>(getGetAiChannelBriefUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAiChannelBriefQueryKey = (params?: GetAiChannelBriefParams,) => {
+    return [
+    `/api/ai-channel-brief`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAiChannelBriefQueryOptions = <TData = Awaited<ReturnType<typeof getAiChannelBrief>>, TError = ErrorType<void>>(params?: GetAiChannelBriefParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiChannelBrief>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAiChannelBriefQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAiChannelBrief>>> = ({ signal }) => getAiChannelBrief(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAiChannelBrief>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAiChannelBriefQueryResult = NonNullable<Awaited<ReturnType<typeof getAiChannelBrief>>>
+export type GetAiChannelBriefQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the current AI Channel Brief state and cached content (if any) for a period/territory/currency scope
+ */
+
+export function useGetAiChannelBrief<TData = Awaited<ReturnType<typeof getAiChannelBrief>>, TError = ErrorType<void>>(
+ params?: GetAiChannelBriefParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiChannelBrief>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAiChannelBriefQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRegenerateAiChannelBriefUrl = () => {
+
+
+
+
+  return `/api/ai-channel-brief/regenerate`
+}
+
+/**
+ * @summary Regenerate the AI Channel Brief for a period/territory/currency scope, on demand
+ */
+export const regenerateAiChannelBrief = async (regenerateAiChannelBriefInput: RegenerateAiChannelBriefInput, options?: Parameters<typeof customFetch>[1]): Promise<AiChannelBrief> => {
+
+  return customFetch<AiChannelBrief>(getRegenerateAiChannelBriefUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(regenerateAiChannelBriefInput)
+  }
+);}
+
+
+
+
+
+export const getRegenerateAiChannelBriefMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateAiChannelBrief>>, TError,{data: BodyType<RegenerateAiChannelBriefInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof regenerateAiChannelBrief>>, TError,{data: BodyType<RegenerateAiChannelBriefInput>}, TContext> => {
+
+const mutationKey = ['regenerateAiChannelBrief'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof regenerateAiChannelBrief>>, {data: BodyType<RegenerateAiChannelBriefInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  regenerateAiChannelBrief(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegenerateAiChannelBriefMutationResult = NonNullable<Awaited<ReturnType<typeof regenerateAiChannelBrief>>>
+    export type RegenerateAiChannelBriefMutationBody = BodyType<RegenerateAiChannelBriefInput>
+    export type RegenerateAiChannelBriefMutationError = ErrorType<void>
+
+    /**
+ * @summary Regenerate the AI Channel Brief for a period/territory/currency scope, on demand
+ */
+export const useRegenerateAiChannelBrief = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateAiChannelBrief>>, TError,{data: BodyType<RegenerateAiChannelBriefInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof regenerateAiChannelBrief>>,
+        TError,
+        {data: BodyType<RegenerateAiChannelBriefInput>},
+        TContext
+      > => {
+      return useMutation(getRegenerateAiChannelBriefMutationOptions(options));
+    }
 
 export const getListCampaignsUrl = () => {
 

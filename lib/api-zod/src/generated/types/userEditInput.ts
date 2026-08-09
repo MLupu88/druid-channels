@@ -11,5 +11,12 @@ export interface UserEditInput {
   name?: string;
   /** @nullable */
   territory?: string | null;
+  /** @nullable */
+  location_label?: string | null;
+  /**
+     * Must be a valid IANA zone name if provided; validated server-side.
+     * @nullable
+     */
+  timezone?: string | null;
   active?: boolean;
 }

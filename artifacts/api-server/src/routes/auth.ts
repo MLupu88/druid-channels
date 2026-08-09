@@ -10,7 +10,16 @@ import { requireAuth } from "../middleware/auth";
 const router: IRouter = Router();
 
 function shapeUser(u: typeof usersTable.$inferSelect) {
-  return { id: u.id, name: u.name, email: u.email, role: u.role, territory: u.territory, active: u.active };
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    territory: u.territory,
+    location_label: u.locationLabel,
+    timezone: u.timezone,
+    active: u.active,
+  };
 }
 
 router.post("/auth/login", async (req, res): Promise<void> => {

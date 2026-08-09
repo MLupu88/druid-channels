@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   useGetHeadOfChannelsKpis,
   getGetHeadOfChannelsKpisQueryKey,
@@ -9,8 +9,16 @@ import {
   getListMetricTargetsQueryKey,
   useUpsertMetricTarget,
   useDeleteMetricTarget,
+  useGetAiChannelBrief,
+  getGetAiChannelBriefQueryKey,
+  useRegenerateAiChannelBrief,
+  useListUsers,
+  getListUsersQueryKey,
   exportQuarterlyPptx,
   ApiError,
+  type AiChannelBrief,
+  type AiBriefEvidenceItem,
+  type User,
 } from '@workspace/api-client-react';
 import {
   Table,
@@ -30,7 +38,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowDown, ArrowUp, Minus, X, Download, Loader2, Pencil } from 'lucide-react';
+import { ArrowDown, ArrowUp, Minus, X, Download, Loader2, Pencil, Sparkles, RefreshCw, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -72,6 +80,294 @@ function DataStatusBadge({ status }: { status: string }) {
   return <Badge variant="outline" className="text-muted-foreground font-normal text-xs">Not connected</Badge>;
 }
 
+function CoreBadge() {
+  return (
+    <Badge variant="outline" className="text-primary/80 border-primary/30 bg-primary/5 font-medium text-[10px] tracking-wide px-1.5 py-0">
+      CORE
+    </Badge>
+  );
+}
+
+// Every highlight/risk/opportunity/action is rendered with the exact
+// metric_key(s) the AI cited as evidence for it -- this is what keeps the
+// panel honest as an interpretation of the connected data rather than an
+// unattributed claim. metricLabelByKey is best-effort (falls back to the
+// raw key), never blocking on it.
+function AiBriefEvidenceList({ title, items, metricLabelByKey }: { title: string; items: AiBriefEvidenceItem[]; metricLabelByKey: Map<string, string> }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">{title}</h4>
+      <ul className="space-y-2.5">
+        {items.map((item, i) => (
+          <li key={i} className="text-sm leading-relaxed">
+            <p className="text-foreground">{item.text}</p>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {item.supporting_metrics.map((key) => (
+                <Badge key={key} variant="outline" className="text-[10px] font-normal text-muted-foreground px-1.5 py-0">
+                  {metricLabelByKey.get(key) ?? key}
+                </Badge>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function AiChannelBriefPanel({
+  brief,
+  isLoading,
+  onRegenerate,
+  isRegenerating,
+  metricLabelByKey,
+}: {
+  brief: AiChannelBrief | undefined;
+  isLoading: boolean;
+  onRegenerate: () => void;
+  isRegenerating: boolean;
+  metricLabelByKey: Map<string, string>;
+}) {
+  if (isLoading) {
+    return (
+      <Card className="shadow-none border-border/70">
+        <CardContent className="p-5">
+          <Skeleton className="h-20 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+  if (!brief) return null;
+
+  const notConfigured = brief.provider_status === 'not_configured';
+
+  return (
+    <Card className="shadow-none border-border/70">
+      <CardHeader className="py-4 px-5 border-b border-border/60 bg-muted/20">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <CardTitle className="text-base font-medium">AI Channel Brief</CardTitle>
+            <Badge variant="outline" className="text-primary/80 border-primary/30 bg-primary/5 font-medium text-[10px] tracking-wide px-1.5 py-0">
+              AI-GENERATED
+            </Badge>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRegenerate}
+            disabled={!brief.can_regenerate || isRegenerating}
+            data-testid="button-regenerate-ai-brief"
+          >
+            {isRegenerating ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
+            {brief.state === 'never_generated' ? 'Generate brief' : 'Regenerate'}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="p-5 space-y-4">
+        <p className="text-xs text-muted-foreground">
+          AI-generated interpretation, based only on the connected/manual metrics referenced below -- not a substitute for reviewing the tables yourself.
+        </p>
+
+        {notConfigured && (
+          <div className="rounded-md border border-border/60 bg-muted/10 p-3 text-sm text-muted-foreground">
+            AI provider is not connected. An admin can configure it in Admin &gt; Connections &amp; data.
+          </div>
+        )}
+
+        {brief.state === 'insufficient_data' && (
+          <p className="text-sm text-muted-foreground">
+            Not enough connected data yet for this scope to generate a brief.
+          </p>
+        )}
+
+        {brief.state === 'never_generated' && !notConfigured && (
+          <p className="text-sm text-muted-foreground">
+            No brief has been generated yet for this period, territory, and currency. Generate one from the current connected data.
+          </p>
+        )}
+
+        {brief.content && (
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-foreground">{brief.content.executive_summary}</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <AiBriefEvidenceList title="Risks" items={brief.content.risks} metricLabelByKey={metricLabelByKey} />
+              <AiBriefEvidenceList title="Recommended actions" items={brief.content.recommended_actions} metricLabelByKey={metricLabelByKey} />
+            </div>
+
+            <AiBriefEvidenceList title="Key highlights" items={brief.content.key_highlights} metricLabelByKey={metricLabelByKey} />
+            <AiBriefEvidenceList title="Opportunities" items={brief.content.opportunities} metricLabelByKey={metricLabelByKey} />
+
+            {(brief.data_as_of || brief.generated_at) && (
+              <div className="text-xs text-muted-foreground border-t border-border/50 pt-3 space-y-0.5">
+                {brief.data_as_of && <p>Data as of: {new Date(brief.data_as_of).toLocaleString()}</p>}
+                {brief.generated_at && <p>Generated: {new Date(brief.generated_at).toLocaleString()}</p>}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// -- PAM Local Time --------------------------------------------------------
+// Free, no-key, CORS-open public time API (verified: access-control-allow-
+// origin: * on this exact path). Attribution requested by the provider is
+// in the footer link in PamLocalTimeSection below.
+const TIME_NOW_REFRESH_MS = 5 * 60 * 1000; // re-sync with the authoritative source every 5 min
+const LOCAL_TICK_MS = 60 * 1000; // advance the displayed clock locally once a minute between refreshes
+
+interface PamClockState {
+  status: 'loading' | 'ok' | 'error';
+  date: Date | null;
+  abbreviation: string | null;
+}
+
+// A Date is an absolute instant, timezone-agnostic in itself -- Intl is
+// used here (not manual utc_offset arithmetic) to read the correct local
+// wall-clock hour/minute for a specific IANA zone, since it already
+// handles DST correctly for that instant.
+function getZonedHourMinute(date: Date, timezone: string): { hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: 'numeric', minute: 'numeric', hour12: false }).formatToParts(date);
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '0') % 24;
+  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+  return { hour, minute };
+}
+
+// Fetches the authoritative time once per timezone, then advances the
+// display locally every minute between refreshes -- no network call on
+// every tick. A refresh failure never erases an already-working clock; it
+// only flips to "error" if no authoritative baseline was ever obtained,
+// and other PAMs' clocks (separate hook instances) are unaffected either way.
+function usePamClock(timezone: string | null): PamClockState {
+  const [state, setState] = useState<PamClockState>({ status: 'loading', date: null, abbreviation: null });
+  const baselineRef = useRef<{ unixtimeMs: number; fetchedAtMs: number; abbreviation: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!timezone) return;
+    let cancelled = false;
+    baselineRef.current = null;
+    setState({ status: 'loading', date: null, abbreviation: null });
+
+    const fetchAuthoritative = async () => {
+      try {
+        const res = await fetch(`https://time.now/developer/api/timezone/${timezone}`);
+        if (!res.ok) throw new Error(`time.now responded ${res.status}`);
+        const body = await res.json();
+        if (cancelled) return;
+        baselineRef.current = { unixtimeMs: body.unixtime * 1000, fetchedAtMs: Date.now(), abbreviation: body.abbreviation ?? null };
+        setState({ status: 'ok', date: new Date(body.unixtime * 1000), abbreviation: body.abbreviation ?? null });
+      } catch {
+        if (!cancelled && !baselineRef.current) setState({ status: 'error', date: null, abbreviation: null });
+      }
+    };
+
+    fetchAuthoritative();
+    const refreshInterval = setInterval(fetchAuthoritative, TIME_NOW_REFRESH_MS);
+    const tickInterval = setInterval(() => {
+      if (!baselineRef.current) return;
+      const { unixtimeMs, fetchedAtMs, abbreviation } = baselineRef.current;
+      setState({ status: 'ok', date: new Date(unixtimeMs + (Date.now() - fetchedAtMs)), abbreviation });
+    }, LOCAL_TICK_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(refreshInterval);
+      clearInterval(tickInterval);
+    };
+  }, [timezone]);
+
+  return state;
+}
+
+function AnalogWatchface({ date, timezone, size = 56 }: { date: Date; timezone: string; size?: number }) {
+  const { hour, minute } = getZonedHourMinute(date, timezone);
+  const hourAngle = (hour % 12) * 30 + minute * 0.5;
+  const minuteAngle = minute * 6;
+  return (
+    <svg width={size} height={size} viewBox="0 0 56 56" className="shrink-0">
+      <circle cx="28" cy="28" r="27" className="fill-card stroke-border" strokeWidth="1" />
+      {[0, 90, 180, 270].map((deg) => (
+        <line key={deg} x1="28" y1="4" x2="28" y2="7" strokeWidth="1.5" strokeLinecap="round" className="stroke-muted-foreground" transform={`rotate(${deg} 28 28)`} />
+      ))}
+      <line x1="28" y1="28" x2="28" y2="14" strokeWidth="2.5" strokeLinecap="round" className="stroke-foreground" transform={`rotate(${hourAngle} 28 28)`} />
+      <line x1="28" y1="28" x2="28" y2="9" strokeWidth="1.75" strokeLinecap="round" className="stroke-foreground/70" transform={`rotate(${minuteAngle} 28 28)`} />
+      <circle cx="28" cy="28" r="1.75" className="fill-primary" />
+    </svg>
+  );
+}
+
+function PamClockCard({ pam }: { pam: User }) {
+  const clock = usePamClock(pam.timezone ?? null);
+
+  if (clock.status === 'error') {
+    return (
+      <div className="flex flex-col items-center gap-1.5 w-[84px] text-center">
+        <div className="h-14 w-14 rounded-full border border-dashed border-border/60 flex items-center justify-center text-[10px] text-muted-foreground">--</div>
+        <p className="text-xs text-muted-foreground truncate w-full">{pam.location_label}</p>
+        <p className="text-[11px] text-muted-foreground/70">Unavailable</p>
+      </div>
+    );
+  }
+
+  if (clock.status === 'loading' || !clock.date) {
+    return (
+      <div className="flex flex-col items-center gap-1.5 w-[84px]">
+        <Skeleton className="h-14 w-14 rounded-full" />
+        <Skeleton className="h-3 w-16" />
+      </div>
+    );
+  }
+
+  const { hour } = getZonedHourMinute(clock.date, pam.timezone!);
+  const isDaytime = hour >= 7 && hour < 19;
+  const digitalTime = new Intl.DateTimeFormat('en-US', { timeZone: pam.timezone!, hour: 'numeric', minute: '2-digit' }).format(clock.date);
+
+  return (
+    <div className="flex flex-col items-center gap-1.5 w-[84px] text-center">
+      <AnalogWatchface date={clock.date} timezone={pam.timezone!} />
+      <p className="text-xs font-medium text-foreground truncate w-full" title={pam.location_label ?? undefined}>{pam.location_label}</p>
+      <div className="flex items-center gap-1 text-xs tabular-nums text-foreground">
+        {isDaytime ? <Sun className="h-3 w-3 text-amber-500" /> : <Moon className="h-3 w-3 text-indigo-400" />}
+        <span>{digitalTime}</span>
+        {clock.abbreviation && <span className="text-muted-foreground">{clock.abbreviation}</span>}
+      </div>
+      <p className="text-[11px] text-muted-foreground truncate w-full">{pam.name}</p>
+    </div>
+  );
+}
+
+// Only PAMs with BOTH location_label and timezone explicitly configured
+// render a card -- no placeholder/guessed entries for the rest. Renders
+// nothing at all if no PAM has been configured yet.
+function PamLocalTimeSection({ users }: { users: User[] | undefined }) {
+  const configuredPams = (users ?? []).filter((u) => u.role === 'pam' && u.active && u.location_label && u.timezone);
+  if (configuredPams.length === 0) return null;
+
+  return (
+    <section className="space-y-3 max-w-5xl">
+      <h2 className="text-sm font-semibold text-foreground tracking-tight">PAM Local Time</h2>
+      <Card className="shadow-none border-border/70">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap gap-4">
+            {configuredPams.map((pam) => (
+              <PamClockCard key={pam.id} pam={pam} />
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground/70 mt-4 pt-3 border-t border-border/40">
+            <a href="https://time.now" target="_blank" rel="noreferrer" className="hover:text-foreground hover:underline">
+              World Time API by Time.Now
+            </a>
+          </p>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
 export default function Overview() {
   const { user: activeUser, isGlobalUser } = useAuth();
   // Mirrors backend requireAdmin's ADMIN_ROLES exactly (head_of_channels,
@@ -80,6 +376,11 @@ export default function Overview() {
   // in general and target-edit permission should stay pinned to this exact
   // role set regardless of how isGlobalUser evolves elsewhere.
   const canEditTargets = activeUser?.role === 'head_of_channels' || activeUser?.role === 'admin';
+  // Same role set as canEditTargets, but kept as its own explicit check --
+  // this one gates GET /users (requireAdmin) for PAM Local Time, a
+  // separate concern that shouldn't silently start tracking canEditTargets
+  // if that check's definition ever changes.
+  const canViewTeamData = activeUser?.role === 'head_of_channels' || activeUser?.role === 'admin';
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: territories } = useListTerritories();
@@ -129,7 +430,48 @@ export default function Overview() {
     queryClient.invalidateQueries({ queryKey: getGetHeadOfChannelsKpisQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetKpiDetailsQueryKey() });
     queryClient.invalidateQueries({ queryKey: getListMetricTargetsQueryKey() });
+    // Targets feed the AI brief's generation-input hash too -- a saved/
+    // cleared target can flip a cached brief to stale immediately.
+    queryClient.invalidateQueries({ queryKey: getGetAiChannelBriefQueryKey() });
   };
+
+  // Cache-only read on mount/filter change -- generation is exclusively
+  // user-triggered via the Regenerate button below, never automatic.
+  const aiBriefParams = { territory: scopedTerritory, period, currency };
+  const { data: aiBrief, isLoading: isLoadingAiBrief } = useGetAiChannelBrief(aiBriefParams);
+
+  const regenerateAiBriefMutation = useRegenerateAiChannelBrief({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.setQueryData(getGetAiChannelBriefQueryKey(aiBriefParams), data);
+      },
+      onError: (err) => {
+        const description = err instanceof ApiError && err.message ? err.message : 'Could not generate the brief. Please try again.';
+        toast({ variant: 'destructive', title: 'AI brief generation failed', description });
+      },
+    },
+  });
+
+  const handleRegenerateAiBrief = () => {
+    regenerateAiBriefMutation.mutate({
+      data: { territory: scopedTerritory, period: period as KpiPeriod, currency },
+    });
+  };
+
+  const { data: teamUsers } = useListUsers({ query: { enabled: canViewTeamData, queryKey: getListUsersQueryKey() } });
+
+  // Best-effort metric_key -> human label, built from whatever's currently
+  // loaded for this exact period/territory/currency scope (so it always
+  // matches the AI brief's own scope). Falls back to the raw key.
+  const metricLabelByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    if (kpis) {
+      for (const row of [...kpis.partner_development, ...kpis.weekly_commercial, ...kpis.weekly_marketing]) {
+        map.set(row.metric_key, row.metric);
+      }
+    }
+    return map;
+  }, [kpis]);
 
   const upsertTargetMutation = useUpsertMetricTarget({
     mutation: {
@@ -286,6 +628,18 @@ export default function Overview() {
           </div>
         </div>
 
+        {canViewTeamData && <PamLocalTimeSection users={teamUsers} />}
+
+        <div className="max-w-5xl">
+          <AiChannelBriefPanel
+            brief={aiBrief}
+            isLoading={isLoadingAiBrief}
+            onRegenerate={handleRegenerateAiBrief}
+            isRegenerating={regenerateAiBriefMutation.isPending}
+            metricLabelByKey={metricLabelByKey}
+          />
+        </div>
+
         {isLoadingKpis ? (
           <div className="space-y-6">
             <Skeleton className="h-[200px] w-full rounded-md" />
@@ -294,114 +648,127 @@ export default function Overview() {
           </div>
         ) : kpis ? (
           <div className="space-y-6 max-w-5xl">
-            {/* Table 1: Partner development */}
-            <Card className="shadow-none border-border/60">
-              <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
-                <CardTitle className="text-base font-medium">Partner development</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[250px] font-medium text-muted-foreground">KPI</TableHead>
-                      <TableHead className="font-medium text-muted-foreground text-right">Current</TableHead>
-                      <TableHead className="font-medium text-muted-foreground text-right">Target</TableHead>
-                      <TableHead className="font-medium text-muted-foreground">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {kpis.partner_development.map((row, i) => (
-                      <TableRow
-                        key={i}
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => setSelectedKpi(row.metric_key)}
-                      >
-                        <TableCell className="font-medium">{row.metric}</TableCell>
-                        <TableCell className="text-right tabular-nums">{formatMetricValue(row.current, row.metric_key, currency)}</TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">{formatMetricValue(row.target, row.metric_key, currency)}</TableCell>
-                        <TableCell><StatusBadge status={row.status} /></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold text-foreground tracking-tight">Core Channel Performance</h2>
 
-            {/* Table 2: Weekly commercial performance -- Current / Last Week / Target / Trend */}
-            <Card className="shadow-none border-border/60">
-              <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
-                <CardTitle className="text-base font-medium">Weekly commercial performance</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[250px] font-medium text-muted-foreground">Metric</TableHead>
-                      <TableHead className="font-medium text-muted-foreground text-right">Current</TableHead>
-                      <TableHead className="font-medium text-muted-foreground text-right">Last Week</TableHead>
-                      <TableHead className="font-medium text-muted-foreground text-right">Target</TableHead>
-                      <TableHead className="font-medium text-muted-foreground">Trend</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {kpis.weekly_commercial.map((row, i) => (
-                      <TableRow
-                        key={i}
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => setSelectedKpi(row.metric_key)}
-                      >
-                        <TableCell className="font-medium">{row.metric}</TableCell>
-                        <TableCell className="text-right tabular-nums">{formatMetricValue(row.current, row.metric_key, currency)}</TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">{formatMetricValue(row.last_week, row.metric_key, currency)}</TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">{formatMetricValue(row.target, row.metric_key, currency)}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            <TrendIcon trend={row.trend} />
-                            <span className="text-sm capitalize">{formatTrendLabel(row.trend)}</span>
-                          </div>
-                        </TableCell>
+              {/* Table 1: Partner development */}
+              <Card className="shadow-none border-border/70">
+                <CardHeader className="py-4 px-5 border-b border-border/60 bg-muted/20">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-medium">Partner development</CardTitle>
+                    <CoreBadge />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[250px] font-medium text-muted-foreground">KPI</TableHead>
+                        <TableHead className="font-medium text-muted-foreground text-right">Current</TableHead>
+                        <TableHead className="font-medium text-muted-foreground text-right">Target</TableHead>
+                        <TableHead className="font-medium text-muted-foreground">Status</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {kpis.partner_development.map((row, i) => (
+                        <TableRow
+                          key={i}
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => setSelectedKpi(row.metric_key)}
+                        >
+                          <TableCell className="font-medium">{row.metric}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatMetricValue(row.current, row.metric_key, currency)}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{formatMetricValue(row.target, row.metric_key, currency)}</TableCell>
+                          <TableCell><StatusBadge status={row.status} /></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
 
-            {/* Table 3: Weekly channel marketing -- This Week / Trend only, no visible Last Week (locked semantics) */}
-            <Card className="shadow-none border-border/60">
-              <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
-                <CardTitle className="text-base font-medium">Weekly channel marketing</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[220px] font-medium text-muted-foreground">Metric</TableHead>
-                      <TableHead className="font-medium text-muted-foreground text-right">This Week</TableHead>
-                      <TableHead className="font-medium text-muted-foreground">Trend</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {kpis.weekly_marketing.map((row, i) => (
-                      <TableRow
-                        key={i}
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => setSelectedKpi(row.metric_key)}
-                      >
-                        <TableCell className="font-medium">{row.metric}</TableCell>
-                        <TableCell className="text-right tabular-nums">{formatMetricValue(row.this_week, row.metric_key, currency)}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            <TrendIcon trend={row.trend} />
-                            <span className="text-sm capitalize">{formatTrendLabel(row.trend)}</span>
-                          </div>
-                        </TableCell>
+              {/* Table 2: Weekly commercial performance -- Current / Last Week / Target / Trend */}
+              <Card className="shadow-none border-border/70">
+                <CardHeader className="py-4 px-5 border-b border-border/60 bg-muted/20">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-medium">Weekly commercial performance</CardTitle>
+                    <CoreBadge />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[250px] font-medium text-muted-foreground">Metric</TableHead>
+                        <TableHead className="font-medium text-muted-foreground text-right">Current</TableHead>
+                        <TableHead className="font-medium text-muted-foreground text-right">Last Week</TableHead>
+                        <TableHead className="font-medium text-muted-foreground text-right">Target</TableHead>
+                        <TableHead className="font-medium text-muted-foreground">Trend</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {kpis.weekly_commercial.map((row, i) => (
+                        <TableRow
+                          key={i}
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => setSelectedKpi(row.metric_key)}
+                        >
+                          <TableCell className="font-medium">{row.metric}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatMetricValue(row.current, row.metric_key, currency)}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{formatMetricValue(row.last_week, row.metric_key, currency)}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{formatMetricValue(row.target, row.metric_key, currency)}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              <TrendIcon trend={row.trend} />
+                              <span className="text-sm capitalize">{formatTrendLabel(row.trend)}</span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              {/* Table 3: Weekly channel marketing -- This Week / Trend only, no visible Last Week (locked semantics) */}
+              <Card className="shadow-none border-border/70">
+                <CardHeader className="py-4 px-5 border-b border-border/60 bg-muted/20">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-medium">Weekly channel marketing</CardTitle>
+                    <CoreBadge />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[220px] font-medium text-muted-foreground">Metric</TableHead>
+                        <TableHead className="font-medium text-muted-foreground text-right">This Week</TableHead>
+                        <TableHead className="font-medium text-muted-foreground">Trend</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {kpis.weekly_marketing.map((row, i) => (
+                        <TableRow
+                          key={i}
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => setSelectedKpi(row.metric_key)}
+                        >
+                          <TableCell className="font-medium">{row.metric}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatMetricValue(row.this_week, row.metric_key, currency)}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              <TrendIcon trend={row.trend} />
+                              <span className="text-sm capitalize">{formatTrendLabel(row.trend)}</span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </section>
           </div>
         ) : (
           <div className="text-center py-12 text-muted-foreground">No data available.</div>

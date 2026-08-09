@@ -14,5 +14,12 @@ export interface User {
   role: UserRole;
   /** @nullable */
   territory: string | null;
+  /** @nullable */
+  location_label: string | null;
+  /**
+     * IANA zone name, e.g. "Europe/Bucharest". Null until explicitly configured -- never inferred from territory/country.
+     * @nullable
+     */
+  timezone: string | null;
   active: boolean;
 }
