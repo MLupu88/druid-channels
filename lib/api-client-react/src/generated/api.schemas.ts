@@ -361,12 +361,23 @@ export interface ScanConfig {
 
 export interface ScanConfigInput {
   name?: string;
+  /** The partner types DRUID is looking for (e.g. System Integrator, Consulting). */
   partner_types?: string[];
+  /** The industries DRUID is looking for. */
   industries?: string[];
+  /** The technologies / ecosystem adjacencies DRUID is looking for (e.g. Microsoft, Genesys, UiPath). */
   technologies?: string[];
+  /** Company domains to exclude from discovery. */
   excluded_domains?: string[];
   target_signals?: string[];
+  /** Explicit search queries / search intent. When empty, queries are derived automatically from industries and technologies. */
+  search_queries?: string[];
   max_results?: number;
+  /**
+     * Minimum number of the 5 qualification checks a candidate must pass to be surfaced as a prospect. Enterprise access and relevant capability are always required regardless of this setting, and Priority B already requires exactly 3 checks / Priority A requires at least 4 -- so values below 3 have no additional effect, which is why 3 is the floor.
+     * @minimum 3
+     * @maximum 5
+     */
   min_checks_required?: number;
   recency_window_days?: number;
   active?: boolean;
@@ -432,6 +443,8 @@ export interface TerritoryEditInput {
   name?: string;
   /** @nullable */
   owner_user_id?: string | null;
+  /** The territory's geography. This is the single canonical source of geography across the app -- never duplicated on a scan config. */
+  countries?: string[];
 }
 
 export type ScanRunInputMode = typeof ScanRunInputMode[keyof typeof ScanRunInputMode];
@@ -859,6 +872,49 @@ export interface ManualMetricValueInput {
   note?: string | null;
 }
 
+/**
+ * The same canonical reporting-period keys used throughout the KPI/reporting/PPTX stack.
+ */
+export type KpiPeriod = typeof KpiPeriod[keyof typeof KpiPeriod];
+
+
+export const KpiPeriod = {
+  q1: 'q1',
+  q2: 'q2',
+  q3: 'q3',
+  q4: 'q4',
+  ytd: 'ytd',
+} as const;
+
+export interface MetricTarget {
+  id: string;
+  metric_key: string;
+  period: KpiPeriod;
+  /** @nullable */
+  territory_id: string | null;
+  territory_name: string;
+  target_value: number;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  updated_by_name: string | null;
+  updated_at: string;
+}
+
+export interface MetricTargetInput {
+  metric_key: string;
+  period: KpiPeriod;
+  /** @nullable */
+  territory_id?: string | null;
+  /**
+     * No KPI in this product has a meaningful negative target.
+     * @minimum 0
+     */
+  target_value: number;
+  /** @nullable */
+  note?: string | null;
+}
+
 export type CampaignType = typeof CampaignType[keyof typeof CampaignType];
 
 
@@ -1273,6 +1329,13 @@ export const GetKpiDetailsCurrency = {
 } as const;
 
 export type ListManualMetricValuesParams = {
+/**
+ * @nullable
+ */
+metric_key?: string | null;
+};
+
+export type ListMetricTargetsParams = {
 /**
  * @nullable
  */

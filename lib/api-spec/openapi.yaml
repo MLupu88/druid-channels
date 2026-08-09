@@ -32,6 +32,8 @@ tags:
     description: Third-party connection admin (HubSpot, web search/reader, AI)
   - name: metric-mappings
     description: Map each KPI to a data source, with preview-before-save
+  - name: metric-targets
+    description: Management-configured KPI targets, independent of how each metric's actual value is computed
   - name: exports
     description: Quarterly report export
 
@@ -648,6 +650,66 @@ paths:
               schema:
                 $ref: "#/components/schemas/ManualMetricValue"
 
+  /metric-targets:
+    get:
+      operationId: listMetricTargets
+      tags: [metric-targets]
+      summary: List management-configured KPI targets. A PAM sees only their own territory plus Global; a global/admin user sees all.
+      parameters:
+        - name: metric_key
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of configured targets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MetricTarget"
+    put:
+      operationId: upsertMetricTarget
+      tags: [metric-targets]
+      summary: Create or update the target for a metric/period/territory (or Global). Head of Channels/admin only -- never changes the metric's actual value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetricTargetInput"
+      responses:
+        "200":
+          description: Saved target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricTarget"
+        "404":
+          description: Unknown metric_key or territory_id
+
+  /metric-targets/{id}:
+    delete:
+      operationId: deleteMetricTarget
+      tags: [metric-targets]
+      summary: Clear a configured target back to unconfigured (honest null). Head of Channels/admin only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+        "404":
+          description: Not found
+
   /exports/quarterly-pptx:
     get:
       operationId: exportQuarterlyPptx
@@ -1262,26 +1324,42 @@ components:
           type: array
           items:
             type: string
+          description: The partner types DRUID is looking for (e.g. System Integrator, Consulting).
         industries:
           type: array
           items:
             type: string
+          description: The industries DRUID is looking for.
         technologies:
           type: array
           items:
             type: string
+          description: The technologies / ecosystem adjacencies DRUID is looking for (e.g. Microsoft, Genesys, UiPath).
         excluded_domains:
           type: array
           items:
             type: string
+          description: Company domains to exclude from discovery.
         target_signals:
           type: array
           items:
             type: string
+        search_queries:
+          type: array
+          items:
+            type: string
+          description: Explicit search queries / search intent. When empty, queries are derived automatically from industries and technologies.
         max_results:
           type: number
         min_checks_required:
           type: number
+          minimum: 3
+          maximum: 5
+          description: >-
+            Minimum number of the 5 qualification checks a candidate must pass to be surfaced as a prospect.
+            Enterprise access and relevant capability are always required regardless of this setting, and
+            Priority B already requires exactly 3 checks / Priority A requires at least 4 -- so values below 3
+            have no additional effect, which is why 3 is the floor.
         recency_window_days:
           type: number
         active:
@@ -1362,6 +1440,11 @@ components:
           type: string
         owner_user_id:
           type: ["string", "null"]
+        countries:
+          type: array
+          items:
+            type: string
+          description: The territory's geography. This is the single canonical source of geography across the app -- never duplicated on a scan config.
 
     ScanRunInput:
       type: object
@@ -1809,6 +1892,51 @@ components:
           type: number
         target_value:
           type: ["number", "null"]
+        note:
+          type: ["string", "null"]
+
+    KpiPeriod:
+      type: string
+      enum: [q1, q2, q3, q4, ytd]
+      description: The same canonical reporting-period keys used throughout the KPI/reporting/PPTX stack.
+
+    MetricTarget:
+      type: object
+      required: [id, metric_key, period, territory_id, territory_name, target_value, note, updated_by_name, updated_at]
+      properties:
+        id:
+          type: string
+        metric_key:
+          type: string
+        period:
+          $ref: "#/components/schemas/KpiPeriod"
+        territory_id:
+          type: ["string", "null"]
+        territory_name:
+          type: string
+        target_value:
+          type: number
+        note:
+          type: ["string", "null"]
+        updated_by_name:
+          type: ["string", "null"]
+        updated_at:
+          type: string
+
+    MetricTargetInput:
+      type: object
+      required: [metric_key, period, target_value]
+      properties:
+        metric_key:
+          type: string
+        period:
+          $ref: "#/components/schemas/KpiPeriod"
+        territory_id:
+          type: ["string", "null"]
+        target_value:
+          type: number
+          minimum: 0
+          description: No KPI in this product has a meaningful negative target.
         note:
           type: ["string", "null"]
 

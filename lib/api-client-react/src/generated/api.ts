@@ -38,6 +38,7 @@ import type {
   HubspotPushResult,
   KpiDetail,
   ListManualMetricValuesParams,
+  ListMetricTargetsParams,
   ListPartnersParams,
   ListProspectsParams,
   ListScanRunsParams,
@@ -47,6 +48,8 @@ import type {
   MetricMapping,
   MetricMappingInput,
   MetricMappingPreviewInput,
+  MetricTarget,
+  MetricTargetInput,
   Partner,
   PartnerDetail,
   Prospect,
@@ -2204,6 +2207,232 @@ export const useUpsertManualMetricValue = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpsertManualMetricValueMutationOptions(options));
+    }
+
+export const getListMetricTargetsUrl = (params?: ListMetricTargetsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/metric-targets?${stringifiedParams}` : `/api/metric-targets`
+}
+
+/**
+ * @summary List management-configured KPI targets. A PAM sees only their own territory plus Global; a global/admin user sees all.
+ */
+export const listMetricTargets = async (params?: ListMetricTargetsParams, options?: Parameters<typeof customFetch>[1]): Promise<MetricTarget[]> => {
+
+  return customFetch<MetricTarget[]>(getListMetricTargetsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMetricTargetsQueryKey = (params?: ListMetricTargetsParams,) => {
+    return [
+    `/api/metric-targets`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListMetricTargetsQueryOptions = <TData = Awaited<ReturnType<typeof listMetricTargets>>, TError = ErrorType<unknown>>(params?: ListMetricTargetsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMetricTargets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMetricTargetsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMetricTargets>>> = ({ signal }) => listMetricTargets(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMetricTargets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMetricTargetsQueryResult = NonNullable<Awaited<ReturnType<typeof listMetricTargets>>>
+export type ListMetricTargetsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List management-configured KPI targets. A PAM sees only their own territory plus Global; a global/admin user sees all.
+ */
+
+export function useListMetricTargets<TData = Awaited<ReturnType<typeof listMetricTargets>>, TError = ErrorType<unknown>>(
+ params?: ListMetricTargetsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMetricTargets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMetricTargetsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpsertMetricTargetUrl = () => {
+
+
+
+
+  return `/api/metric-targets`
+}
+
+/**
+ * @summary Create or update the target for a metric/period/territory (or Global). Head of Channels/admin only -- never changes the metric's actual value.
+ */
+export const upsertMetricTarget = async (metricTargetInput: MetricTargetInput, options?: Parameters<typeof customFetch>[1]): Promise<MetricTarget> => {
+
+  return customFetch<MetricTarget>(getUpsertMetricTargetUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(metricTargetInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertMetricTargetMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMetricTarget>>, TError,{data: BodyType<MetricTargetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertMetricTarget>>, TError,{data: BodyType<MetricTargetInput>}, TContext> => {
+
+const mutationKey = ['upsertMetricTarget'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertMetricTarget>>, {data: BodyType<MetricTargetInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertMetricTarget(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertMetricTargetMutationResult = NonNullable<Awaited<ReturnType<typeof upsertMetricTarget>>>
+    export type UpsertMetricTargetMutationBody = BodyType<MetricTargetInput>
+    export type UpsertMetricTargetMutationError = ErrorType<void>
+
+    /**
+ * @summary Create or update the target for a metric/period/territory (or Global). Head of Channels/admin only -- never changes the metric's actual value.
+ */
+export const useUpsertMetricTarget = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMetricTarget>>, TError,{data: BodyType<MetricTargetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertMetricTarget>>,
+        TError,
+        {data: BodyType<MetricTargetInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertMetricTargetMutationOptions(options));
+    }
+
+export const getDeleteMetricTargetUrl = (id: string,) => {
+
+
+
+
+  return `/api/metric-targets/${id}`
+}
+
+/**
+ * @summary Clear a configured target back to unconfigured (honest null). Head of Channels/admin only.
+ */
+export const deleteMetricTarget = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<DeleteResult> => {
+
+  return customFetch<DeleteResult>(getDeleteMetricTargetUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteMetricTargetMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMetricTarget>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMetricTarget>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteMetricTarget'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMetricTarget>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteMetricTarget(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMetricTargetMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMetricTarget>>>
+
+    export type DeleteMetricTargetMutationError = ErrorType<void>
+
+    /**
+ * @summary Clear a configured target back to unconfigured (honest null). Head of Channels/admin only.
+ */
+export const useDeleteMetricTarget = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMetricTarget>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMetricTarget>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteMetricTargetMutationOptions(options));
     }
 
 export const getExportQuarterlyPptxUrl = (params?: ExportQuarterlyPptxParams,) => {

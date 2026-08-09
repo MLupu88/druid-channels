@@ -11,6 +11,7 @@ import campaignsRouter from "./campaigns";
 import partnersRouter from "./partners";
 import connectionsRouter from "./connections";
 import metricMappingsRouter from "./metric_mappings";
+import metricTargetsRouter from "./metric_targets";
 import exportsRouter from "./exports";
 
 const router: IRouter = Router();
@@ -27,6 +28,7 @@ router.use(campaignsRouter);
 router.use(partnersRouter);
 router.use(connectionsRouter);
 router.use(metricMappingsRouter);
+router.use(metricTargetsRouter);
 router.use(exportsRouter);
 
 export default router;

@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
   useGetHeadOfChannelsKpis,
+  getGetHeadOfChannelsKpisQueryKey,
   useListTerritories,
   useGetKpiDetails,
   getGetKpiDetailsQueryKey,
+  useListMetricTargets,
+  getListMetricTargetsQueryKey,
+  useUpsertMetricTarget,
+  useDeleteMetricTarget,
   exportQuarterlyPptx,
   ApiError,
 } from '@workspace/api-client-react';
@@ -25,13 +30,26 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowDown, ArrowUp, Minus, X, Download, Loader2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Minus, X, Download, Loader2, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { type Currency, formatMetricValue, formatTrendLabel, formatStatusLabel } from '@/lib/kpi-format';
+import type { KpiPeriod } from '@workspace/api-client-react';
 
 function StatusBadge({ status }: { status: string | null }) {
   if (status === 'green' || status === 'on_track') return <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 font-normal">On track</Badge>;
@@ -56,7 +74,14 @@ function DataStatusBadge({ status }: { status: string }) {
 
 export default function Overview() {
   const { user: activeUser, isGlobalUser } = useAuth();
+  // Mirrors backend requireAdmin's ADMIN_ROLES exactly (head_of_channels,
+  // admin) -- kept as its own explicit check rather than reusing
+  // isGlobalUser, since that flag's definition is about territory scoping
+  // in general and target-edit permission should stay pinned to this exact
+  // role set regardless of how isGlobalUser evolves elsewhere.
+  const canEditTargets = activeUser?.role === 'head_of_channels' || activeUser?.role === 'admin';
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: territories } = useListTerritories();
   const ownTerritoryId = !isGlobalUser
     ? territories?.find((t) => t.name === activeUser?.territory)?.id
@@ -66,6 +91,10 @@ export default function Overview() {
   const [currency, setCurrency] = useState<Currency>('USD');
   const [selectedKpi, setSelectedKpi] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [editTargetOpen, setEditTargetOpen] = useState(false);
+  const [targetValueInput, setTargetValueInput] = useState('');
+  const [targetNoteInput, setTargetNoteInput] = useState('');
+  const [confirmingClear, setConfirmingClear] = useState(false);
 
   // PAMs only ever see their own territory's KPIs -- the server enforces
   // this too, but default the selector to it so there's nothing to pick.
@@ -87,6 +116,85 @@ export default function Overview() {
     detailParams,
     { query: { enabled: Boolean(selectedKpi), queryKey: getGetKpiDetailsQueryKey(detailParams) } },
   );
+
+  // Only fetched for the edit-target dialog (id/note aren't part of
+  // GetKpiDetails) -- gated to global users since a PAM never edits.
+  const targetsParams = { metric_key: selectedKpi ?? '' };
+  const { data: targetRows } = useListMetricTargets(targetsParams, {
+    query: { enabled: canEditTargets && Boolean(selectedKpi), queryKey: getListMetricTargetsQueryKey(targetsParams) },
+  });
+  const existingTarget = targetRows?.find((t) => t.territory_id === scopedTerritory);
+
+  const invalidateKpiQueries = () => {
+    queryClient.invalidateQueries({ queryKey: getGetHeadOfChannelsKpisQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetKpiDetailsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getListMetricTargetsQueryKey() });
+  };
+
+  const upsertTargetMutation = useUpsertMetricTarget({
+    mutation: {
+      onSuccess: () => {
+        invalidateKpiQueries();
+        setEditTargetOpen(false);
+        toast({ title: 'Target saved' });
+      },
+      onError: () => {
+        toast({ variant: 'destructive', title: 'Could not save target', description: 'Please try again.' });
+      },
+    },
+  });
+
+  const deleteTargetMutation = useDeleteMetricTarget({
+    mutation: {
+      onSuccess: () => {
+        invalidateKpiQueries();
+        setEditTargetOpen(false);
+        toast({ title: 'Target cleared', description: 'This KPI has no configured target again.' });
+      },
+      onError: () => {
+        toast({ variant: 'destructive', title: 'Could not clear target', description: 'Please try again.' });
+      },
+    },
+  });
+
+  // No KPI in this product has a meaningful negative target (all are
+  // counts or money-pipeline goals), so negative values are rejected
+  // alongside non-finite ones -- shown inline rather than silently ignored.
+  const parsedTargetValue = targetValueInput.trim() === '' ? null : Number(targetValueInput);
+  const targetValueError =
+    targetValueInput.trim() === ''
+      ? null
+      : !Number.isFinite(parsedTargetValue)
+        ? 'Enter a valid number.'
+        : parsedTargetValue! < 0
+          ? 'Target cannot be negative.'
+          : null;
+  const isTargetValueValid = parsedTargetValue !== null && targetValueError === null;
+
+  const openEditTarget = () => {
+    setTargetValueInput(existingTarget ? String(existingTarget.target_value) : '');
+    setTargetNoteInput(existingTarget?.note ?? '');
+    setConfirmingClear(false);
+    setEditTargetOpen(true);
+  };
+
+  const handleSaveTarget = () => {
+    if (!selectedKpi || !isTargetValueValid || parsedTargetValue === null) return;
+    upsertTargetMutation.mutate({
+      data: {
+        metric_key: selectedKpi,
+        period: period as KpiPeriod,
+        territory_id: scopedTerritory,
+        target_value: parsedTargetValue,
+        note: targetNoteInput.trim() || null,
+      },
+    });
+  };
+
+  const handleClearTarget = () => {
+    if (!existingTarget) return;
+    deleteTargetMutation.mutate({ id: existingTarget.id });
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -116,8 +224,6 @@ export default function Overview() {
       setIsExporting(false);
     }
   };
-
-  const isHeadOfChannels = activeUser?.role === 'head_of_channels';
 
   return (
     <div className="flex h-full w-full relative">
@@ -343,7 +449,20 @@ export default function Overview() {
                       <p className="text-lg font-semibold tabular-nums">{formatMetricValue(detail.target_to_date, detail.metric_key, currency)}</p>
                     </div>
                     <div className="rounded-md border border-border/60 p-3">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{detail.full_period_target_label}</p>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider">{detail.full_period_target_label}</p>
+                        {canEditTargets && (
+                          <button
+                            type="button"
+                            onClick={openEditTarget}
+                            className="text-muted-foreground hover:text-foreground -mr-1 -mt-1 p-1 rounded"
+                            aria-label="Edit target"
+                            data-testid="button-edit-target"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                       <p className="text-lg font-semibold tabular-nums">{formatMetricValue(detail.full_period_target, detail.metric_key, currency)}</p>
                     </div>
                     <div className="rounded-md border border-border/60 p-3">
@@ -484,6 +603,84 @@ export default function Overview() {
             </div>
           </ScrollArea>
         </div>
+      )}
+
+      {canEditTargets && (
+        <Dialog open={editTargetOpen} onOpenChange={(open) => { setEditTargetOpen(open); if (!open) setConfirmingClear(false); }}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Edit target — {detail?.metric ?? 'KPI'}</DialogTitle>
+              <DialogDescription>
+                {detail?.period ?? period} · {scopedTerritory ? (detail?.territory ?? territories?.find((t) => t.id === scopedTerritory)?.name) : 'Global'}
+                . This only sets the target -- it never changes the actual value, which is computed from its own source.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2 space-y-4">
+              <div className="text-sm text-muted-foreground">
+                Current actual: <span className="text-foreground font-medium tabular-nums">{formatMetricValue(detail?.current ?? null, detail?.metric_key ?? '', currency)}</span>
+              </div>
+              <div>
+                <Label htmlFor="target-value" className="mb-2 block">Target value</Label>
+                <Input
+                  id="target-value"
+                  type="number"
+                  value={targetValueInput}
+                  onChange={(e) => setTargetValueInput(e.target.value)}
+                  placeholder="e.g. 15"
+                  aria-invalid={targetValueError !== null}
+                />
+                {targetValueError && (
+                  <p className="text-xs text-rose-600 mt-1.5">{targetValueError}</p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="target-note" className="mb-2 block">Note (optional)</Label>
+                <Textarea
+                  id="target-note"
+                  value={targetNoteInput}
+                  onChange={(e) => setTargetNoteInput(e.target.value)}
+                  placeholder="Why this target?"
+                />
+              </div>
+
+              {confirmingClear && (
+                <div className="rounded-md border border-rose-200 bg-rose-50 p-3 space-y-2">
+                  <p className="text-sm text-rose-800">
+                    Clear this target? This KPI/period/scope will go back to having <span className="font-medium">no configured target</span> -- it will not fall back to any previous or default value.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setConfirmingClear(false)}>Cancel</Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={handleClearTarget}
+                      disabled={deleteTargetMutation.isPending}
+                    >
+                      Yes, clear target
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <DialogFooter className="flex items-center justify-between sm:justify-between">
+              {existingTarget && !confirmingClear ? (
+                <Button
+                  variant="ghost"
+                  className="text-rose-600 hover:text-rose-600 hover:bg-rose-50"
+                  onClick={() => setConfirmingClear(true)}
+                >
+                  Clear target
+                </Button>
+              ) : <span />}
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setEditTargetOpen(false)}>Cancel</Button>
+                <Button onClick={handleSaveTarget} disabled={upsertTargetMutation.isPending || !isTargetValueValid}>
+                  Save target
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

@@ -10,4 +10,6 @@ export interface TerritoryEditInput {
   name?: string;
   /** @nullable */
   owner_user_id?: string | null;
+  /** The territory's geography. This is the single canonical source of geography across the app -- never duplicated on a scan config. */
+  countries?: string[];
 }
