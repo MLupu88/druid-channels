@@ -498,15 +498,21 @@ export const UpdateScanConfigParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const updateScanConfigBodyMinChecksRequiredMin = 3;
+export const updateScanConfigBodyMinChecksRequiredMax = 5;
+
+
+
 export const UpdateScanConfigBody = zod.object({
   "name": zod.string().optional(),
-  "partner_types": zod.array(zod.string()).optional(),
-  "industries": zod.array(zod.string()).optional(),
-  "technologies": zod.array(zod.string()).optional(),
-  "excluded_domains": zod.array(zod.string()).optional(),
+  "partner_types": zod.array(zod.string()).optional().describe('The partner types DRUID is looking for (e.g. System Integrator, Consulting).'),
+  "industries": zod.array(zod.string()).optional().describe('The industries DRUID is looking for.'),
+  "technologies": zod.array(zod.string()).optional().describe('The technologies \/ ecosystem adjacencies DRUID is looking for (e.g. Microsoft, Genesys, UiPath).'),
+  "excluded_domains": zod.array(zod.string()).optional().describe('Company domains to exclude from discovery.'),
   "target_signals": zod.array(zod.string()).optional(),
+  "search_queries": zod.array(zod.string()).optional().describe('Explicit search queries \/ search intent. When empty, queries are derived automatically from industries and technologies.'),
   "max_results": zod.number().optional(),
-  "min_checks_required": zod.number().optional(),
+  "min_checks_required": zod.number().min(updateScanConfigBodyMinChecksRequiredMin).max(updateScanConfigBodyMinChecksRequiredMax).optional().describe('Minimum number of the 5 qualification checks a candidate must pass to be surfaced as a prospect. Enterprise access and relevant capability are always required regardless of this setting, and Priority B already requires exactly 3 checks \/ Priority A requires at least 4 -- so values below 3 have no additional effect, which is why 3 is the floor.'),
   "recency_window_days": zod.number().optional(),
   "active": zod.boolean().optional()
 })
@@ -921,6 +927,68 @@ export const UpsertManualMetricValueResponse = zod.object({
 
 
 /**
+ * @summary List management-configured KPI targets. A PAM sees only their own territory plus Global; a global/admin user sees all.
+ */
+export const ListMetricTargetsQueryParams = zod.object({
+  "metric_key": zod.coerce.string().nullish()
+})
+
+export const ListMetricTargetsResponseItem = zod.object({
+  "id": zod.string(),
+  "metric_key": zod.string(),
+  "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
+  "territory_id": zod.string().nullable(),
+  "territory_name": zod.string(),
+  "target_value": zod.number(),
+  "note": zod.string().nullable(),
+  "updated_by_name": zod.string().nullable(),
+  "updated_at": zod.string()
+})
+export const ListMetricTargetsResponse = zod.array(ListMetricTargetsResponseItem)
+
+
+/**
+ * @summary Create or update the target for a metric/period/territory (or Global). Head of Channels/admin only -- never changes the metric's actual value.
+ */
+export const upsertMetricTargetBodyTargetValueMin = 0;
+
+
+
+export const UpsertMetricTargetBody = zod.object({
+  "metric_key": zod.string(),
+  "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
+  "territory_id": zod.string().nullish(),
+  "target_value": zod.number().min(upsertMetricTargetBodyTargetValueMin).describe('No KPI in this product has a meaningful negative target.'),
+  "note": zod.string().nullish()
+})
+
+export const UpsertMetricTargetResponse = zod.object({
+  "id": zod.string(),
+  "metric_key": zod.string(),
+  "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
+  "territory_id": zod.string().nullable(),
+  "territory_name": zod.string(),
+  "target_value": zod.number(),
+  "note": zod.string().nullable(),
+  "updated_by_name": zod.string().nullable(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Clear a configured target back to unconfigured (honest null). Head of Channels/admin only.
+ */
+export const DeleteMetricTargetParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteMetricTargetResponse = zod.object({
+  "id": zod.string(),
+  "deleted": zod.boolean()
+})
+
+
+/**
  * @summary Export the quarterly Head of Channels report as a PowerPoint deck
  */
 export const exportQuarterlyPptxQueryCurrencyDefault = `USD`;
@@ -1099,7 +1167,8 @@ export const UpdateTerritoryParams = zod.object({
 
 export const UpdateTerritoryBody = zod.object({
   "name": zod.string().optional(),
-  "owner_user_id": zod.string().nullish()
+  "owner_user_id": zod.string().nullish(),
+  "countries": zod.array(zod.string()).optional().describe('The territory\'s geography. This is the single canonical source of geography across the app -- never duplicated on a scan config.')
 })
 
 export const UpdateTerritoryResponse = zod.object({

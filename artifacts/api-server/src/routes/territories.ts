@@ -39,6 +39,7 @@ router.patch("/territories/:id", requireAdmin, async (req, res): Promise<void> =
   const updates: Partial<typeof territoriesTable.$inferInsert> = {};
   if (data.name !== undefined) updates.name = data.name;
   if (data.owner_user_id !== undefined) updates.ownerUserId = data.owner_user_id;
+  if (data.countries !== undefined) updates.countries = data.countries;
 
   const [updated] = await db.update(territoriesTable).set(updates).where(eq(territoriesTable.id, id)).returning();
 

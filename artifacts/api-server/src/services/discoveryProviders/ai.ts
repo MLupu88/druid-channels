@@ -17,10 +17,34 @@ export class AiNotImplementedError extends Error {
   }
 }
 
+// The management-configured Partner Search Criteria this candidate is being
+// evaluated against -- the same profile that drove the search queries which
+// produced `evidence` below (see discoveryEngine.ts's
+// buildPartnerSearchCriteria). territoryCountries comes directly from
+// territories.countries (the canonical geography source established for
+// Partner Search Criteria) -- never a legacy fallback, so Settings and
+// qualification can never diverge on geography.
+export interface PartnerSearchCriteria {
+  partnerTypes: string[];
+  industries: string[];
+  technologies: string[];
+  territoryName: string;
+  territoryCountries: string[];
+  excludedDomains: string[];
+  minChecksRequired: number;
+  searchIntent: string[];
+}
+
 export interface AiQualificationInput {
   companyName: string;
   domain: string;
   evidence: Array<{ url: string; text: string }>;
+  // This grounds *why* a check is true/false and the resulting explanation
+  // in what DRUID is actually looking for -- it is never license to invent
+  // evidence to match the criteria. The five-check qualification gate
+  // itself (discoveryEngine.ts's qualifyChecks) remains authoritative; this
+  // function only supplies evidence-grounded check assessments.
+  criteria: PartnerSearchCriteria;
 }
 
 export interface AiQualificationOutput {

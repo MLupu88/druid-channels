@@ -16,6 +16,7 @@ import { hasCredential } from "./connections";
 import * as searchProvider from "./discoveryProviders/search";
 import * as extractionProvider from "./discoveryProviders/extraction";
 import * as aiProvider from "./discoveryProviders/ai";
+import { logger } from "../lib/logger";
 
 // The Channel Discovery engine: turns a scan config into real, evidence-backed
 // prospects. Tries a live provider chain (web search -> web reader -> AI
@@ -430,26 +431,137 @@ function extractDomain(url: string): string {
   }
 }
 
-function buildSearchQueries(config: ScanConfig): string[] {
-  const queries = (config.searchQueries as string[]) ?? [];
-  if (queries.length > 0) return queries;
-  const technologies = (config.technologies as string[]) ?? [];
+// Bounded, realistic search-phrase variants per partner-type category --
+// diversity for the round-robin planner below, never a multiplier on query
+// count (variants are rotated through by index, never cross-joined).
+const PARTNER_TYPE_SEARCH_TERMS: Record<string, string[]> = {
+  "system integrator": ["systems integrator", "implementation partner", "technology consultancy"],
+  si: ["systems integrator", "implementation partner"],
+  "value added reseller": ["value added reseller", "technology reseller", "solution provider"],
+  var: ["value added reseller", "technology reseller", "solution provider"],
+  isv: ["ISV", "independent software vendor"],
+  consulting: ["consultancy", "advisory firm"],
+  "managed service provider": ["managed services provider", "managed IT services"],
+  msp: ["managed services provider", "managed IT services"],
+  bpo: ["BPO", "business process outsourcer"],
+};
+
+function partnerTypeSearchVariants(raw: string): string[] {
+  return PARTNER_TYPE_SEARCH_TERMS[raw.trim().toLowerCase()] ?? [raw]; // unknown categories pass through literally
+}
+
+const MAX_AUTOMATIC_QUERIES = 12;
+
+// Builds the automatic (non-explicit) query set from the full Partner
+// Search Criteria profile -- not just technologies x industries. Balanced
+// across whichever dimensions are actually configured: a rich zip pass so
+// every present dimension (including partner type) shows up starting at
+// query #1, then a round-robin fill across pairwise families so no single
+// Cartesian family can consume the whole budget before others get a turn.
+// Countries rotate via index, never cross-multiplied. Deduplicated, capped
+// at MAX_AUTOMATIC_QUERIES, and never padded when the profile is narrow.
+function buildAutomaticQueries(config: ScanConfig, territory: Territory): string[] {
   const industries = (config.industries as string[]) ?? [];
-  if (technologies.length === 0) return [];
-  return technologies.flatMap((tech) => industries.map((industry) => `"${tech} partner" ${industry}`));
+  const technologies = (config.technologies as string[]) ?? [];
+  const countries = (territory.countries as string[]) ?? [];
+  const partnerTypeTerms = ((config.partnerTypes as string[]) ?? []).flatMap(partnerTypeSearchVariants);
+  const geoSuffix = (i: number) => (countries.length > 0 ? ` ${countries[i % countries.length]}` : "");
+
+  const queries: string[] = [];
+  const seen = new Set<string>();
+  const push = (q: string) => {
+    const trimmed = q.trim();
+    if (trimmed && !seen.has(trimmed) && queries.length < MAX_AUTOMATIC_QUERIES) {
+      seen.add(trimmed);
+      queries.push(trimmed);
+    }
+  };
+
+  const presentDims = [technologies.length > 0, partnerTypeTerms.length > 0, industries.length > 0].filter(Boolean).length;
+  if (presentDims >= 2) {
+    const steps = Math.max(technologies.length, partnerTypeTerms.length, industries.length);
+    for (let i = 0; i < steps && queries.length < MAX_AUTOMATIC_QUERIES; i++) {
+      const parts: string[] = [];
+      if (technologies.length > 0) parts.push(`"${technologies[i % technologies.length]}"`);
+      if (partnerTypeTerms.length > 0) parts.push(`"${partnerTypeTerms[i % partnerTypeTerms.length]}"`);
+      if (industries.length > 0) parts.push(industries[i % industries.length]);
+      push(`${parts.join(" ")}${geoSuffix(i)}`);
+    }
+  }
+
+  const families: Array<() => string> = [];
+  if (technologies.length > 0 && industries.length > 0) {
+    let a = 0;
+    families.push(() => `"${technologies[a % technologies.length]} partner" ${industries[a++ % industries.length]}`);
+  }
+  if (technologies.length > 0 && partnerTypeTerms.length > 0) {
+    let a = 0;
+    families.push(() => `"${technologies[a % technologies.length]}" "${partnerTypeTerms[a++ % partnerTypeTerms.length]}"`);
+  }
+  if (partnerTypeTerms.length > 0 && industries.length > 0) {
+    let a = 0;
+    families.push(() => `"${partnerTypeTerms[a % partnerTypeTerms.length]}" ${industries[a++ % industries.length]}`);
+  }
+  for (let round = 0; round < MAX_AUTOMATIC_QUERIES * 3 && queries.length < MAX_AUTOMATIC_QUERIES && families.length > 0; round++) {
+    for (const family of families) {
+      if (queries.length >= MAX_AUTOMATIC_QUERIES) break;
+      push(`${family()}${geoSuffix(round)}`);
+    }
+  }
+
+  // At most one dimension was ever configured (e.g. only industries) --
+  // the passes above intentionally produce nothing for that case, so
+  // search still gets *something* rather than an empty query list.
+  if (queries.length === 0) {
+    for (const tech of technologies) push(`"${tech} partner"${geoSuffix(queries.length)}`);
+    for (const pt of partnerTypeTerms) push(`"${pt}"${geoSuffix(queries.length)}`);
+    for (const ind of industries) push(`${ind} technology partner${geoSuffix(queries.length)}`);
+  }
+
+  return queries;
+}
+
+function buildSearchQueries(config: ScanConfig, territory: Territory): string[] {
+  const explicit = (config.searchQueries as string[]) ?? [];
+  return explicit.length > 0 ? explicit : buildAutomaticQueries(config, territory);
+}
+
+// The canonical Partner Search Criteria passed to live AI qualification --
+// derived from the same ScanConfig/Territory used to build search queries,
+// so search and AI can never see two different profiles. territoryCountries
+// comes directly from territories.countries (the canonical geography
+// source), never resolveCountries()'s legacy fallback map: that fallback
+// exists only for the demo generator below, and using it here would let
+// Settings show no configured countries while the AI is silently told a
+// hardcoded list.
+function buildPartnerSearchCriteria(config: ScanConfig, territory: Territory): aiProvider.PartnerSearchCriteria {
+  return {
+    partnerTypes: (config.partnerTypes as string[]) ?? [],
+    industries: (config.industries as string[]) ?? [],
+    technologies: (config.technologies as string[]) ?? [],
+    territoryName: territory.name,
+    territoryCountries: (territory.countries as string[]) ?? [],
+    excludedDomains: (config.excludedDomains as string[]) ?? [],
+    minChecksRequired: config.minChecksRequired,
+    searchIntent: buildSearchQueries(config, territory),
+  };
 }
 
 const REQUIRED_PROVIDER_TYPES = ["web_search", "web_reader", "ai"] as const;
 
-async function attemptLiveDiscovery(config: ScanConfig): Promise<Candidate[] | null> {
+async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): Promise<Candidate[] | null> {
   const rows = await db.select().from(connectionsTable).where(inArray(connectionsTable.providerType, REQUIRED_PROVIDER_TYPES));
   const byType = new Map(rows.map((r) => [r.providerType, r]));
   const ready = REQUIRED_PROVIDER_TYPES.every((t) => hasCredential(byType.get(t)?.credentialEnvVar ?? null));
   if (!ready) return null;
 
   try {
+    // Computed once and iterated directly (criteria.searchIntent), not via
+    // a second buildSearchQueries call -- search and AI qualification below
+    // literally share the same array, not just equal-by-construction copies.
+    const criteria = buildPartnerSearchCriteria(config, territory);
     const candidates: Candidate[] = [];
-    for (const query of buildSearchQueries(config)) {
+    for (const query of criteria.searchIntent) {
       const results = await searchProvider.search(query, { maxResults: config.maxResults });
       for (const result of results) {
         const domain = extractDomain(result.url);
@@ -458,6 +570,7 @@ async function attemptLiveDiscovery(config: ScanConfig): Promise<Candidate[] | n
           companyName: result.title,
           domain,
           evidence: [{ url: result.url, text: page.text }],
+          criteria,
         });
         candidates.push({
           companyName: result.title,
@@ -587,6 +700,25 @@ export interface DiscoveryOutcome {
   prospectsCreated: number;
 }
 
+// Thrown only by runDiscoveryForConfig's catch below, carrying nothing but
+// the already-sanitized user-facing message -- callers (e.g. scans.ts) never
+// need to re-classify, and can never accidentally surface a raw internal
+// error just by reading .message off whatever they catch.
+export class DiscoveryScanFailedError extends Error {}
+
+// Classifies the *typed* error object -- not a message string read back out
+// of the DB later -- into a stable, hand-written user-facing message. The
+// three provider branches are unreachable via the live path today
+// (attemptLiveDiscovery already intercepts *NotImplementedError internally
+// and falls back to demo), but stay as defense-in-depth and become live the
+// moment one provider is implemented while others remain stubbed.
+function classifyDiscoveryError(err: unknown): string {
+  if (err instanceof searchProvider.SearchNotImplementedError) return "Search provider not connected.";
+  if (err instanceof extractionProvider.ExtractionNotImplementedError) return "Page extraction provider not connected.";
+  if (err instanceof aiProvider.AiNotImplementedError) return "AI qualification provider not connected.";
+  return "Discovery scan could not be completed. Please try again or contact an administrator.";
+}
+
 export async function runDiscoveryForConfig(scanConfigId: string): Promise<DiscoveryOutcome> {
   const [config] = await db.select().from(scanConfigsTable).where(eq(scanConfigsTable.id, scanConfigId));
   if (!config) throw new Error("Scan config not found");
@@ -601,7 +733,7 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
     .returning();
 
   try {
-    const liveCandidates = await attemptLiveDiscovery(config);
+    const liveCandidates = await attemptLiveDiscovery(config, territory);
     const dataStatus: "demo" | "connected" = liveCandidates ? "connected" : "demo";
     const candidates = liveCandidates ?? generateDemoCandidates(config, territory);
     const excludedDomains = (config.excludedDomains as string[]) ?? [];
@@ -630,14 +762,28 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
 
     return { run: completedRun!, prospectsCreated: qualifiedCount };
   } catch (err) {
+    const safeMessage = classifyDiscoveryError(err);
+
+    // Bounded, safe diagnostic fields only -- never the raw err.message or
+    // a raw exception object. A message string can itself embed a DB URL,
+    // credential, token, or SQL text (e.g. the Postgres driver includes the
+    // failing query/constraint in its error message), and pino's redact
+    // list only covers header paths, not arbitrary message text. If richer
+    // raw diagnostics are needed later, they must go through an explicit
+    // secret-redacting sanitizer first -- not logged verbatim here.
+    logger.error(
+      { scanConfigId, errorName: err instanceof Error ? err.name : typeof err, safeMessage },
+      "Discovery scan failed",
+    );
+
     await db
       .update(scanRunsTable)
       .set({
         status: "failed",
         completedAt: new Date(),
-        errorMessage: err instanceof Error ? err.message : "Unknown discovery error",
+        errorMessage: safeMessage,
       })
       .where(eq(scanRunsTable.id, run!.id));
-    throw err;
+    throw new DiscoveryScanFailedError(safeMessage);
   }
 }

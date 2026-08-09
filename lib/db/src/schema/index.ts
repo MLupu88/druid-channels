@@ -15,3 +15,4 @@ export * from "./partner_events";
 export * from "./connections";
 export * from "./metric_mappings";
 export * from "./manual_metric_values";
+export * from "./metric_targets";

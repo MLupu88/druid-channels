@@ -567,23 +567,39 @@ function WhatToLookForTab() {
   const queryClient = useQueryClient();
 
   const { data: configs, isLoading: isConfigsLoading } = useListScanConfigs();
+  const { data: territories } = useListTerritories();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [localConfig, setLocalConfig] = useState<any>(null);
+  const [localCountries, setLocalCountries] = useState<string>('');
 
   const { data: detail, isLoading: isDetailLoading } = useGetScanConfig(
     selectedId || '',
     { query: { enabled: !!selectedId, queryKey: getGetScanConfigQueryKey(selectedId || '') } }
   );
 
+  const selectedTerritory = detail ? territories?.find((t) => t.id === detail.territory_id) : undefined;
+
+  // Two canonical stores behind one user-facing "Partner search criteria"
+  // save: scan_configs (partner/search/qualification criteria) and
+  // territories (geography, never duplicated onto scan_configs). Each
+  // mutation only invalidates/refetches its own data on its own success, so
+  // a partial failure never leaves stale data displayed as if it saved.
   const updateMutation = useUpdateScanConfig({
     mutation: {
       onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: getListScanConfigsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetScanConfigQueryKey(data.id) });
         setLocalConfig(data);
-        toast({ title: 'Preferences saved' });
-      }
-    }
+      },
+    },
+  });
+
+  const updateTerritoryMutation = useUpdateTerritory({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListTerritoriesQueryKey() });
+      },
+    },
   });
 
   useEffect(() => {
@@ -598,21 +614,58 @@ function WhatToLookForTab() {
     }
   }, [detail]);
 
-  const handleSave = () => {
-    if (!selectedId || !localConfig) return;
-    updateMutation.mutate({
-      id: selectedId,
-      data: {
-        partner_types: localConfig.partner_types,
-        industries: localConfig.industries,
-        technologies: localConfig.technologies,
-        excluded_domains: localConfig.excluded_domains,
-        target_signals: localConfig.target_signals,
-        max_results: localConfig.max_results,
-        min_checks_required: localConfig.min_checks_required,
-        recency_window_days: localConfig.recency_window_days
+  useEffect(() => {
+    if (selectedTerritory) {
+      setLocalCountries((selectedTerritory.countries ?? []).join(', '));
+    }
+  }, [selectedTerritory]);
+
+  const isSaving = updateMutation.isPending || updateTerritoryMutation.isPending;
+
+  const handleSave = async () => {
+    if (!selectedId || !localConfig || isSaving) return;
+
+    try {
+      await updateMutation.mutateAsync({
+        id: selectedId,
+        data: {
+          partner_types: localConfig.partner_types,
+          industries: localConfig.industries,
+          technologies: localConfig.technologies,
+          excluded_domains: localConfig.excluded_domains,
+          target_signals: localConfig.target_signals,
+          search_queries: localConfig.search_queries,
+          max_results: localConfig.max_results,
+          min_checks_required: localConfig.min_checks_required,
+          recency_window_days: localConfig.recency_window_days,
+        },
+      });
+    } catch {
+      // Scan-config write itself failed -- never attempt the territory
+      // write on top of an unknown/failed state.
+      toast({ variant: 'destructive', title: 'Could not save search criteria', description: 'Please try again.' });
+      return;
+    }
+
+    if (selectedTerritory) {
+      try {
+        await updateTerritoryMutation.mutateAsync({
+          id: selectedTerritory.id,
+          data: { countries: localCountries.split(',').map((s) => s.trim()).filter(Boolean) },
+        });
+      } catch {
+        // Partial save: search criteria persisted, geography did not. Say
+        // exactly that -- never claim full success or full failure.
+        toast({
+          variant: 'destructive',
+          title: 'Partially saved',
+          description: 'Search criteria were saved, but geography could not be updated. Please retry.',
+        });
+        return;
       }
-    });
+    }
+
+    toast({ title: 'Partner search criteria saved' });
   };
 
   const handleArrayChange = (field: string, val: string) => {
@@ -622,8 +675,22 @@ function WhatToLookForTab() {
     }));
   };
 
+  // Search queries can legitimately contain commas/quotes (e.g. `"Genesys
+  // partner" + banking`), so these are one-per-line rather than comma
+  // separated like the other array fields above.
+  const handleQueriesChange = (val: string) => {
+    setLocalConfig((prev: any) => ({
+      ...prev,
+      search_queries: val.split('\n').map((s) => s.trim()).filter(Boolean),
+    }));
+  };
+
   return (
-    <div className="flex gap-6">
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground max-w-2xl">
+        What DRUID is looking for, by territory. This drives both discovery scans and how the AI explains why a company fits.
+      </p>
+      <div className="flex gap-6">
       <div className="w-56 shrink-0">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Territory</div>
         <div className="space-y-1">
@@ -724,14 +791,69 @@ function WhatToLookForTab() {
               </CardContent>
             </Card>
 
+            <Card className="shadow-none border-border/60">
+              <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
+                <CardTitle className="text-base font-medium">Qualification &amp; search intent</CardTitle>
+              </CardHeader>
+              <CardContent className="p-5 space-y-5">
+                <div className="space-y-2">
+                  <Label>Minimum qualification threshold</Label>
+                  <Select
+                    value={String(localConfig.min_checks_required ?? 3)}
+                    onValueChange={(v) => setLocalConfig((prev: any) => ({ ...prev, min_checks_required: Number(v) }))}
+                  >
+                    <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="3">3 of 5 checks (default)</SelectItem>
+                      <SelectItem value="4">4 of 5 checks (stricter)</SelectItem>
+                      <SelectItem value="5">5 of 5 checks (strictest)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Enterprise access and relevant capability are always required no matter this setting. Values below 3 aren't offered because they would have no effect: a prospect already needs at least 3 checks to qualify.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Search queries / search intent (one per line, optional)</Label>
+                  <Textarea
+                    value={(localConfig.search_queries || []).join('\n')}
+                    onChange={e => handleQueriesChange(e.target.value)}
+                    placeholder={'"Genesys partner" + banking\n"launched an AI practice" + Germany'}
+                    className="min-h-[100px] font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to derive search queries automatically from industries and technologies above.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-none border-border/60">
+              <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
+                <CardTitle className="text-base font-medium">Geography</CardTitle>
+              </CardHeader>
+              <CardContent className="p-5 space-y-2">
+                <Label>Territory countries (comma separated)</Label>
+                <Input
+                  value={localCountries}
+                  onChange={e => setLocalCountries(e.target.value)}
+                  placeholder="e.g. Germany, Austria, Switzerland"
+                />
+                <p className="text-xs text-muted-foreground">
+                  This is the {selectedTerritory?.name ?? 'territory'}&apos;s geography as a whole, not just this scan configuration -- it also applies anywhere else the territory's countries are used.
+                </p>
+              </CardContent>
+            </Card>
+
             <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={updateMutation.isPending}>
+              <Button onClick={handleSave} disabled={isSaving}>
                 <Save className="h-4 w-4 mr-2" />
-                Save preferences
+                Save partner search criteria
               </Button>
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   );
@@ -1138,7 +1260,7 @@ export default function SettingsPage() {
       <Tabs defaultValue="team">
         <TabsList>
           <TabsTrigger value="team">Team</TabsTrigger>
-          <TabsTrigger value="what-to-look-for">What to look for</TabsTrigger>
+          <TabsTrigger value="what-to-look-for">Partner search criteria</TabsTrigger>
           <TabsTrigger value="connections">Connections & data</TabsTrigger>
         </TabsList>
         <TabsContent value="team" className="mt-6">

@@ -8,12 +8,23 @@
 
 export interface ScanConfigInput {
   name?: string;
+  /** The partner types DRUID is looking for (e.g. System Integrator, Consulting). */
   partner_types?: string[];
+  /** The industries DRUID is looking for. */
   industries?: string[];
+  /** The technologies / ecosystem adjacencies DRUID is looking for (e.g. Microsoft, Genesys, UiPath). */
   technologies?: string[];
+  /** Company domains to exclude from discovery. */
   excluded_domains?: string[];
   target_signals?: string[];
+  /** Explicit search queries / search intent. When empty, queries are derived automatically from industries and technologies. */
+  search_queries?: string[];
   max_results?: number;
+  /**
+     * Minimum number of the 5 qualification checks a candidate must pass to be surfaced as a prospect. Enterprise access and relevant capability are always required regardless of this setting, and Priority B already requires exactly 3 checks / Priority A requires at least 4 -- so values below 3 have no additional effect, which is why 3 is the floor.
+     * @minimum 3
+     * @maximum 5
+     */
   min_checks_required?: number;
   recency_window_days?: number;
   active?: boolean;

@@ -8,7 +8,7 @@ import {
   UpdateScanConfigResponse,
 } from "@workspace/api-zod";
 import { eq, desc, inArray } from "drizzle-orm";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireAdmin } from "../middleware/auth";
 import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
 
 const router: IRouter = Router();
@@ -123,7 +123,12 @@ router.get("/scan-configs/:id", requireAuth, async (req, res): Promise<void> => 
   res.json(GetScanConfigResponse.parse(shapeConfig(row.config, row.territory?.name ?? "", lastRuns.get(row.config.id))));
 });
 
-router.put("/scan-configs/:id", requireAuth, async (req, res): Promise<void> => {
+// Management-only: Partner Search Criteria is a management control, not a
+// PAM-editable setting (GET above stays requireAuth + territory-scoped so a
+// PAM can still view their own territory's criteria read-only). Admins
+// aren't territory-scoped, same convention as the Batch 1 metric-targets/
+// metric-mappings PUT routes.
+router.put("/scan-configs/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const parsed = UpdateScanConfigBody.safeParse(req.body);
@@ -137,15 +142,6 @@ router.put("/scan-configs/:id", requireAuth, async (req, res): Promise<void> => 
     res.status(404).json({ error: "Scan config not found" });
     return;
   }
-  try {
-    await assertRecordTerritoryAccess(req.actingUser!, existingForAuth.territoryId, null);
-  } catch (err) {
-    if (err instanceof ForbiddenScopeError) {
-      res.status(403).json({ error: err.message });
-      return;
-    }
-    throw err;
-  }
 
   const data = parsed.data;
   const updates: Partial<typeof scanConfigsTable.$inferInsert> = {};
@@ -155,6 +151,7 @@ router.put("/scan-configs/:id", requireAuth, async (req, res): Promise<void> => 
   if (data.technologies !== undefined) updates.technologies = data.technologies;
   if (data.excluded_domains !== undefined) updates.excludedDomains = data.excluded_domains;
   if (data.target_signals !== undefined) updates.targetSignals = data.target_signals;
+  if (data.search_queries !== undefined) updates.searchQueries = data.search_queries;
   if (data.max_results !== undefined) updates.maxResults = data.max_results;
   if (data.min_checks_required !== undefined) updates.minChecksRequired = data.min_checks_required;
   if (data.recency_window_days !== undefined) updates.recencyWindowDays = data.recency_window_days;

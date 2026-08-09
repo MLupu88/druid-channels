@@ -5,7 +5,7 @@ import { RunScanBody, RunScanResponse, ListScanRunsQueryParams, ListScanRunsResp
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { assertRecordTerritoryAccess, ForbiddenScopeError, isGlobalUser, getOwnTerritory } from "../services/authz";
-import { runDiscoveryForConfig } from "../services/discoveryEngine";
+import { runDiscoveryForConfig, DiscoveryScanFailedError } from "../services/discoveryEngine";
 
 const router: IRouter = Router();
 
@@ -48,7 +48,14 @@ router.post("/scans/run", requireAuth, async (req, res): Promise<void> => {
           : `Scan completed using demo data (no live search/reader/AI connection configured). Found ${run.resultsFound}, ${prospectsCreated} qualified for review.`,
     }));
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Scan failed" });
+    // runDiscoveryForConfig already classified/sanitized this error before
+    // throwing it -- .message is safe to return as-is. Anything else
+    // reaching this catch (e.g. a bug before runDiscoveryForConfig is even
+    // called) gets the same generic fallback rather than its raw message.
+    const message = err instanceof DiscoveryScanFailedError
+      ? err.message
+      : "Discovery scan could not be completed. Please try again or contact an administrator.";
+    res.status(500).json({ error: message });
   }
 });
 

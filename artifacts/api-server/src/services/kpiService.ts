@@ -6,6 +6,7 @@ import {
   kpiSnapshotsTable,
   metricMappingsTable,
   manualMetricValuesTable,
+  metricTargetsTable,
   connectionsTable,
   usersTable,
 } from "@workspace/db";
@@ -89,9 +90,25 @@ function trendOf(current: number, previous: number): "up" | "down" | "flat" {
   return current > previous ? "up" : current < previous ? "down" : "flat";
 }
 
-const NEW_PROSPECT_TARGETS: Record<string, number> = { q1: 8, q2: 11, q3: 15, q4: 18, ytd: 40 };
+// Management-configured target for this metric_key/period/territory, from
+// metric_targets -- the single source of truth for an edited target,
+// independent of how source_type computes "current". null means no target
+// has been configured (never a fabricated default).
+export async function getTargetOverride(metricKey: string, periodKey: string, territoryId: string | null): Promise<number | null> {
+  const scopeFilter = territoryId ? eq(metricTargetsTable.territoryId, territoryId) : isNull(metricTargetsTable.territoryId);
+  const [row] = await db
+    .select()
+    .from(metricTargetsTable)
+    .where(and(eq(metricTargetsTable.metricKey, metricKey), eq(metricTargetsTable.period, periodKey), scopeFilter));
+  return row ? Number(row.targetValue) : null;
+}
 
-async function computeNewPartnerProspects(periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
+// targetOverride, when provided, is authoritative for both the returned
+// target and the status banding derived from it -- this is the only
+// PARTNER_RADAR computation that self-derives a status from its target, so
+// threading the override in here (rather than only patching `target` after
+// the fact) keeps status and target consistent in one pass.
+async function computeNewPartnerProspects(periodKey: string, target: ResolvedTerritory, targetOverride?: number | null): Promise<KpiComputation> {
   const periodInfo = PERIODS[periodKey];
   const allTerritories = await db.select().from(territoriesTable);
   const allProspects = await db.select().from(prospectsTable);
@@ -118,7 +135,8 @@ async function computeNewPartnerProspects(periodKey: string, target: ResolvedTer
   const pushedCount = scoped.filter((p) => p.status === "pushed_to_hubspot").length;
   const rejectedCount = scoped.filter((p) => p.status === "rejected").length;
   const total = newCount + acceptedCount + pushedCount;
-  const targetValue = NEW_PROSPECT_TARGETS[periodKey] ?? 15;
+  // Honest: no metric_targets row -> no target, no status. Never a fabricated default.
+  const targetValue = targetOverride ?? null;
   const mostRecent = scoped.reduce<Date | null>((latest, p) => {
     const created = new Date(p.createdAt as unknown as string);
     return !latest || created > latest ? created : latest;
@@ -129,12 +147,15 @@ async function computeNewPartnerProspects(periodKey: string, target: ResolvedTer
     .slice(0, 100)
     .map((p) => ({ label: `Prospect ${p.id.slice(0, 8)} (${p.status})`, value: 1, date: new Date(p.createdAt as unknown as string).toISOString() }));
 
+  const status: KpiComputation["status"] =
+    targetValue === null ? null : total >= targetValue ? "green" : total >= targetValue * 0.7 ? "amber" : "red";
+
   return {
     current: total,
     target: targetValue,
     last_week: null,
     trend: null,
-    status: total >= targetValue ? "green" : total >= targetValue * 0.7 ? "amber" : "red",
+    status,
     data_status: "CONNECTED",
     data_source: "Live: prospects table, scoped to prospects created within the selected period",
     last_updated: (mostRecent ?? new Date()).toISOString(),
@@ -483,10 +504,10 @@ async function computeCurrentStateFromSnapshot(
   };
 }
 
-async function computePartnerRadar(metricKey: string, periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
+async function computePartnerRadar(metricKey: string, periodKey: string, target: ResolvedTerritory, targetOverride: number | null): Promise<KpiComputation> {
   switch (metricKey) {
     case "new_partner_prospects":
-      return computeNewPartnerProspects(periodKey, target);
+      return computeNewPartnerProspects(periodKey, target, targetOverride);
     case "signed_partners":
       return computeSignedPartners(periodKey, target);
     case "renewals":
@@ -736,21 +757,16 @@ export interface MappingOverride {
   active: boolean;
 }
 
-export async function computeMetric(
+async function computeMetricFromSource(
   metricKey: string,
   periodKey: string,
   target: ResolvedTerritory,
-  override?: MappingOverride,
+  mapping: MappingOverride,
+  targetOverride: number | null,
 ): Promise<KpiComputation> {
-  const mapping = override ?? (await getEffectiveMapping(metricKey));
-
-  if (!mapping.active) {
-    return notConnected("This metric's mapping is currently disabled in Admin > Connections & data.");
-  }
-
   switch (mapping.sourceType as SourceType) {
     case "PARTNER_RADAR":
-      return computePartnerRadar(metricKey, periodKey, target);
+      return computePartnerRadar(metricKey, periodKey, target, targetOverride);
     case "ACTIVITIES":
       return computeActivities(metricKey, target);
     case "DEMO":
@@ -774,6 +790,30 @@ export async function computeMetric(
     default:
       return notConnected("This metric has no data source configured yet.");
   }
+}
+
+export async function computeMetric(
+  metricKey: string,
+  periodKey: string,
+  target: ResolvedTerritory,
+  override?: MappingOverride,
+): Promise<KpiComputation> {
+  const mapping = override ?? (await getEffectiveMapping(metricKey));
+
+  if (!mapping.active) {
+    return notConnected("This metric's mapping is currently disabled in Admin > Connections & data.");
+  }
+
+  const targetOverride = await getTargetOverride(metricKey, periodKey, target.territoryId);
+  const c = await computeMetricFromSource(metricKey, periodKey, target, mapping, targetOverride);
+
+  // metric_targets is the sole canonical target for every source type --
+  // always wins, and an absent row always means null here, never a
+  // fallback to whatever legacy target field the source computation
+  // produced (kpi_snapshots.target_value for DEMO/past-period money
+  // metrics, manual_metric_values.target_value for MANUAL). Never touches
+  // how `current` above was computed.
+  return { ...c, target: targetOverride };
 }
 
 export function reconcile(current: number | null, byTerritory: TerritoryContribution[]): { reconciles: boolean; note: string | null } {

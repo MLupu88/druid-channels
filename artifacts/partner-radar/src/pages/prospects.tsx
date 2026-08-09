@@ -61,8 +61,10 @@ import {
   Minus,
   Pencil,
   Trash2,
-  Sparkles
+  Sparkles,
+  Target
 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -173,6 +175,23 @@ function DataStatusBadge({ dataStatus }: { dataStatus: string }) {
     return <Badge variant="outline" className="font-normal text-emerald-700 bg-emerald-50 border-emerald-200">Live sources</Badge>;
   }
   return <Badge variant="outline" className="font-normal text-muted-foreground">Demo data</Badge>;
+}
+
+function CriteriaChips({ label, values }: { label: string; values: string[] | undefined }) {
+  return (
+    <div>
+      <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{label}</span>
+      {values && values.length > 0 ? (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {values.map((v) => (
+            <Badge key={v} variant="secondary" className="font-normal text-xs">{v}</Badge>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground mt-0.5">None configured</p>
+      )}
+    </div>
+  );
 }
 
 export default function Prospects() {
@@ -435,10 +454,60 @@ export default function Prospects() {
               {renderScanStatus()}
             </div>
           </div>
-          <Button onClick={runDiscoveryScan} disabled={runScanMutation.isPending || !targetScanConfig} variant="outline" size="sm" className="h-8">
-            <Filter className="h-4 w-4 mr-2" />
-            Run discovery scan
-          </Button>
+          <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 text-muted-foreground" disabled={!targetScanConfig}>
+                  <Target className="h-4 w-4 mr-2" />
+                  What DRUID is looking for
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80" align="end">
+                {targetScanConfig ? (
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="font-medium text-sm">Partner search criteria — {targetScanConfig.territory_name}</h4>
+                      <p className="text-xs text-muted-foreground mt-0.5">Read-only here. Managed in Settings by Channel management.</p>
+                    </div>
+                    <CriteriaChips label="Partner types" values={targetScanConfig.partner_types} />
+                    <CriteriaChips label="Industries" values={targetScanConfig.industries} />
+                    <CriteriaChips label="Technologies" values={targetScanConfig.technologies} />
+                    <CriteriaChips
+                      label="Geography (territory)"
+                      values={territories?.find((t) => t.id === targetScanConfig.territory_id)?.countries}
+                    />
+                    <CriteriaChips label="Excluded domains" values={targetScanConfig.excluded_domains} />
+                    <div>
+                      <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Minimum qualification</span>
+                      <p className="text-sm mt-0.5">
+                        {targetScanConfig.min_checks_required !== undefined && targetScanConfig.min_checks_required !== null
+                          ? `${targetScanConfig.min_checks_required} of 5 checks`
+                          : 'Not configured'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Search intent</span>
+                      {(targetScanConfig.search_queries?.length ?? 0) > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {targetScanConfig.search_queries!.map((q) => (
+                            <Badge key={q} variant="secondary" className="font-normal text-xs">{q}</Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground mt-0.5">Derived automatically from the configured industries and technologies.</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Select a territory to see its partner search criteria.</p>
+                )}
+              </PopoverContent>
+            </Popover>
+            <Button onClick={runDiscoveryScan} disabled={runScanMutation.isPending || !targetScanConfig} variant="outline" size="sm" className="h-8">
+              <Filter className="h-4 w-4 mr-2" />
+              Run discovery scan
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
