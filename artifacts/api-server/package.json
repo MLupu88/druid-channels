@@ -9,6 +9,7 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:authz": "node --test tests/authz.test.mjs",
+    "test:ai-brief-hash": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/aiChannelBriefHash.test.ts",
     "seed": "tsx ./src/scripts/seed.ts"
   },
   "dependencies": {
@@ -20,7 +21,8 @@
     "express": "^5.2.1",
     "pino": "^9.14.0",
     "pino-http": "^10.5.0",
-    "pptxgenjs": "^4.0.1"
+    "pptxgenjs": "^4.0.1",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

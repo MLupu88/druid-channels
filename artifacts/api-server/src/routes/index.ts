@@ -13,6 +13,7 @@ import connectionsRouter from "./connections";
 import metricMappingsRouter from "./metric_mappings";
 import metricTargetsRouter from "./metric_targets";
 import exportsRouter from "./exports";
+import aiChannelBriefRouter from "./ai_channel_brief";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(connectionsRouter);
 router.use(metricMappingsRouter);
 router.use(metricTargetsRouter);
 router.use(exportsRouter);
+router.use(aiChannelBriefRouter);
 
 export default router;

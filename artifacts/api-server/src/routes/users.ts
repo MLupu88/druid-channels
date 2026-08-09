@@ -22,8 +22,21 @@ function shapeUser(u: typeof usersTable.$inferSelect) {
     email: u.email,
     role: u.role,
     territory: u.territory,
+    location_label: u.locationLabel,
+    timezone: u.timezone,
     active: u.active,
   };
+}
+
+// Validated the standard way -- Intl throws RangeError on an unrecognized
+// zone name -- rather than maintaining a separate static IANA zone list.
+function isValidIanaTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Team directory / roster: only head_of_channels/admin may list the full
@@ -46,6 +59,11 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
   const { name, territory, password } = parsed.data;
   const email = parsed.data.email.trim().toLowerCase();
 
+  if (parsed.data.timezone && !isValidIanaTimezone(parsed.data.timezone)) {
+    res.status(400).json({ error: `"${parsed.data.timezone}" is not a valid IANA timezone.` });
+    return;
+  }
+
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email));
   if (existing) {
     res.status(409).json({ error: "A user with this email already exists." });
@@ -60,6 +78,8 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
         email,
         role: "pam",
         territory: territory ?? null,
+        locationLabel: parsed.data.location_label ?? null,
+        timezone: parsed.data.timezone ?? null,
         active: true,
         passwordHash: hashPassword(password),
       })
@@ -91,6 +111,11 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
+  if (parsed.data.timezone && !isValidIanaTimezone(parsed.data.timezone)) {
+    res.status(400).json({ error: `"${parsed.data.timezone}" is not a valid IANA timezone.` });
+    return;
+  }
+
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!existing) {
     res.status(404).json({ error: "User not found" });
@@ -105,6 +130,8 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
   const updates: Partial<typeof usersTable.$inferInsert> = {};
   if (data.name !== undefined) updates.name = data.name;
   if (data.territory !== undefined) updates.territory = data.territory;
+  if (data.location_label !== undefined) updates.locationLabel = data.location_label;
+  if (data.timezone !== undefined) updates.timezone = data.timezone;
   if (data.active !== undefined) updates.active = data.active;
 
   if (Object.keys(updates).length === 0) {

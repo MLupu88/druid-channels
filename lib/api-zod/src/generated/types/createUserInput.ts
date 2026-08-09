@@ -12,6 +12,13 @@ export interface CreateUserInput {
   email: string;
   /** @nullable */
   territory?: string | null;
+  /** @nullable */
+  location_label?: string | null;
+  /**
+     * Must be a valid IANA zone name if provided; validated server-side.
+     * @nullable
+     */
+  timezone?: string | null;
   /**
      * Initial access credential for the new PAM. Hashed server-side; never stored or returned in plaintext.
      * @minLength 16

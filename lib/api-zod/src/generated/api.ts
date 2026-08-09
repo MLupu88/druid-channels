@@ -24,6 +24,8 @@ export const LoginResponse = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }),
   "expires_at": zod.string()
@@ -39,6 +41,8 @@ export const GetCurrentUserResponse = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 })
 
@@ -68,6 +72,8 @@ export const ListUsersResponseItem = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
@@ -85,6 +91,8 @@ export const CreateUserBody = zod.object({
   "name": zod.string().min(1),
   "email": zod.string().email(),
   "territory": zod.string().nullish(),
+  "location_label": zod.string().nullish(),
+  "timezone": zod.string().nullish().describe('Must be a valid IANA zone name if provided; validated server-side.'),
   "password": zod.string().min(createUserBodyPasswordMin).describe('Initial access credential for the new PAM. Hashed server-side; never stored or returned in plaintext.')
 })
 
@@ -94,6 +102,8 @@ export const CreateUserResponse = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 })
 
@@ -149,6 +159,8 @@ export const ListProspectsResponseItem = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }).optional(),
   "partner_type": zod.string(),
@@ -209,6 +221,8 @@ export const GetProspectResponse = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }).optional(),
   "partner_type": zod.string(),
@@ -298,6 +312,8 @@ export const UpdateProspectResponse = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }).optional(),
   "partner_type": zod.string(),
@@ -377,6 +393,8 @@ export const MakeProspectDecisionResponse = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }).optional(),
   "partner_type": zod.string(),
@@ -1003,6 +1021,138 @@ export const ExportQuarterlyPptxResponse = zod.unknown()
 
 
 /**
+ * @summary Get the current AI Channel Brief state and cached content (if any) for a period/territory/currency scope
+ */
+export const getAiChannelBriefQueryCurrencyDefault = `USD`;
+
+export const GetAiChannelBriefQueryParams = zod.object({
+  "territory": zod.coerce.string().nullish(),
+  "period": zod.coerce.string().nullish(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']).default(getAiChannelBriefQueryCurrencyDefault)
+})
+
+export const getAiChannelBriefResponseContentOneExecutiveSummaryMax = 800;
+
+export const getAiChannelBriefResponseContentOneKeyHighlightsItemTextMax = 240;
+
+
+export const getAiChannelBriefResponseContentOneKeyHighlightsMax = 6;
+
+export const getAiChannelBriefResponseContentOneRisksItemTextMax = 240;
+
+
+export const getAiChannelBriefResponseContentOneRisksMax = 6;
+
+export const getAiChannelBriefResponseContentOneOpportunitiesItemTextMax = 240;
+
+
+export const getAiChannelBriefResponseContentOneOpportunitiesMax = 6;
+
+export const getAiChannelBriefResponseContentOneRecommendedActionsItemTextMax = 240;
+
+
+export const getAiChannelBriefResponseContentOneRecommendedActionsMax = 6;
+
+
+
+export const GetAiChannelBriefResponse = zod.object({
+  "state": zod.enum(['never_generated', 'ready', 'stale', 'insufficient_data']).describe('Current cached-brief state. ready\/stale are derived by comparing the cached generation-input hash with the current eligible-data hash; never_generated means no cached brief exists despite eligible data; insufficient_data means no cached brief exists and there is currently no eligible data.'),
+  "provider_status": zod.enum(['configured', 'not_configured']).describe('Whether the approved AI provider and credential are configured. This does not by itself verify live provider connectivity.'),
+  "can_regenerate": zod.boolean(),
+  "period": zod.string(),
+  "territory_name": zod.string(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "content": zod.union([zod.object({
+  "executive_summary": zod.string().min(1).max(getAiChannelBriefResponseContentOneExecutiveSummaryMax),
+  "key_highlights": zod.array(zod.object({
+  "text": zod.string().min(1).max(getAiChannelBriefResponseContentOneKeyHighlightsItemTextMax),
+  "supporting_metrics": zod.array(zod.string()).min(1).describe('metric_key values from the generation snapshot that support this item.')
+})).max(getAiChannelBriefResponseContentOneKeyHighlightsMax),
+  "risks": zod.array(zod.object({
+  "text": zod.string().min(1).max(getAiChannelBriefResponseContentOneRisksItemTextMax),
+  "supporting_metrics": zod.array(zod.string()).min(1).describe('metric_key values from the generation snapshot that support this item.')
+})).max(getAiChannelBriefResponseContentOneRisksMax),
+  "opportunities": zod.array(zod.object({
+  "text": zod.string().min(1).max(getAiChannelBriefResponseContentOneOpportunitiesItemTextMax),
+  "supporting_metrics": zod.array(zod.string()).min(1).describe('metric_key values from the generation snapshot that support this item.')
+})).max(getAiChannelBriefResponseContentOneOpportunitiesMax),
+  "recommended_actions": zod.array(zod.object({
+  "text": zod.string().min(1).max(getAiChannelBriefResponseContentOneRecommendedActionsItemTextMax),
+  "supporting_metrics": zod.array(zod.string()).min(1).describe('metric_key values from the generation snapshot that support this item.')
+})).max(getAiChannelBriefResponseContentOneRecommendedActionsMax)
+}),zod.null()]),
+  "data_as_of": zod.coerce.date().nullable(),
+  "generated_at": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Regenerate the AI Channel Brief for a period/territory/currency scope, on demand
+ */
+export const regenerateAiChannelBriefBodyCurrencyDefault = `USD`;
+
+export const RegenerateAiChannelBriefBody = zod.object({
+  "territory": zod.string().nullish(),
+  "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).optional().describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']).default(regenerateAiChannelBriefBodyCurrencyDefault)
+})
+
+export const regenerateAiChannelBriefResponseContentOneExecutiveSummaryMax = 800;
+
+export const regenerateAiChannelBriefResponseContentOneKeyHighlightsItemTextMax = 240;
+
+
+export const regenerateAiChannelBriefResponseContentOneKeyHighlightsMax = 6;
+
+export const regenerateAiChannelBriefResponseContentOneRisksItemTextMax = 240;
+
+
+export const regenerateAiChannelBriefResponseContentOneRisksMax = 6;
+
+export const regenerateAiChannelBriefResponseContentOneOpportunitiesItemTextMax = 240;
+
+
+export const regenerateAiChannelBriefResponseContentOneOpportunitiesMax = 6;
+
+export const regenerateAiChannelBriefResponseContentOneRecommendedActionsItemTextMax = 240;
+
+
+export const regenerateAiChannelBriefResponseContentOneRecommendedActionsMax = 6;
+
+
+
+export const RegenerateAiChannelBriefResponse = zod.object({
+  "state": zod.enum(['never_generated', 'ready', 'stale', 'insufficient_data']).describe('Current cached-brief state. ready\/stale are derived by comparing the cached generation-input hash with the current eligible-data hash; never_generated means no cached brief exists despite eligible data; insufficient_data means no cached brief exists and there is currently no eligible data.'),
+  "provider_status": zod.enum(['configured', 'not_configured']).describe('Whether the approved AI provider and credential are configured. This does not by itself verify live provider connectivity.'),
+  "can_regenerate": zod.boolean(),
+  "period": zod.string(),
+  "territory_name": zod.string(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "content": zod.union([zod.object({
+  "executive_summary": zod.string().min(1).max(regenerateAiChannelBriefResponseContentOneExecutiveSummaryMax),
+  "key_highlights": zod.array(zod.object({
+  "text": zod.string().min(1).max(regenerateAiChannelBriefResponseContentOneKeyHighlightsItemTextMax),
+  "supporting_metrics": zod.array(zod.string()).min(1).describe('metric_key values from the generation snapshot that support this item.')
+})).max(regenerateAiChannelBriefResponseContentOneKeyHighlightsMax),
+  "risks": zod.array(zod.object({
+  "text": zod.string().min(1).max(regenerateAiChannelBriefResponseContentOneRisksItemTextMax),
+  "supporting_metrics": zod.array(zod.string()).min(1).describe('metric_key values from the generation snapshot that support this item.')
+})).max(regenerateAiChannelBriefResponseContentOneRisksMax),
+  "opportunities": zod.array(zod.object({
+  "text": zod.string().min(1).max(regenerateAiChannelBriefResponseContentOneOpportunitiesItemTextMax),
+  "supporting_metrics": zod.array(zod.string()).min(1).describe('metric_key values from the generation snapshot that support this item.')
+})).max(regenerateAiChannelBriefResponseContentOneOpportunitiesMax),
+  "recommended_actions": zod.array(zod.object({
+  "text": zod.string().min(1).max(regenerateAiChannelBriefResponseContentOneRecommendedActionsItemTextMax),
+  "supporting_metrics": zod.array(zod.string()).min(1).describe('metric_key values from the generation snapshot that support this item.')
+})).max(regenerateAiChannelBriefResponseContentOneRecommendedActionsMax)
+}),zod.null()]),
+  "data_as_of": zod.coerce.date().nullable(),
+  "generated_at": zod.coerce.date().nullable()
+})
+
+
+/**
  * @summary List campaign lists
  */
 export const ListCampaignsResponseItem = zod.object({
@@ -1125,6 +1275,8 @@ export const UpdateUserParams = zod.object({
 export const UpdateUserBody = zod.object({
   "name": zod.string().min(1).optional(),
   "territory": zod.string().nullish(),
+  "location_label": zod.string().nullish(),
+  "timezone": zod.string().nullish().describe('Must be a valid IANA zone name if provided; validated server-side.'),
   "active": zod.boolean().optional()
 })
 
@@ -1134,6 +1286,8 @@ export const UpdateUserResponse = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 })
 
@@ -1152,6 +1306,8 @@ export const ResetUserPasswordResponse = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }),
   "temporary_password": zod.string().describe('One-time plaintext temporary password. Shown only in this response; never persisted or logged.')
@@ -1210,6 +1366,8 @@ export const ListPartnersResponseItem = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }).optional(),
   "status": zod.enum(['accepted', 'pushed_to_hubspot']),
@@ -1252,6 +1410,8 @@ export const GetPartnerResponse = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }).optional(),
   "status": zod.enum(['accepted', 'pushed_to_hubspot']),
@@ -1335,6 +1495,8 @@ export const UpdatePartnerHelpNeededResponse = zod.object({
   "email": zod.string(),
   "role": zod.enum(['head_of_channels', 'pam', 'admin']),
   "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }).optional(),
   "status": zod.enum(['accepted', 'pushed_to_hubspot']),

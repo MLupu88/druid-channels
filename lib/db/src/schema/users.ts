@@ -8,6 +8,13 @@ export const usersTable = pgTable("users", {
   email: text("email").notNull().unique(),
   role: text("role", { enum: ["head_of_channels", "pam", "admin"] }).notNull().default("pam"),
   territory: text("territory"),
+  // Optional, explicit, PAM-declared local-time display info -- never
+  // inferred from name/territory/country (a territory can span multiple
+  // countries/timezones, e.g. "Portugal, Canada and South America"). Both
+  // null until explicitly set; a PAM with no timezone simply gets no
+  // clock rendered, never a guessed one.
+  locationLabel: text("location_label"),
+  timezone: text("timezone"), // IANA zone name, e.g. "Europe/Bucharest"
   active: boolean("active").notNull().default(true),
   // Salted hash (scrypt), never a plaintext password. Null only for legacy
   // rows created before login existed; such a user cannot log in until an

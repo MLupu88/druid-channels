@@ -16,3 +16,4 @@ export * from "./connections";
 export * from "./metric_mappings";
 export * from "./manual_metric_values";
 export * from "./metric_targets";
+export * from "./ai_channel_briefs";

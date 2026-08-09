@@ -52,6 +52,12 @@ export interface KpiComputation {
   data_status: DataStatus;
   data_source: string | null;
   last_updated: string | null;
+  // true when last_updated is a wall-clock fallback (no underlying
+  // row/timestamp existed), not a genuine data timestamp -- read by
+  // aiChannelBriefService to normalize the AI generation-input hash.
+  // Never surfaced through the public API (silently stripped by the
+  // response zod schemas, which have no matching property).
+  last_updated_is_synthetic?: boolean;
   what_changed: string | null;
   explanation: string | null;
   by_territory: TerritoryContribution[];
@@ -159,6 +165,7 @@ async function computeNewPartnerProspects(periodKey: string, target: ResolvedTer
     data_status: "CONNECTED",
     data_source: "Live: prospects table, scoped to prospects created within the selected period",
     last_updated: (mostRecent ?? new Date()).toISOString(),
+    last_updated_is_synthetic: mostRecent === null,
     what_changed: `${acceptedCount} accepted, ${newCount} awaiting review, ${rejectedCount} rejected`,
     explanation: `${acceptedCount} accepted and ${newCount} awaiting review, out of ${scoped.length} discovered in ${periodInfo.label} for ${target.territoryName}. ${rejectedCount} were rejected as not a fit.`,
     by_territory: byTerritory,
@@ -227,6 +234,7 @@ async function computeSignedPartners(periodKey: string, target: ResolvedTerritor
     data_status: "CONNECTED",
     data_source: "Live: prospects table, accepted/pushed_to_hubspot prospects with accepted_at inside the selected period, through the effective as-of date",
     last_updated: (mostRecentUpdated ?? new Date()).toISOString(),
+    last_updated_is_synthetic: mostRecentUpdated === null,
     what_changed: null,
     explanation: `${scoped.length} partner${scoped.length === 1 ? "" : "s"} signed (accepted or pushed to HubSpot) in ${periodInfo.label} for ${target.territoryName}, based on accepted_at.`,
     by_territory: byTerritory,
@@ -281,6 +289,7 @@ async function computeRenewals(periodKey: string, target: ResolvedTerritory): Pr
     data_status: "CONNECTED",
     data_source: "Live: prospects table, renewal_date inside the selected period through the effective as-of date (count, not revenue)",
     last_updated: (mostRecentUpdated ?? new Date()).toISOString(),
+    last_updated_is_synthetic: mostRecentUpdated === null,
     what_changed: null,
     explanation: `${scoped.length} renewal${scoped.length === 1 ? "" : "s"} due in ${periodInfo.label} for ${target.territoryName}, based on renewal_date.`,
     by_territory: byTerritory,
@@ -448,6 +457,7 @@ async function computeCurrentStateLive(metricKey: string, target: ResolvedTerrit
     data_status: "CONNECTED",
     data_source: `Live: prospects table, accepted/pushed_to_hubspot prospects' current-state total of ${label.toLowerCase()} across ${target.territoryName} (not period-filtered -- this field has no historical audit trail)`,
     last_updated: (mostRecentUpdated ?? new Date()).toISOString(),
+    last_updated_is_synthetic: mostRecentUpdated === null,
     what_changed: null,
     explanation: `Current live total for ${label} in ${target.territoryName}, as of now, across accepted/pushed-to-HubSpot partners.`,
     by_territory: byTerritory,
@@ -607,6 +617,7 @@ async function computeActivities(metricKey: string, target: ResolvedTerritory): 
     data_status: "CONNECTED",
     data_source: `Live: activities table, calendar week ${toDateStr(thisWeekStart)} to ${toDateStr(thisWeekEnd)} vs prior week`,
     last_updated: now.toISOString(),
+    last_updated_is_synthetic: true,
     what_changed: null,
     explanation: `${thisWeekValue} ${label.toLowerCase()} this week for ${target.territoryName}, vs ${lastWeekValue} last week.`,
     by_territory: byTerritory,
@@ -850,6 +861,7 @@ export async function buildHeadOfChannelsData(periodKey: string, target: Resolve
         explanation: c.explanation,
         data_source: c.data_source,
         last_updated: c.last_updated,
+        last_updated_is_synthetic: c.last_updated_is_synthetic ?? false,
         data_status: c.data_status,
       };
     }),
@@ -869,6 +881,7 @@ export async function buildHeadOfChannelsData(periodKey: string, target: Resolve
         explanation: c.explanation,
         data_source: c.data_source,
         last_updated: c.last_updated,
+        last_updated_is_synthetic: c.last_updated_is_synthetic ?? false,
         data_status: c.data_status,
       };
     }),
@@ -886,6 +899,7 @@ export async function buildHeadOfChannelsData(periodKey: string, target: Resolve
         explanation: c.explanation,
         data_source: c.data_source,
         last_updated: c.last_updated,
+        last_updated_is_synthetic: c.last_updated_is_synthetic ?? false,
         data_status: c.data_status,
       };
     }),
