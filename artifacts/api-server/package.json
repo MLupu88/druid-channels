@@ -14,6 +14,8 @@
     "test:discovery-identity": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryIdentity.test.ts",
     "test:discovery-target-signals": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryTargetSignals.test.ts",
     "test:recruitment-transitions": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/partnerRecruitmentTransitions.test.ts",
+    "test:channel-radar-qualification": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/channelRadarQualification.test.ts",
+    "test:channel-radar-engine": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/channelRadarEngine.test.ts",
     "seed": "tsx ./src/scripts/seed.ts"
   },
   "dependencies": {

@@ -10,6 +10,10 @@ import {
   useGetScanConfig,
   useCreateScanConfig,
   useUpdateScanConfig,
+  useListChannelRadarConfigs,
+  useGetChannelRadarConfig,
+  useCreateChannelRadarConfig,
+  useUpdateChannelRadarConfig,
   useListConnections,
   useTestConnection,
   useListMetricMappings,
@@ -21,6 +25,8 @@ import {
   getListTerritoriesQueryKey,
   getListScanConfigsQueryKey,
   getGetScanConfigQueryKey,
+  getListChannelRadarConfigsQueryKey,
+  getGetChannelRadarConfigQueryKey,
   getListConnectionsQueryKey,
   getListMetricMappingsQueryKey,
   getListManualMetricValuesQueryKey,
@@ -1279,6 +1285,234 @@ function MetricMappingDrawer({ mapping, onClose }: { mapping: MetricMapping; onC
   );
 }
 
+const RADAR_SIGNAL_TYPE_OPTIONS = [
+  { id: 'acquisition', label: 'Acquisitions / M&A' },
+  { id: 'partnership', label: 'Partnerships / alliances' },
+  { id: 'reseller_distributor', label: 'Reseller / distributor / SI' },
+  { id: 'regional_expansion', label: 'Regional expansion' },
+  { id: 'leadership_hire', label: 'Channel / alliance hires' },
+  { id: 'funding', label: 'Funding' },
+  { id: 'customer_win', label: 'Customer wins' },
+  { id: 'product_gtm', label: 'Product / GTM moves' },
+  { id: 'marketplace_listing', label: 'Marketplace / ecosystem listings' },
+  { id: 'event', label: 'Webinars / conferences / events' },
+  { id: 'other', label: 'Other ecosystem moves' },
+];
+
+// Mirrors WhatToLookForTab's create/activate/edit pattern exactly -- one
+// config per territory, a "Create configuration" CTA for territories that
+// don't have one yet, an inactive-state banner with Activate otherwise.
+function ChannelRadarTab() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: configs, isLoading: isConfigsLoading } = useListChannelRadarConfigs();
+  const { data: territories } = useListTerritories();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingTerritoryId, setPendingTerritoryId] = useState<string | null>(null);
+  const [localConfig, setLocalConfig] = useState<any>(null);
+
+  const { data: detail, isLoading: isDetailLoading } = useGetChannelRadarConfig(
+    selectedId || '',
+    { query: { enabled: !!selectedId, queryKey: getGetChannelRadarConfigQueryKey(selectedId || '') } }
+  );
+
+  const createMutation = useCreateChannelRadarConfig({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getListChannelRadarConfigsQueryKey() });
+        setPendingTerritoryId(null);
+        setSelectedId(data.id);
+        toast({ title: 'Channel Radar configuration created', description: 'Add entities to monitor and signal types below.' });
+      },
+      onError: (err: any) => {
+        toast({ variant: 'destructive', title: 'Could not create configuration', description: err?.message ?? 'Please try again.' });
+      },
+    },
+  });
+
+  const updateMutation = useUpdateChannelRadarConfig({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getListChannelRadarConfigsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetChannelRadarConfigQueryKey(data.id) });
+        setLocalConfig(data);
+        toast({ title: 'Channel Radar configuration saved' });
+      },
+      onError: (err: any) => {
+        toast({ variant: 'destructive', title: 'Could not save configuration', description: err?.message ?? 'Please try again.' });
+      },
+    },
+  });
+
+  useEffect(() => {
+    if (configs && configs.length > 0 && !selectedId) {
+      setSelectedId(configs[0].id);
+    }
+  }, [configs, selectedId]);
+
+  useEffect(() => {
+    if (detail) {
+      setLocalConfig(JSON.parse(JSON.stringify(detail)));
+    }
+  }, [detail]);
+
+  const handleSave = () => {
+    if (!selectedId || !localConfig) return;
+    updateMutation.mutate({
+      id: selectedId,
+      data: {
+        monitored_entities: localConfig.monitored_entities,
+        enabled_signal_types: localConfig.enabled_signal_types,
+        lookback_days: localConfig.lookback_days,
+      },
+    });
+  };
+
+  const handleEntitiesChange = (val: string) => {
+    setLocalConfig((prev: any) => ({ ...prev, monitored_entities: val.split(',').map((s) => s.trim()).filter(Boolean) }));
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground max-w-2xl">
+        Regional competitive and ecosystem intelligence, by territory -- what to monitor and which signal types matter.
+      </p>
+      <div className="flex gap-6">
+        <div className="w-56 shrink-0">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Territory</div>
+          <div className="space-y-1">
+            {isConfigsLoading ? (
+              Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)
+            ) : (
+              territories?.map((t) => {
+                const config = configs?.find((c) => c.territory_id === t.id);
+                const isSelected = config ? selectedId === config.id : pendingTerritoryId === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      if (config) { setSelectedId(config.id); setPendingTerritoryId(null); }
+                      else { setPendingTerritoryId(t.id); setSelectedId(null); }
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between gap-2 ${isSelected ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-muted text-foreground/80'}`}
+                  >
+                    <span className="truncate">{t.name}</span>
+                    {config && !config.active && (
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 shrink-0 ${isSelected ? 'border-primary-foreground/40 text-primary-foreground' : ''}`}>Inactive</Badge>
+                    )}
+                    {!config && (
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 shrink-0 ${isSelected ? 'border-primary-foreground/40 text-primary-foreground' : 'text-muted-foreground'}`}>Not set up</Badge>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="flex-1 min-w-0 space-y-6">
+          {pendingTerritoryId ? (
+            <Card className="shadow-none border-border/60">
+              <CardContent className="p-8 flex flex-col items-center text-center gap-3">
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  {territories?.find((t) => t.id === pendingTerritoryId)?.name} doesn't have a Channel Radar configuration yet. Create one to start monitoring competitive and ecosystem signals.
+                </p>
+                <Button onClick={() => createMutation.mutate({ data: { territory_id: pendingTerritoryId! } })} disabled={createMutation.isPending}>
+                  Create configuration
+                </Button>
+              </CardContent>
+            </Card>
+          ) : isDetailLoading || !localConfig ? (
+            <div className="space-y-4">
+              <Skeleton className="h-40 w-full" />
+              <Skeleton className="h-40 w-full" />
+            </div>
+          ) : (
+            <>
+              {!localConfig.active && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between gap-3">
+                  <p className="text-sm text-amber-800">This configuration is inactive -- Run Radar can't be used for this territory until it's activated.</p>
+                  <Button
+                    size="sm"
+                    onClick={() => selectedId && updateMutation.mutate({ id: selectedId, data: { active: true } })}
+                    disabled={updateMutation.isPending}
+                  >
+                    Activate
+                  </Button>
+                </div>
+              )}
+
+              <Card className="shadow-none border-border/60">
+                <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
+                  <CardTitle className="text-base font-medium">Entities to monitor</CardTitle>
+                </CardHeader>
+                <CardContent className="p-5 space-y-2">
+                  <Label>Company names (comma separated)</Label>
+                  <Input
+                    value={localConfig.monitored_entities?.join(', ') || ''}
+                    onChange={(e) => handleEntitiesChange(e.target.value)}
+                    placeholder="e.g. Microsoft, UiPath, Kore.ai, Cognigy, ServiceNow"
+                  />
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-none border-border/60">
+                <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
+                  <CardTitle className="text-base font-medium">Signal types</CardTitle>
+                </CardHeader>
+                <CardContent className="p-5 space-y-5">
+                  <div className="grid grid-cols-2 gap-2">
+                    {RADAR_SIGNAL_TYPE_OPTIONS.map((opt) => {
+                      const selected: string[] = localConfig.enabled_signal_types || [];
+                      const checked = selected.includes(opt.id);
+                      return (
+                        <div key={opt.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`radar-sig-${opt.id}`}
+                            checked={checked}
+                            onCheckedChange={(value) => {
+                              setLocalConfig((prev: any) => ({
+                                ...prev,
+                                enabled_signal_types: value
+                                  ? [...(prev.enabled_signal_types || []), opt.id]
+                                  : (prev.enabled_signal_types || []).filter((s: string) => s !== opt.id),
+                              }));
+                            }}
+                          />
+                          <Label htmlFor={`radar-sig-${opt.id}`} className="font-normal cursor-pointer">{opt.label}</Label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-none border-border/60">
+                <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
+                  <CardTitle className="text-base font-medium">Lookback</CardTitle>
+                </CardHeader>
+                <CardContent className="p-5">
+                  <Label>Lookback period (days)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    className="w-32 mt-2"
+                    value={localConfig.lookback_days ?? 30}
+                    onChange={(e) => setLocalConfig((prev: any) => ({ ...prev, lookback_days: Number(e.target.value) || 30 }))}
+                  />
+                </CardContent>
+              </Card>
+
+              <Button onClick={handleSave} disabled={updateMutation.isPending}>Save changes</Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ConnectionsDataTab() {
   const { data: connections, isLoading: connectionsLoading } = useListConnections();
   const { data: mappings, isLoading: mappingsLoading } = useListMetricMappings();
@@ -1371,6 +1605,7 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="what-to-look-for">Partner search criteria</TabsTrigger>
+          <TabsTrigger value="channel-radar">Channel Radar</TabsTrigger>
           <TabsTrigger value="connections">Connections & data</TabsTrigger>
         </TabsList>
         <TabsContent value="team" className="mt-6">
@@ -1378,6 +1613,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="what-to-look-for" className="mt-6">
           <WhatToLookForTab />
+        </TabsContent>
+        <TabsContent value="channel-radar" className="mt-6">
+          <ChannelRadarTab />
         </TabsContent>
         <TabsContent value="connections" className="mt-6">
           <ConnectionsDataTab />

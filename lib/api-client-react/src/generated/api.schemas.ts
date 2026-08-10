@@ -398,6 +398,137 @@ export interface UpdateRecruitmentInput {
   follow_up_date?: string | null;
 }
 
+export interface ChannelRadarConfig {
+  id: string;
+  territory_id: string;
+  /** @nullable */
+  territory_name?: string | null;
+  active: boolean;
+  monitored_entities: string[];
+  enabled_signal_types: string[];
+  lookback_days: number;
+}
+
+export interface CreateChannelRadarConfigInput {
+  territory_id: string;
+}
+
+export interface UpdateChannelRadarConfigInput {
+  active?: boolean;
+  monitored_entities?: string[];
+  enabled_signal_types?: string[];
+  /** @minimum 1 */
+  lookback_days?: number;
+}
+
+export type ChannelRadarEntityType = typeof ChannelRadarEntityType[keyof typeof ChannelRadarEntityType];
+
+
+export const ChannelRadarEntityType = {
+  competitor: 'competitor',
+  partner: 'partner',
+  ecosystem: 'ecosystem',
+  other: 'other',
+} as const;
+
+export type ChannelRadarSignalType = typeof ChannelRadarSignalType[keyof typeof ChannelRadarSignalType];
+
+
+export const ChannelRadarSignalType = {
+  acquisition: 'acquisition',
+  partnership: 'partnership',
+  reseller_distributor: 'reseller_distributor',
+  regional_expansion: 'regional_expansion',
+  leadership_hire: 'leadership_hire',
+  funding: 'funding',
+  customer_win: 'customer_win',
+  product_gtm: 'product_gtm',
+  marketplace_listing: 'marketplace_listing',
+  event: 'event',
+  other: 'other',
+} as const;
+
+export type ChannelRadarImplication = typeof ChannelRadarImplication[keyof typeof ChannelRadarImplication];
+
+
+export const ChannelRadarImplication = {
+  opportunity: 'opportunity',
+  threat: 'threat',
+  neutral: 'neutral',
+} as const;
+
+export type ChannelRadarImpact = typeof ChannelRadarImpact[keyof typeof ChannelRadarImpact];
+
+
+export const ChannelRadarImpact = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type ChannelRadarConfidence = typeof ChannelRadarConfidence[keyof typeof ChannelRadarConfidence];
+
+
+export const ChannelRadarConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type ChannelRadarSignalStatus = typeof ChannelRadarSignalStatus[keyof typeof ChannelRadarSignalStatus];
+
+
+export const ChannelRadarSignalStatus = {
+  new: 'new',
+  reviewed: 'reviewed',
+  dismissed: 'dismissed',
+} as const;
+
+export interface ChannelRadarSignal {
+  id: string;
+  territory_id: string;
+  /** @nullable */
+  territory_name?: string | null;
+  assigned_user?: User | null;
+  entity_name: string;
+  entity_type: ChannelRadarEntityType;
+  signal_type: ChannelRadarSignalType;
+  headline: string;
+  summary: string;
+  why_it_matters: string;
+  implication: ChannelRadarImplication;
+  impact: ChannelRadarImpact;
+  recommended_action: string;
+  confidence: ChannelRadarConfidence;
+  source_title: string;
+  source_url: string;
+  /** @nullable */
+  source_domain?: string | null;
+  /**
+     * Nullable -- never fabricated when the source provider gave no publish date.
+     * @nullable
+     */
+  source_published_at?: string | null;
+  discovered_at: string;
+  status: ChannelRadarSignalStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdateChannelRadarSignalInput {
+  status: ChannelRadarSignalStatus;
+}
+
+export interface RunChannelRadarInput {
+  territory_id: string;
+}
+
+export interface RunChannelRadarResult {
+  results_found: number;
+  results_qualified: number;
+  message: string;
+}
+
 export type ProspectDecisionInputDecision = typeof ProspectDecisionInputDecision[keyof typeof ProspectDecisionInputDecision];
 
 
@@ -1530,6 +1661,33 @@ pam_user_id?: string | null;
  * @nullable
  */
 stage?: string | null;
+/**
+ * @nullable
+ */
+search?: string | null;
+};
+
+export type ListChannelRadarSignalsParams = {
+/**
+ * @nullable
+ */
+territory?: string | null;
+/**
+ * @nullable
+ */
+signal_type?: string | null;
+/**
+ * @nullable
+ */
+implication?: string | null;
+/**
+ * @nullable
+ */
+impact?: string | null;
+/**
+ * @nullable
+ */
+status?: string | null;
 /**
  * @nullable
  */

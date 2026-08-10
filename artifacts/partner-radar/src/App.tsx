@@ -10,6 +10,7 @@ import Login from '@/pages/login';
 import Overview from '@/pages/overview';
 import Prospects from '@/pages/prospects';
 import Recruitment from '@/pages/recruitment';
+import ChannelRadar from '@/pages/channel-radar';
 import Pams from '@/pages/pams';
 import MyWorkspace from '@/pages/pam-workspace';
 import Campaigns from '@/pages/campaigns';
@@ -41,6 +42,7 @@ function AuthenticatedApp() {
         <Route path="/" component={Overview} />
         <Route path="/new-partners" component={Prospects} />
         <Route path="/recruitment" component={Recruitment} />
+        <Route path="/channel-radar" component={ChannelRadar} />
         <Route path="/pams">
           <Guarded allow={isGlobalUser}><Pams /></Guarded>
         </Route>

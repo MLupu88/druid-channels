@@ -57,6 +57,13 @@
       "when": 1786335369629,
       "tag": "0007_condemned_kulan_gath",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786345510502,
+      "tag": "0008_woozy_champions",
+      "breakpoints": true
     }
   ]
 }

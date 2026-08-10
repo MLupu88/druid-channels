@@ -1,0 +1,197 @@
+import { db } from "@workspace/db";
+import { channelRadarConfigsTable, channelRadarSignalsTable, territoriesTable, type ChannelRadarConfig, type Territory } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import * as searchProvider from "./discoveryProviders/search";
+import * as radarAiProvider from "./channelRadarProviders/ai";
+import { logger } from "../lib/logger";
+
+// Stage 5 Channel Radar engine. Deliberately no demo/fallback data path --
+// unlike Discovery (which has an explicit demo-candidate generator for a
+// disconnected environment), Radar has none: if the providers aren't
+// configured, the run is honestly refused rather than fabricating signals.
+
+const SIGNAL_TYPE_SEARCH_TERMS: Record<string, string> = {
+  acquisition: "acquisition OR acquires",
+  partnership: "partnership OR strategic alliance",
+  reseller_distributor: "reseller OR distributor OR systems integrator",
+  regional_expansion: "regional expansion OR new office OR market entry",
+  leadership_hire: "channel hire OR alliance hire OR new VP",
+  funding: "funding round OR raises",
+  customer_win: "customer win OR case study",
+  product_gtm: "product launch OR go-to-market",
+  marketplace_listing: "marketplace listing OR app store",
+  event: "conference OR webinar OR keynote",
+  other: "news",
+};
+
+const MAX_RADAR_QUERIES = 12;
+const MAX_RESULTS_PER_QUERY = 3;
+
+export interface RadarQuery {
+  query: string;
+  entityHint: string;
+}
+
+// Bounded round-robin, never a full entities x signal-types Cartesian
+// product: round 0 gives every entity its first (rotating) signal-type
+// phrase, round 1 gives every entity its second, etc. -- every monitored
+// entity is represented starting at query #1, capped at
+// MAX_RADAR_QUERIES, never padded when the config is narrow.
+export function buildRadarQueries(entities: string[], signalTypes: string[]): RadarQuery[] {
+  const queries: RadarQuery[] = [];
+  const seenQueryText = new Set<string>();
+  const push = (query: string, entityHint: string) => {
+    const trimmed = query.trim();
+    if (trimmed && !seenQueryText.has(trimmed) && queries.length < MAX_RADAR_QUERIES) {
+      seenQueryText.add(trimmed);
+      queries.push({ query: trimmed, entityHint });
+    }
+  };
+
+  if (entities.length === 0) return [];
+
+  const terms = signalTypes.map((s) => SIGNAL_TYPE_SEARCH_TERMS[s]).filter((t): t is string => !!t);
+  if (terms.length === 0) {
+    for (const entity of entities) push(`"${entity}" news`, entity);
+    return queries;
+  }
+
+  for (let round = 0; round < terms.length && queries.length < MAX_RADAR_QUERIES; round++) {
+    for (let i = 0; i < entities.length && queries.length < MAX_RADAR_QUERIES; i++) {
+      const term = terms[(i + round) % terms.length];
+      push(`"${entities[i]}" ${term}`, entities[i]);
+    }
+  }
+
+  return queries;
+}
+
+function normalizeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.hostname.replace(/^www\./, "")}${u.pathname.replace(/\/$/, "")}`.toLowerCase();
+  } catch {
+    return url.trim().toLowerCase();
+  }
+}
+
+function extractDomain(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+// Deterministic, event-based, never a timestamp: normalized entity name +
+// signal type + normalized primary source URL. A repeated "Run Radar"
+// recomputes the same key for the same underlying event and collapses
+// harmlessly via ON CONFLICT DO NOTHING (see runRadarForConfig below).
+export function computeDedupeKey(entityName: string, signalType: string, primarySourceUrl: string): string {
+  const normalizedEntity = entityName.trim().toLowerCase();
+  const normalizedUrl = normalizeUrl(primarySourceUrl);
+  return createHash("sha256").update(`${normalizedEntity}|${signalType}|${normalizedUrl}`).digest("hex");
+}
+
+// Simple, deliberately narrow: new -> reviewed; new/reviewed -> dismissed.
+// dismissed is terminal. Not a generic state machine.
+export function isValidStatusTransition(from: string, to: string): boolean {
+  if (from === to) return false;
+  if (from === "new") return to === "reviewed" || to === "dismissed";
+  if (from === "reviewed") return to === "dismissed";
+  return false;
+}
+
+export class ChannelRadarNotConfiguredError extends Error {}
+export class ChannelRadarRunFailedError extends Error {}
+
+function classifyRadarError(err: unknown): string {
+  if (err instanceof searchProvider.SearchNotImplementedError) return "Search provider not connected.";
+  if (err instanceof radarAiProvider.RadarAiNotImplementedError) return "AI qualification provider not connected.";
+  if (err instanceof searchProvider.SearchProviderError) return "Web search provider call failed. Please try again.";
+  if (err instanceof radarAiProvider.RadarAiProviderError) return "AI qualification call failed. Please try again.";
+  return "Channel Radar scan could not be completed. Please try again or contact an administrator.";
+}
+
+export interface ChannelRadarRunOutcome {
+  resultsFound: number;
+  resultsQualified: number;
+}
+
+export async function runRadarForConfig(configId: string): Promise<ChannelRadarRunOutcome> {
+  const [config] = await db.select().from(channelRadarConfigsTable).where(eq(channelRadarConfigsTable.id, configId));
+  if (!config) throw new Error("Channel Radar config not found");
+  const [territory] = await db.select().from(territoriesTable).where(eq(territoriesTable.id, config.territoryId));
+  if (!territory) throw new Error("Territory not found for Channel Radar config");
+
+  const [searchReady, aiReady] = await Promise.all([searchProvider.isConfigured(), radarAiProvider.isConfigured()]);
+  if (!searchReady || !aiReady) {
+    throw new ChannelRadarNotConfiguredError("Channel Radar requires both the Search and AI providers to be connected.");
+  }
+
+  const entities = (config.monitoredEntities as string[]) ?? [];
+  const signalTypes = (config.enabledSignalTypes as string[]) ?? [];
+  const queries = buildRadarQueries(entities, signalTypes);
+
+  let resultsFound = 0;
+  let resultsQualified = 0;
+
+  try {
+    const seenUrls = new Set<string>();
+    for (const { query, entityHint } of queries) {
+      const results = await searchProvider.search(query, { maxResults: MAX_RESULTS_PER_QUERY });
+      for (const result of results) {
+        if (seenUrls.has(result.url)) continue;
+        seenUrls.add(result.url);
+        resultsFound++;
+
+        const qualification = await radarAiProvider.qualifySignal({
+          entityHint,
+          territoryName: territory.name,
+          evidence: [{ url: result.url, title: result.title, text: result.snippet }],
+        });
+
+        if (!qualification.keep) continue;
+
+        const primaryUrl = qualification.evidenceUrls[0] ?? result.url;
+        const dedupeKey = computeDedupeKey(qualification.entityName, qualification.signalType, primaryUrl);
+
+        const [inserted] = await db
+          .insert(channelRadarSignalsTable)
+          .values({
+            territoryId: territory.id,
+            assignedUserId: territory.ownerUserId,
+            entityName: qualification.entityName,
+            entityType: qualification.entityType,
+            signalType: qualification.signalType,
+            headline: qualification.headline,
+            summary: qualification.summary,
+            whyItMatters: qualification.whyItMatters,
+            implication: qualification.implication,
+            impact: qualification.impact,
+            recommendedAction: qualification.recommendedAction,
+            confidence: qualification.confidence,
+            sourceTitle: result.title,
+            sourceUrl: primaryUrl,
+            sourceDomain: extractDomain(primaryUrl),
+            sourcePublishedAt: result.publishedAt, // honest: null when the provider gave no date
+            dedupeKey,
+          })
+          .onConflictDoNothing({ target: channelRadarSignalsTable.dedupeKey })
+          .returning();
+
+        if (inserted) resultsQualified++;
+      }
+    }
+  } catch (err) {
+    const safeMessage = classifyRadarError(err);
+    logger.error(
+      { configId, errorName: err instanceof Error ? err.name : typeof err, safeMessage },
+      "Channel Radar scan failed",
+    );
+    throw new ChannelRadarRunFailedError(safeMessage);
+  }
+
+  return { resultsFound, resultsQualified };
+}

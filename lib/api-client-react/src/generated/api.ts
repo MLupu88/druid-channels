@@ -26,8 +26,11 @@ import type {
   Campaign,
   CampaignEditInput,
   CampaignInput,
+  ChannelRadarConfig,
+  ChannelRadarSignal,
   Connection,
   ConnectionUpdateInput,
+  CreateChannelRadarConfigInput,
   CreateScanConfigInput,
   CreateUserInput,
   DeleteResult,
@@ -40,6 +43,7 @@ import type {
   HelpNeededInput,
   HubspotPushResult,
   KpiDetail,
+  ListChannelRadarSignalsParams,
   ListManualMetricValuesParams,
   ListMetricTargetsParams,
   ListPartnersParams,
@@ -64,6 +68,8 @@ import type {
   Recruitment,
   RecruitmentDetail,
   RegenerateAiChannelBriefInput,
+  RunChannelRadarInput,
+  RunChannelRadarResult,
   ScanConfig,
   ScanConfigInput,
   ScanRun,
@@ -72,6 +78,8 @@ import type {
   Territory,
   TerritoryEditInput,
   TransitionRecruitmentInput,
+  UpdateChannelRadarConfigInput,
+  UpdateChannelRadarSignalInput,
   UpdateRecruitmentInput,
   User,
   UserEditInput,
@@ -1376,6 +1384,607 @@ export const useTransitionRecruitment = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getTransitionRecruitmentMutationOptions(options));
+    }
+
+export const getListChannelRadarConfigsUrl = () => {
+
+
+
+
+  return `/api/channel-radar-configs`
+}
+
+/**
+ * @summary List Channel Radar configs (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+export const listChannelRadarConfigs = async ( options?: Parameters<typeof customFetch>[1]): Promise<ChannelRadarConfig[]> => {
+
+  return customFetch<ChannelRadarConfig[]>(getListChannelRadarConfigsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListChannelRadarConfigsQueryKey = () => {
+    return [
+    `/api/channel-radar-configs`
+    ] as const;
+    }
+
+
+export const getListChannelRadarConfigsQueryOptions = <TData = Awaited<ReturnType<typeof listChannelRadarConfigs>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChannelRadarConfigs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListChannelRadarConfigsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listChannelRadarConfigs>>> = ({ signal }) => listChannelRadarConfigs({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listChannelRadarConfigs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListChannelRadarConfigsQueryResult = NonNullable<Awaited<ReturnType<typeof listChannelRadarConfigs>>>
+export type ListChannelRadarConfigsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List Channel Radar configs (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+
+export function useListChannelRadarConfigs<TData = Awaited<ReturnType<typeof listChannelRadarConfigs>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChannelRadarConfigs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListChannelRadarConfigsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateChannelRadarConfigUrl = () => {
+
+
+
+
+  return `/api/channel-radar-configs`
+}
+
+/**
+ * @summary Create the Channel Radar config for a territory that doesn't have one yet (Head of Channels/admin only)
+ */
+export const createChannelRadarConfig = async (createChannelRadarConfigInput: CreateChannelRadarConfigInput, options?: Parameters<typeof customFetch>[1]): Promise<ChannelRadarConfig> => {
+
+  return customFetch<ChannelRadarConfig>(getCreateChannelRadarConfigUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createChannelRadarConfigInput)
+  }
+);}
+
+
+
+
+
+export const getCreateChannelRadarConfigMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChannelRadarConfig>>, TError,{data: BodyType<CreateChannelRadarConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createChannelRadarConfig>>, TError,{data: BodyType<CreateChannelRadarConfigInput>}, TContext> => {
+
+const mutationKey = ['createChannelRadarConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createChannelRadarConfig>>, {data: BodyType<CreateChannelRadarConfigInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createChannelRadarConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateChannelRadarConfigMutationResult = NonNullable<Awaited<ReturnType<typeof createChannelRadarConfig>>>
+    export type CreateChannelRadarConfigMutationBody = BodyType<CreateChannelRadarConfigInput>
+    export type CreateChannelRadarConfigMutationError = ErrorType<void>
+
+    /**
+ * @summary Create the Channel Radar config for a territory that doesn't have one yet (Head of Channels/admin only)
+ */
+export const useCreateChannelRadarConfig = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChannelRadarConfig>>, TError,{data: BodyType<CreateChannelRadarConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createChannelRadarConfig>>,
+        TError,
+        {data: BodyType<CreateChannelRadarConfigInput>},
+        TContext
+      > => {
+      return useMutation(getCreateChannelRadarConfigMutationOptions(options));
+    }
+
+export const getGetChannelRadarConfigUrl = (id: string,) => {
+
+
+
+
+  return `/api/channel-radar-configs/${id}`
+}
+
+/**
+ * @summary Get a Channel Radar config
+ */
+export const getChannelRadarConfig = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ChannelRadarConfig> => {
+
+  return customFetch<ChannelRadarConfig>(getGetChannelRadarConfigUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChannelRadarConfigQueryKey = (id: string,) => {
+    return [
+    `/api/channel-radar-configs/${id}`
+    ] as const;
+    }
+
+
+export const getGetChannelRadarConfigQueryOptions = <TData = Awaited<ReturnType<typeof getChannelRadarConfig>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelRadarConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChannelRadarConfigQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannelRadarConfig>>> = ({ signal }) => getChannelRadarConfig(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChannelRadarConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChannelRadarConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getChannelRadarConfig>>>
+export type GetChannelRadarConfigQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a Channel Radar config
+ */
+
+export function useGetChannelRadarConfig<TData = Awaited<ReturnType<typeof getChannelRadarConfig>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelRadarConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChannelRadarConfigQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateChannelRadarConfigUrl = (id: string,) => {
+
+
+
+
+  return `/api/channel-radar-configs/${id}`
+}
+
+/**
+ * @summary Update monitored entities, signal types, lookback, or active state (Head of Channels/admin only)
+ */
+export const updateChannelRadarConfig = async (id: string,
+    updateChannelRadarConfigInput: UpdateChannelRadarConfigInput, options?: Parameters<typeof customFetch>[1]): Promise<ChannelRadarConfig> => {
+
+  return customFetch<ChannelRadarConfig>(getUpdateChannelRadarConfigUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateChannelRadarConfigInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateChannelRadarConfigMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChannelRadarConfig>>, TError,{id: string;data: BodyType<UpdateChannelRadarConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateChannelRadarConfig>>, TError,{id: string;data: BodyType<UpdateChannelRadarConfigInput>}, TContext> => {
+
+const mutationKey = ['updateChannelRadarConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateChannelRadarConfig>>, {id: string;data: BodyType<UpdateChannelRadarConfigInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateChannelRadarConfig(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateChannelRadarConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateChannelRadarConfig>>>
+    export type UpdateChannelRadarConfigMutationBody = BodyType<UpdateChannelRadarConfigInput>
+    export type UpdateChannelRadarConfigMutationError = ErrorType<void>
+
+    /**
+ * @summary Update monitored entities, signal types, lookback, or active state (Head of Channels/admin only)
+ */
+export const useUpdateChannelRadarConfig = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChannelRadarConfig>>, TError,{id: string;data: BodyType<UpdateChannelRadarConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateChannelRadarConfig>>,
+        TError,
+        {id: string;data: BodyType<UpdateChannelRadarConfigInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateChannelRadarConfigMutationOptions(options));
+    }
+
+export const getListChannelRadarSignalsUrl = (params?: ListChannelRadarSignalsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/channel-radar?${stringifiedParams}` : `/api/channel-radar`
+}
+
+/**
+ * @summary List Channel Radar signals with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+export const listChannelRadarSignals = async (params?: ListChannelRadarSignalsParams, options?: Parameters<typeof customFetch>[1]): Promise<ChannelRadarSignal[]> => {
+
+  return customFetch<ChannelRadarSignal[]>(getListChannelRadarSignalsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListChannelRadarSignalsQueryKey = (params?: ListChannelRadarSignalsParams,) => {
+    return [
+    `/api/channel-radar`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListChannelRadarSignalsQueryOptions = <TData = Awaited<ReturnType<typeof listChannelRadarSignals>>, TError = ErrorType<unknown>>(params?: ListChannelRadarSignalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChannelRadarSignals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListChannelRadarSignalsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listChannelRadarSignals>>> = ({ signal }) => listChannelRadarSignals(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listChannelRadarSignals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListChannelRadarSignalsQueryResult = NonNullable<Awaited<ReturnType<typeof listChannelRadarSignals>>>
+export type ListChannelRadarSignalsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List Channel Radar signals with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+
+export function useListChannelRadarSignals<TData = Awaited<ReturnType<typeof listChannelRadarSignals>>, TError = ErrorType<unknown>>(
+ params?: ListChannelRadarSignalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChannelRadarSignals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListChannelRadarSignalsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetChannelRadarSignalUrl = (id: string,) => {
+
+
+
+
+  return `/api/channel-radar/${id}`
+}
+
+/**
+ * @summary Get a Channel Radar signal's full detail
+ */
+export const getChannelRadarSignal = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ChannelRadarSignal> => {
+
+  return customFetch<ChannelRadarSignal>(getGetChannelRadarSignalUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChannelRadarSignalQueryKey = (id: string,) => {
+    return [
+    `/api/channel-radar/${id}`
+    ] as const;
+    }
+
+
+export const getGetChannelRadarSignalQueryOptions = <TData = Awaited<ReturnType<typeof getChannelRadarSignal>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelRadarSignal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChannelRadarSignalQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannelRadarSignal>>> = ({ signal }) => getChannelRadarSignal(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChannelRadarSignal>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChannelRadarSignalQueryResult = NonNullable<Awaited<ReturnType<typeof getChannelRadarSignal>>>
+export type GetChannelRadarSignalQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a Channel Radar signal's full detail
+ */
+
+export function useGetChannelRadarSignal<TData = Awaited<ReturnType<typeof getChannelRadarSignal>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelRadarSignal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChannelRadarSignalQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateChannelRadarSignalUrl = (id: string,) => {
+
+
+
+
+  return `/api/channel-radar/${id}`
+}
+
+/**
+ * @summary Update a signal's status (new -> reviewed; new/reviewed -> dismissed). Transition validity is enforced server-side.
+ */
+export const updateChannelRadarSignal = async (id: string,
+    updateChannelRadarSignalInput: UpdateChannelRadarSignalInput, options?: Parameters<typeof customFetch>[1]): Promise<ChannelRadarSignal> => {
+
+  return customFetch<ChannelRadarSignal>(getUpdateChannelRadarSignalUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateChannelRadarSignalInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateChannelRadarSignalMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChannelRadarSignal>>, TError,{id: string;data: BodyType<UpdateChannelRadarSignalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateChannelRadarSignal>>, TError,{id: string;data: BodyType<UpdateChannelRadarSignalInput>}, TContext> => {
+
+const mutationKey = ['updateChannelRadarSignal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateChannelRadarSignal>>, {id: string;data: BodyType<UpdateChannelRadarSignalInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateChannelRadarSignal(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateChannelRadarSignalMutationResult = NonNullable<Awaited<ReturnType<typeof updateChannelRadarSignal>>>
+    export type UpdateChannelRadarSignalMutationBody = BodyType<UpdateChannelRadarSignalInput>
+    export type UpdateChannelRadarSignalMutationError = ErrorType<void>
+
+    /**
+ * @summary Update a signal's status (new -> reviewed; new/reviewed -> dismissed). Transition validity is enforced server-side.
+ */
+export const useUpdateChannelRadarSignal = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChannelRadarSignal>>, TError,{id: string;data: BodyType<UpdateChannelRadarSignalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateChannelRadarSignal>>,
+        TError,
+        {id: string;data: BodyType<UpdateChannelRadarSignalInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateChannelRadarSignalMutationOptions(options));
+    }
+
+export const getRunChannelRadarUrl = () => {
+
+
+
+
+  return `/api/channel-radar/run`
+}
+
+/**
+ * @summary Execute one manual Channel Radar scan for a territory's active config
+ */
+export const runChannelRadar = async (runChannelRadarInput: RunChannelRadarInput, options?: Parameters<typeof customFetch>[1]): Promise<RunChannelRadarResult> => {
+
+  return customFetch<RunChannelRadarResult>(getRunChannelRadarUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(runChannelRadarInput)
+  }
+);}
+
+
+
+
+
+export const getRunChannelRadarMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runChannelRadar>>, TError,{data: BodyType<RunChannelRadarInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runChannelRadar>>, TError,{data: BodyType<RunChannelRadarInput>}, TContext> => {
+
+const mutationKey = ['runChannelRadar'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runChannelRadar>>, {data: BodyType<RunChannelRadarInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  runChannelRadar(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunChannelRadarMutationResult = NonNullable<Awaited<ReturnType<typeof runChannelRadar>>>
+    export type RunChannelRadarMutationBody = BodyType<RunChannelRadarInput>
+    export type RunChannelRadarMutationError = ErrorType<void>
+
+    /**
+ * @summary Execute one manual Channel Radar scan for a territory's active config
+ */
+export const useRunChannelRadar = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runChannelRadar>>, TError,{data: BodyType<RunChannelRadarInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runChannelRadar>>,
+        TError,
+        {data: BodyType<RunChannelRadarInput>},
+        TContext
+      > => {
+      return useMutation(getRunChannelRadarMutationOptions(options));
     }
 
 export const getListScanConfigsUrl = () => {

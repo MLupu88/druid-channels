@@ -674,6 +674,235 @@ export const TransitionRecruitmentResponse = zod.object({
 
 
 /**
+ * @summary List Channel Radar configs (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+export const ListChannelRadarConfigsResponseItem = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "active": zod.boolean(),
+  "monitored_entities": zod.array(zod.string()),
+  "enabled_signal_types": zod.array(zod.string()),
+  "lookback_days": zod.number()
+})
+export const ListChannelRadarConfigsResponse = zod.array(ListChannelRadarConfigsResponseItem)
+
+
+/**
+ * @summary Create the Channel Radar config for a territory that doesn't have one yet (Head of Channels/admin only)
+ */
+export const CreateChannelRadarConfigBody = zod.object({
+  "territory_id": zod.string()
+})
+
+export const CreateChannelRadarConfigResponse = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "active": zod.boolean(),
+  "monitored_entities": zod.array(zod.string()),
+  "enabled_signal_types": zod.array(zod.string()),
+  "lookback_days": zod.number()
+})
+
+
+/**
+ * @summary Get a Channel Radar config
+ */
+export const GetChannelRadarConfigParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetChannelRadarConfigResponse = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "active": zod.boolean(),
+  "monitored_entities": zod.array(zod.string()),
+  "enabled_signal_types": zod.array(zod.string()),
+  "lookback_days": zod.number()
+})
+
+
+/**
+ * @summary Update monitored entities, signal types, lookback, or active state (Head of Channels/admin only)
+ */
+export const UpdateChannelRadarConfigParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+
+
+export const UpdateChannelRadarConfigBody = zod.object({
+  "active": zod.boolean().optional(),
+  "monitored_entities": zod.array(zod.string()).optional(),
+  "enabled_signal_types": zod.array(zod.string()).optional(),
+  "lookback_days": zod.number().min(1).optional()
+})
+
+export const UpdateChannelRadarConfigResponse = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "active": zod.boolean(),
+  "monitored_entities": zod.array(zod.string()),
+  "enabled_signal_types": zod.array(zod.string()),
+  "lookback_days": zod.number()
+})
+
+
+/**
+ * @summary List Channel Radar signals with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+export const ListChannelRadarSignalsQueryParams = zod.object({
+  "territory": zod.coerce.string().nullish(),
+  "signal_type": zod.coerce.string().nullish(),
+  "implication": zod.coerce.string().nullish(),
+  "impact": zod.coerce.string().nullish(),
+  "status": zod.coerce.string().nullish(),
+  "search": zod.coerce.string().nullish()
+})
+
+export const ListChannelRadarSignalsResponseItem = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "entity_name": zod.string(),
+  "entity_type": zod.enum(['competitor', 'partner', 'ecosystem', 'other']),
+  "signal_type": zod.enum(['acquisition', 'partnership', 'reseller_distributor', 'regional_expansion', 'leadership_hire', 'funding', 'customer_win', 'product_gtm', 'marketplace_listing', 'event', 'other']),
+  "headline": zod.string(),
+  "summary": zod.string(),
+  "why_it_matters": zod.string(),
+  "implication": zod.enum(['opportunity', 'threat', 'neutral']),
+  "impact": zod.enum(['high', 'medium', 'low']),
+  "recommended_action": zod.string(),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "source_title": zod.string(),
+  "source_url": zod.string(),
+  "source_domain": zod.string().nullish(),
+  "source_published_at": zod.string().nullish().describe('Nullable -- never fabricated when the source provider gave no publish date.'),
+  "discovered_at": zod.string(),
+  "status": zod.enum(['new', 'reviewed', 'dismissed']),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+export const ListChannelRadarSignalsResponse = zod.array(ListChannelRadarSignalsResponseItem)
+
+
+/**
+ * @summary Get a Channel Radar signal's full detail
+ */
+export const GetChannelRadarSignalParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetChannelRadarSignalResponse = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "entity_name": zod.string(),
+  "entity_type": zod.enum(['competitor', 'partner', 'ecosystem', 'other']),
+  "signal_type": zod.enum(['acquisition', 'partnership', 'reseller_distributor', 'regional_expansion', 'leadership_hire', 'funding', 'customer_win', 'product_gtm', 'marketplace_listing', 'event', 'other']),
+  "headline": zod.string(),
+  "summary": zod.string(),
+  "why_it_matters": zod.string(),
+  "implication": zod.enum(['opportunity', 'threat', 'neutral']),
+  "impact": zod.enum(['high', 'medium', 'low']),
+  "recommended_action": zod.string(),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "source_title": zod.string(),
+  "source_url": zod.string(),
+  "source_domain": zod.string().nullish(),
+  "source_published_at": zod.string().nullish().describe('Nullable -- never fabricated when the source provider gave no publish date.'),
+  "discovered_at": zod.string(),
+  "status": zod.enum(['new', 'reviewed', 'dismissed']),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Update a signal's status (new -> reviewed; new/reviewed -> dismissed). Transition validity is enforced server-side.
+ */
+export const UpdateChannelRadarSignalParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateChannelRadarSignalBody = zod.object({
+  "status": zod.enum(['new', 'reviewed', 'dismissed'])
+})
+
+export const UpdateChannelRadarSignalResponse = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "entity_name": zod.string(),
+  "entity_type": zod.enum(['competitor', 'partner', 'ecosystem', 'other']),
+  "signal_type": zod.enum(['acquisition', 'partnership', 'reseller_distributor', 'regional_expansion', 'leadership_hire', 'funding', 'customer_win', 'product_gtm', 'marketplace_listing', 'event', 'other']),
+  "headline": zod.string(),
+  "summary": zod.string(),
+  "why_it_matters": zod.string(),
+  "implication": zod.enum(['opportunity', 'threat', 'neutral']),
+  "impact": zod.enum(['high', 'medium', 'low']),
+  "recommended_action": zod.string(),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "source_title": zod.string(),
+  "source_url": zod.string(),
+  "source_domain": zod.string().nullish(),
+  "source_published_at": zod.string().nullish().describe('Nullable -- never fabricated when the source provider gave no publish date.'),
+  "discovered_at": zod.string(),
+  "status": zod.enum(['new', 'reviewed', 'dismissed']),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Execute one manual Channel Radar scan for a territory's active config
+ */
+export const RunChannelRadarBody = zod.object({
+  "territory_id": zod.string()
+})
+
+export const RunChannelRadarResponse = zod.object({
+  "results_found": zod.number(),
+  "results_qualified": zod.number(),
+  "message": zod.string()
+})
+
+
+/**
  * @summary List all scan configurations
  */
 export const ListScanConfigsResponseItem = zod.object({

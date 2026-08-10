@@ -40,6 +40,8 @@ tags:
     description: AI-generated executive brief for the Overview page, built from a controlled snapshot of trusted KPI data
   - name: recruitment
     description: Stage 4 native partner recruitment -- the operational process from an accepted Discovery prospect to Signed
+  - name: channel-radar
+    description: Stage 5 Channel Radar -- regional competitive/ecosystem intelligence, separate from Discovery and Recruitment
 
 paths:
   /auth/login:
@@ -436,6 +438,209 @@ paths:
           description: Outside caller's authorized scope
         "404":
           description: Not found
+
+  /channel-radar-configs:
+    get:
+      operationId: listChannelRadarConfigs
+      tags: [channel-radar]
+      summary: List Channel Radar configs (PAM sees only their own territory; Head of Channels/admin sees all)
+      responses:
+        "200":
+          description: List of Channel Radar configs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelRadarConfig"
+    post:
+      operationId: createChannelRadarConfig
+      tags: [channel-radar]
+      summary: Create the Channel Radar config for a territory that doesn't have one yet (Head of Channels/admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChannelRadarConfigInput"
+      responses:
+        "201":
+          description: Created Channel Radar config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelRadarConfig"
+        "404":
+          description: Territory not found
+        "409":
+          description: A Channel Radar config already exists for this territory
+
+  /channel-radar-configs/{id}:
+    get:
+      operationId: getChannelRadarConfig
+      tags: [channel-radar]
+      summary: Get a Channel Radar config
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Channel Radar config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelRadarConfig"
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+    patch:
+      operationId: updateChannelRadarConfig
+      tags: [channel-radar]
+      summary: Update monitored entities, signal types, lookback, or active state (Head of Channels/admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelRadarConfigInput"
+      responses:
+        "200":
+          description: Updated Channel Radar config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelRadarConfig"
+        "404":
+          description: Not found
+
+  /channel-radar:
+    get:
+      operationId: listChannelRadarSignals
+      tags: [channel-radar]
+      summary: List Channel Radar signals with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: signal_type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: implication
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: impact
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of Channel Radar signals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelRadarSignal"
+
+  /channel-radar/{id}:
+    get:
+      operationId: getChannelRadarSignal
+      tags: [channel-radar]
+      summary: Get a Channel Radar signal's full detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Channel Radar signal detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelRadarSignal"
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+    patch:
+      operationId: updateChannelRadarSignal
+      tags: [channel-radar]
+      summary: Update a signal's status (new -> reviewed; new/reviewed -> dismissed). Transition validity is enforced server-side.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelRadarSignalInput"
+      responses:
+        "200":
+          description: Updated signal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelRadarSignal"
+        "400":
+          description: Invalid status transition
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+
+  /channel-radar/run:
+    post:
+      operationId: runChannelRadar
+      tags: [channel-radar]
+      summary: Execute one manual Channel Radar scan for a territory's active config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunChannelRadarInput"
+      responses:
+        "200":
+          description: Scan result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunChannelRadarResult"
+        "400":
+          description: No active config for this territory, or the provider(s) are not connected
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: No Channel Radar config exists yet for this territory
+        "500":
+          description: Scan failed after starting (provider call failed mid-run)
 
   /scan-configs:
     get:
@@ -1601,6 +1806,154 @@ components:
           type: ["string", "null"]
         follow_up_date:
           type: ["string", "null"]
+
+    ChannelRadarConfig:
+      type: object
+      required: [id, territory_id, active, monitored_entities, enabled_signal_types, lookback_days]
+      properties:
+        id:
+          type: string
+        territory_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        active:
+          type: boolean
+        monitored_entities:
+          type: array
+          items:
+            type: string
+        enabled_signal_types:
+          type: array
+          items:
+            type: string
+        lookback_days:
+          type: number
+
+    CreateChannelRadarConfigInput:
+      type: object
+      required: [territory_id]
+      properties:
+        territory_id:
+          type: string
+
+    UpdateChannelRadarConfigInput:
+      type: object
+      properties:
+        active:
+          type: boolean
+        monitored_entities:
+          type: array
+          items:
+            type: string
+        enabled_signal_types:
+          type: array
+          items:
+            type: string
+        lookback_days:
+          type: number
+          minimum: 1
+
+    ChannelRadarEntityType:
+      type: string
+      enum: [competitor, partner, ecosystem, other]
+
+    ChannelRadarSignalType:
+      type: string
+      enum: [acquisition, partnership, reseller_distributor, regional_expansion, leadership_hire, funding, customer_win, product_gtm, marketplace_listing, event, other]
+
+    ChannelRadarImplication:
+      type: string
+      enum: [opportunity, threat, neutral]
+
+    ChannelRadarImpact:
+      type: string
+      enum: [high, medium, low]
+
+    ChannelRadarConfidence:
+      type: string
+      enum: [high, medium, low]
+
+    ChannelRadarSignalStatus:
+      type: string
+      enum: [new, reviewed, dismissed]
+
+    ChannelRadarSignal:
+      type: object
+      required: [id, territory_id, entity_name, entity_type, signal_type, headline, summary, why_it_matters, implication, impact, recommended_action, confidence, source_title, source_url, discovered_at, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        territory_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        assigned_user:
+          oneOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
+        entity_name:
+          type: string
+        entity_type:
+          $ref: "#/components/schemas/ChannelRadarEntityType"
+        signal_type:
+          $ref: "#/components/schemas/ChannelRadarSignalType"
+        headline:
+          type: string
+        summary:
+          type: string
+        why_it_matters:
+          type: string
+        implication:
+          $ref: "#/components/schemas/ChannelRadarImplication"
+        impact:
+          $ref: "#/components/schemas/ChannelRadarImpact"
+        recommended_action:
+          type: string
+        confidence:
+          $ref: "#/components/schemas/ChannelRadarConfidence"
+        source_title:
+          type: string
+        source_url:
+          type: string
+        source_domain:
+          type: ["string", "null"]
+        source_published_at:
+          type: ["string", "null"]
+          description: Nullable -- never fabricated when the source provider gave no publish date.
+        discovered_at:
+          type: string
+        status:
+          $ref: "#/components/schemas/ChannelRadarSignalStatus"
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    UpdateChannelRadarSignalInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/ChannelRadarSignalStatus"
+
+    RunChannelRadarInput:
+      type: object
+      required: [territory_id]
+      properties:
+        territory_id:
+          type: string
+
+    RunChannelRadarResult:
+      type: object
+      required: [results_found, results_qualified, message]
+      properties:
+        results_found:
+          type: number
+        results_qualified:
+          type: number
+        message:
+          type: string
 
     ProspectDecisionInput:
       type: object

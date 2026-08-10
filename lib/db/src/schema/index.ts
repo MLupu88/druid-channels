@@ -19,3 +19,5 @@ export * from "./metric_targets";
 export * from "./ai_channel_briefs";
 export * from "./partner_recruitments";
 export * from "./partner_recruitment_history";
+export * from "./channel_radar_configs";
+export * from "./channel_radar_signals";

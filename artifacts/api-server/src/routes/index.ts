@@ -15,6 +15,8 @@ import metricTargetsRouter from "./metric_targets";
 import exportsRouter from "./exports";
 import aiChannelBriefRouter from "./ai_channel_brief";
 import recruitmentRouter from "./recruitment";
+import channelRadarConfigsRouter from "./channel_radar_configs";
+import channelRadarRouter from "./channel_radar";
 
 const router: IRouter = Router();
 
@@ -34,5 +36,7 @@ router.use(metricTargetsRouter);
 router.use(exportsRouter);
 router.use(aiChannelBriefRouter);
 router.use(recruitmentRouter);
+router.use(channelRadarConfigsRouter);
+router.use(channelRadarRouter);
 
 export default router;
