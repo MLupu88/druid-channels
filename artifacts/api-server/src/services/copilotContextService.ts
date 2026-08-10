@@ -26,6 +26,7 @@ import { getTeamTargets, type TeamTargetRow } from "./targetService";
 import { resolvePeriodRange } from "./kpiRegistry";
 import { computeDaysInStage, isStalled, isActiveStage, type RecruitmentStage } from "./partnerRecruitmentService";
 import { isNeedingAttention } from "./partnerRelationshipService";
+import { getTerritoryPotential, type TerritoryPotentialSummary } from "./territoryPotentialService";
 
 const TOP_N = 8;
 const RADAR_TOP_N = 8;
@@ -120,6 +121,11 @@ export interface PamWorkspaceSummary {
   activity: {
     recent: ActivityItem[];
   };
+  // Stage 6.5: deterministic Territory Potential facts (counts, saturation
+  // state, potential band) -- the exact same read model Team Targets/PAM
+  // workspace render, reused verbatim rather than recomputed. Never a
+  // second, potentially-drifting source of these numbers.
+  territory_potential: TerritoryPotentialSummary;
   // Deterministic, plain-language notes about what's missing/unknown --
   // never a substitute for the model's own "unknown means unknown"
   // instruction, just an explicit head start so it doesn't have to infer
@@ -278,6 +284,9 @@ function buildDataQualityNotes(summary: Omit<PamWorkspaceSummary, "data_quality_
   if (summary.recruitment.active_count === 0) notes.push("No active recruitments in this territory.");
   if (summary.radar.recent_signals.length === 0) notes.push("No recent Channel Radar signals for this territory.");
   if (summary.activity.recent.length === 0) notes.push("No marketing activity logged yet for this territory.");
+  if (summary.territory_potential.potential_band === "insufficient_data") {
+    notes.push("Not enough Discovery/Portfolio history yet to assess Territory Potential for this territory.");
+  }
   return notes;
 }
 
@@ -294,7 +303,7 @@ export async function getPamWorkspaceSummary(
 ): Promise<PamWorkspaceSummary> {
   const periodInfo = resolvePeriodRange(periodKey);
 
-  const [performance, priorityRecruitments, allRecruitmentsForCount, partnersNeedingAttention, allRelationshipsForCount, radarSignals, activities, discovery] =
+  const [performance, priorityRecruitments, allRecruitmentsForCount, partnersNeedingAttention, allRelationshipsForCount, radarSignals, activities, discovery, territoryPotential] =
     await Promise.all([
       getPamTargets(pamUserId, territoryId, periodKey),
       getPriorityRecruitments(territoryId),
@@ -304,6 +313,7 @@ export async function getPamWorkspaceSummary(
       getRecentRadarSignals(territoryId),
       getRecentActivities(territoryName),
       getTopDiscoveryProspects(territoryId),
+      getTerritoryPotential(territoryId, territoryName),
     ]);
 
   const activeRecruitmentCount = allRecruitmentsForCount.filter((r) => isActiveStage(r.stage as RecruitmentStage)).length;
@@ -326,6 +336,7 @@ export async function getPamWorkspaceSummary(
     portfolio: { active_partner_count: activePartnerCount, needs_attention: partnersNeedingAttention },
     radar: { recent_signals: radarSignals },
     activity: { recent: activities },
+    territory_potential: territoryPotential,
   };
 
   return { ...base, data_quality_notes: buildDataQualityNotes(base) };

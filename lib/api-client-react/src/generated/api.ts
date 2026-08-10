@@ -45,6 +45,7 @@ import type {
   GetHeadOfChannelsKpisParams,
   GetKpiDetailsParams,
   GetPortfolioSummaryParams,
+  GetTerritoryPotentialParams,
   HeadOfChannelsKpis,
   HealthStatus,
   HelpNeededInput,
@@ -101,6 +102,7 @@ import type {
   TeamTargetRow,
   Territory,
   TerritoryEditInput,
+  TerritoryPotentialSummary,
   TransitionPortfolioStatusInput,
   TransitionRecruitmentInput,
   UpdateChannelRadarConfigInput,
@@ -2239,6 +2241,90 @@ export const useChatWithPamCopilot = <TError = ErrorType<void>,
       > => {
       return useMutation(getChatWithPamCopilotMutationOptions(options));
     }
+
+export const getGetTerritoryPotentialUrl = (params?: GetTerritoryPotentialParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/territory-potential?${stringifiedParams}` : `/api/territory-potential`
+}
+
+/**
+ * @summary Deterministic Territory Potential summaries. Head/Admin sees all owned territories (or one, via ?territory=); a PAM always sees exactly their own regardless of ?territory=, which is never read for a non-global caller.
+ */
+export const getTerritoryPotential = async (params?: GetTerritoryPotentialParams, options?: Parameters<typeof customFetch>[1]): Promise<TerritoryPotentialSummary[]> => {
+
+  return customFetch<TerritoryPotentialSummary[]>(getGetTerritoryPotentialUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTerritoryPotentialQueryKey = (params?: GetTerritoryPotentialParams,) => {
+    return [
+    `/api/territory-potential`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTerritoryPotentialQueryOptions = <TData = Awaited<ReturnType<typeof getTerritoryPotential>>, TError = ErrorType<void>>(params?: GetTerritoryPotentialParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTerritoryPotential>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTerritoryPotentialQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTerritoryPotential>>> = ({ signal }) => getTerritoryPotential(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTerritoryPotential>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTerritoryPotentialQueryResult = NonNullable<Awaited<ReturnType<typeof getTerritoryPotential>>>
+export type GetTerritoryPotentialQueryError = ErrorType<void>
+
+
+/**
+ * @summary Deterministic Territory Potential summaries. Head/Admin sees all owned territories (or one, via ?territory=); a PAM always sees exactly their own regardless of ?territory=, which is never read for a non-global caller.
+ */
+
+export function useGetTerritoryPotential<TData = Awaited<ReturnType<typeof getTerritoryPotential>>, TError = ErrorType<void>>(
+ params?: GetTerritoryPotentialParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTerritoryPotential>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTerritoryPotentialQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getSearchCompaniesUrl = (params: SearchCompaniesParams,) => {
   const normalizedParams = new URLSearchParams();

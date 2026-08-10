@@ -615,6 +615,67 @@ export interface PamCopilotChatResponse {
   follow_ups: string[];
 }
 
+export type SaturationState = typeof SaturationState[keyof typeof SaturationState];
+
+
+export const SaturationState = {
+  unexplored: 'unexplored',
+  exploring: 'exploring',
+  productive: 'productive',
+  slowing: 'slowing',
+  saturated: 'saturated',
+  insufficient_data: 'insufficient_data',
+} as const;
+
+export type PotentialBand = typeof PotentialBand[keyof typeof PotentialBand];
+
+
+export const PotentialBand = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  insufficient_data: 'insufficient_data',
+} as const;
+
+export interface TerritoryPotentialSummary {
+  territory_id: string;
+  territory_name: string;
+  /** Distinct companies with at least one Discovery prospect ever created in this territory. */
+  discovered_company_count: number;
+  /** Total prospects ever persisted for this territory (persistence only happens for candidates that already passed the 5-check qualification bar). */
+  qualified_prospect_count: number;
+  accepted_prospect_count: number;
+  /** Prospects still in status=new -- not yet decided either way. */
+  available_prospect_count: number;
+  /** Active Portfolio relationships (any origin -- recruitment, PAM import, or manual). */
+  existing_partner_count: number;
+  active_recruitment_count: number;
+  /**
+     * From the most recent live (dataStatus=connected) Discovery run with real search-productivity stats. Null when no such run exists yet.
+     * @nullable
+     */
+  recent_new_company_count: number | null;
+  /** @nullable */
+  recent_unique_company_count: number | null;
+  /**
+     * Fraction (0-1) of the most recent live run's raw results that were duplicates (already-known company or in-run repeat).
+     * @nullable
+     */
+  duplicate_rate: number | null;
+  /**
+     * Fraction (0-1) of the most recent live run's raw results that were genuinely new companies.
+     * @nullable
+     */
+  new_candidate_yield: number | null;
+  discovery_runs_count: number;
+  /** @nullable */
+  last_discovery_at: string | null;
+  saturation_state: SaturationState;
+  potential_band: PotentialBand;
+  /** Deterministic, template-based interpretation text (never DeepSeek-generated). */
+  saturation_interpretation: string;
+}
+
 export interface CompanyRef {
   id: string;
   name: string;
@@ -2225,6 +2286,13 @@ search?: string | null;
 
 export type SearchParams = {
 q: string;
+};
+
+export type GetTerritoryPotentialParams = {
+/**
+ * Head/Admin only -- territory id or name to scope to a single summary. Ignored for a PAM caller.
+ */
+territory?: string;
 };
 
 export type SearchCompaniesParams = {

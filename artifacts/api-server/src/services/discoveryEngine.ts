@@ -16,6 +16,15 @@ import { hasCredential } from "./connections";
 import * as searchProvider from "./discoveryProviders/search";
 import * as extractionProvider from "./discoveryProviders/extraction";
 import * as aiProvider from "./discoveryProviders/ai";
+import {
+  decideNextBatch,
+  computeNewCandidateYield,
+  shouldReuseExistingQualification,
+  QUERIES_PER_BATCH,
+  MAX_CANDIDATES_TO_LLM,
+  type BudgetStopReason,
+  type ExistingQualificationRecord,
+} from "./discoveryBudget";
 import { logger } from "../lib/logger";
 
 // The Channel Discovery engine: turns a scan config into real, evidence-backed
@@ -641,7 +650,28 @@ export async function resolveCandidateCompanyIdentity(
   return { companyName: resolved.name, companyDomain: resolved.domain };
 }
 
-async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): Promise<Candidate[] | null> {
+export interface LiveDiscoveryStats {
+  queriesRun: number;
+  uniqueCompaniesSeen: number;
+  newCompaniesCount: number;
+  duplicatesRemoved: number;
+  candidatesSentToLlm: number;
+  candidatesQualified: number;
+  stoppedReason: BudgetStopReason;
+}
+
+export interface LiveDiscoveryResult {
+  candidates: Candidate[];
+  stats: LiveDiscoveryStats;
+}
+
+// Stage 6.5 Cost-Aware Adaptive Discovery: bounded initial batch -> evaluate
+// new-candidate yield -> optional bounded expansion -> stop on a hard cap or
+// sustained poor yield (see discoveryBudget.ts's decideNextBatch). Territory
+// size affects how much of the existing MAX_QUERIES_PER_RUN/
+// MAX_CANDIDATES_TO_LLM ceiling a run actually uses -- it never raises the
+// ceiling itself, and it never changes qualifyChecks' qualification bar.
+async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): Promise<LiveDiscoveryResult | null> {
   const rows = await db.select().from(connectionsTable).where(inArray(connectionsTable.providerType, REQUIRED_PROVIDER_TYPES));
   const byType = new Map(rows.map((r) => [r.providerType, r]));
   const ready = REQUIRED_PROVIDER_TYPES.every((t) => hasCredential(byType.get(t)?.credentialEnvVar ?? null));
@@ -658,76 +688,177 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): P
     // once, both to avoid duplicate prospects and to avoid spending a
     // second AI call on evidence already assessed.
     const seenUrls = new Set<string>();
-    for (const query of criteria.searchIntent) {
-      const results = await searchProvider.search(query, { maxResults: config.maxResults });
-      for (const result of results) {
-        if (seenUrls.has(result.url)) continue;
-        seenUrls.add(result.url);
+    // Cost control A/C (company-level dedupe + evidence dedupe before
+    // DeepSeek): domains already seen earlier in *this* run never get a
+    // second AI call. Honest limitation: this only catches first-party
+    // evidence (evidenceDomain === the candidate's own domain) pre-call --
+    // third-party evidence's real subject company isn't known until after
+    // qualification, so it's still deduped, just at persistence time
+    // (upsertCompanyOrSkip) rather than before spending on it.
+    const seenDomainsThisRun = new Set<string>();
 
-        const evidenceDomain = extractDomain(result.url);
-        // Tavily's search result already carries usable content -- no
-        // second external call. extract() only validates/bounds it.
-        const page = await extractionProvider.extract(result.url, { text: result.snippet, publishedAt: result.publishedAt });
-        const qualification = await aiProvider.qualify({
-          companyName: result.title,
-          domain: evidenceDomain,
-          evidence: [{ url: result.url, text: page.text }],
-          criteria,
-        });
-
-        const checks: FiveChecks = {
-          enterpriseAccess: qualification.enterpriseAccess,
-          relevantCapability: qualification.relevantCapability,
-          technologyAdjacency: qualification.technologyAdjacency,
-          partnershipOpenness: qualification.partnershipOpenness,
-          recentTrigger: qualification.recentTrigger,
-        };
-
-        // Cost control: identity resolution (an extra search + AI call)
-        // only runs for evidence that already clears the qualification bar
-        // -- unqualified evidence is never persisted regardless of whose
-        // identity it names, so resolving it would be wasted spend.
-        if (qualifyChecks(checks, config.minChecksRequired).priority === null) continue;
-
-        // The evidence source (evidenceDomain, e.g. a news site or analyst
-        // firm) and the prospective partner (companyName/companyDomain
-        // below) are deliberately separate concepts -- see
-        // discoveryProviders/ai.ts's subjectCompanyName/sourceIsFirstParty.
-        const identity = await resolveCandidateCompanyIdentity(qualification, evidenceDomain);
-        if (!identity) {
-          logger.warn(
-            { subjectCompanyName: qualification.subjectCompanyName, evidenceUrl: result.url },
-            "Discovery: company identity could not be resolved; candidate skipped",
-          );
-          continue; // never persist the publisher's identity in place of the real company
-        }
-
-        candidates.push({
-          companyName: identity.companyName,
-          domain: identity.companyDomain,
-          country: "Unknown",
-          partnerType: qualification.partnerType,
-          checks,
-          whyItFits: qualification.whyItFits,
-          whyNow: qualification.whyNow,
-          suggestedAngle: qualification.suggestedAngle,
-          suggestedTargetRole: qualification.suggestedTargetRole,
-          signals: qualification.evidenceUrls
-            .filter((url) => url === result.url) // never fabricate a source URL outside what was actually given as evidence
-            .map((url) => ({
-              signalType: qualification.signalType,
-              title: result.title,
-              summary: result.snippet,
-              sourceUrl: url,
-              sourceDomain: evidenceDomain, // always the evidence source domain -- may legitimately differ from companyDomain above
-              publishedAt: page.publishedAt, // honest: null when the provider gave no date, never defaulted to "today"
-              confidence: "medium" as Confidence,
-              rawExcerpt: page.text.slice(0, 400),
-            })),
-        });
+    // Cost control B (evaluation cache): one query for every already-known
+    // company's domain + its most recent prospect's freshness fields.
+    // shouldReuseExistingQualification (config.recencyWindowDays -- the
+    // same freshness window Discovery/Prospects already use, not a second
+    // invented one) decides whether a known company is skipped outright
+    // (fresh) or re-qualified (stale / never actually qualified before).
+    const existingRows = await db
+      .select({ domain: companiesTable.domain, lastResearchedAt: prospectsTable.lastResearchedAt, createdAt: prospectsTable.createdAt })
+      .from(companiesTable)
+      .leftJoin(prospectsTable, eq(prospectsTable.companyId, companiesTable.id));
+    const knownDomainRecords = new Map<string, ExistingQualificationRecord | null>();
+    for (const row of existingRows) {
+      if (!row.domain) continue;
+      const record: ExistingQualificationRecord | null = row.createdAt ? { lastResearchedAt: row.lastResearchedAt, createdAt: row.createdAt } : null;
+      const existing = knownDomainRecords.get(row.domain);
+      if (!existing || (record && (!existing.lastResearchedAt || (record.lastResearchedAt ?? record.createdAt) > (existing.lastResearchedAt ?? existing.createdAt)))) {
+        knownDomainRecords.set(row.domain, record);
       }
     }
-    return candidates;
+
+    let queriesRun = 0;
+    let candidatesSentToLlm = 0;
+    let candidatesQualified = 0;
+    let duplicatesRemoved = 0;
+    let uniqueCompaniesSeen = 0;
+    let newCompaniesCount = 0;
+    let stoppedReason: BudgetStopReason = "completed";
+    const recentYields: number[] = [];
+
+    const allQueries = criteria.searchIntent;
+    const queryBatches: string[][] = [];
+    for (let i = 0; i < allQueries.length; i += QUERIES_PER_BATCH) {
+      queryBatches.push(allQueries.slice(i, i + QUERIES_PER_BATCH));
+    }
+
+    for (let batchIndex = 0; batchIndex < queryBatches.length; batchIndex++) {
+      const decision = decideNextBatch({ queriesRun, candidatesSentToLlm, batchesRun: batchIndex, recentYields });
+      if (decision.action === "stop") {
+        stoppedReason = decision.reason;
+        break;
+      }
+
+      let batchRaw = 0;
+      let batchUnique = 0;
+      let batchNew = 0;
+
+      for (const query of queryBatches[batchIndex]!) {
+        queriesRun++;
+        const results = await searchProvider.search(query, { maxResults: config.maxResults });
+        for (const result of results) {
+          batchRaw++;
+          if (seenUrls.has(result.url)) {
+            duplicatesRemoved++;
+            continue;
+          }
+          seenUrls.add(result.url);
+
+          const evidenceDomain = extractDomain(result.url);
+
+          if (seenDomainsThisRun.has(evidenceDomain)) {
+            duplicatesRemoved++;
+            batchUnique++;
+            continue;
+          }
+          seenDomainsThisRun.add(evidenceDomain);
+          batchUnique++;
+
+          const isKnownDomain = knownDomainRecords.has(evidenceDomain);
+          if (isKnownDomain) {
+            // Not counted in duplicatesRemoved -- that counter is reserved
+            // for in-run redundant results (URL/domain repeats within this
+            // run, see above); a first-occurrence-this-run domain that
+            // happens to already be a known company is captured cleanly by
+            // (uniqueCompaniesSeen - newCompaniesCount) instead, so the two
+            // counters never overlap (see territoryPotentialService.ts's
+            // rawResultsTotal = uniqueCompaniesSeen + duplicatesRemoved).
+            const cached = knownDomainRecords.get(evidenceDomain)!;
+            if (shouldReuseExistingQualification(cached, config.recencyWindowDays)) {
+              continue; // cache hit -- never call DeepSeek for a freshly-evaluated known company
+            }
+            // stale or never actually qualified (e.g. a Portfolio-only
+            // company) -- falls through to a real (refresh) qualification
+            // below, but is still not counted as a NEW company for yield.
+          } else {
+            newCompaniesCount++;
+            batchNew++;
+          }
+          uniqueCompaniesSeen++;
+
+          if (candidatesSentToLlm >= MAX_CANDIDATES_TO_LLM) continue; // hard cap -- never exceeded
+
+          // Tavily's search result already carries usable content -- no
+          // second external call. extract() only validates/bounds it.
+          const page = await extractionProvider.extract(result.url, { text: result.snippet, publishedAt: result.publishedAt });
+          candidatesSentToLlm++;
+          const qualification = await aiProvider.qualify({
+            companyName: result.title,
+            domain: evidenceDomain,
+            evidence: [{ url: result.url, text: page.text }],
+            criteria,
+          });
+
+          const checks: FiveChecks = {
+            enterpriseAccess: qualification.enterpriseAccess,
+            relevantCapability: qualification.relevantCapability,
+            technologyAdjacency: qualification.technologyAdjacency,
+            partnershipOpenness: qualification.partnershipOpenness,
+            recentTrigger: qualification.recentTrigger,
+          };
+
+          // Same qualification bar regardless of territory -- qualifyChecks
+          // and config.minChecksRequired are untouched by anything in this
+          // adaptive-budget loop.
+          if (qualifyChecks(checks, config.minChecksRequired).priority === null) continue;
+          candidatesQualified++;
+
+          // Cost control: identity resolution (an extra search + AI call)
+          // only runs for evidence that already clears the qualification bar
+          // -- unqualified evidence is never persisted regardless of whose
+          // identity it names, so resolving it would be wasted spend.
+          const identity = await resolveCandidateCompanyIdentity(qualification, evidenceDomain);
+          if (!identity) {
+            logger.warn(
+              { subjectCompanyName: qualification.subjectCompanyName, evidenceUrl: result.url },
+              "Discovery: company identity could not be resolved; candidate skipped",
+            );
+            continue; // never persist the publisher's identity in place of the real company
+          }
+
+          candidates.push({
+            companyName: identity.companyName,
+            domain: identity.companyDomain,
+            country: "Unknown",
+            partnerType: qualification.partnerType,
+            checks,
+            whyItFits: qualification.whyItFits,
+            whyNow: qualification.whyNow,
+            suggestedAngle: qualification.suggestedAngle,
+            suggestedTargetRole: qualification.suggestedTargetRole,
+            signals: qualification.evidenceUrls
+              .filter((url) => url === result.url) // never fabricate a source URL outside what was actually given as evidence
+              .map((url) => ({
+                signalType: qualification.signalType,
+                title: result.title,
+                summary: result.snippet,
+                sourceUrl: url,
+                sourceDomain: evidenceDomain, // always the evidence source domain -- may legitimately differ from companyDomain above
+                publishedAt: page.publishedAt, // honest: null when the provider gave no date, never defaulted to "today"
+                confidence: "medium" as Confidence,
+                rawExcerpt: page.text.slice(0, 400),
+              })),
+          });
+        }
+      }
+
+      recentYields.push(computeNewCandidateYield({ rawResults: batchRaw, uniqueCompanies: batchUnique, newCompanies: batchNew }));
+    }
+
+    return {
+      candidates,
+      stats: { queriesRun, uniqueCompaniesSeen, newCompaniesCount, duplicatesRemoved, candidatesSentToLlm, candidatesQualified, stoppedReason },
+    };
   } catch (err) {
     const notImplemented =
       err instanceof searchProvider.SearchNotImplementedError ||
@@ -750,7 +881,15 @@ async function upsertCompanyOrSkip(tx: Tx, candidate: Candidate): Promise<string
       .select()
       .from(prospectsTable)
       .where(and(eq(prospectsTable.companyId, existing.id), ne(prospectsTable.status, "rejected")));
-    if (activeProspect) return null; // dedupe: an active prospect already exists for this company/domain
+    if (activeProspect) {
+      // Cost-control B's freshness rule (shouldReuseExistingQualification)
+      // only works going forward if a re-qualification actually refreshes
+      // this timestamp -- reaching this branch means the caller decided the
+      // prior evaluation was stale enough to re-run, so the reuse window
+      // resets from now.
+      await tx.update(prospectsTable).set({ lastResearchedAt: new Date() }).where(eq(prospectsTable.id, activeProspect.id));
+      return null; // dedupe: an active prospect already exists for this company/domain
+    }
     return existing.id;
   }
   const [created] = await tx
@@ -806,6 +945,7 @@ async function persistCandidate(
         status: "new",
         discoverySourceStatus: dataStatus,
         priorityRationale: qualification.rationale,
+        lastResearchedAt: new Date(),
       })
       .returning();
 
@@ -859,9 +999,9 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
     .returning();
 
   try {
-    const liveCandidates = await attemptLiveDiscovery(config, territory);
-    const dataStatus: "demo" | "connected" = liveCandidates ? "connected" : "demo";
-    const candidates = liveCandidates ?? generateDemoCandidates(config, territory);
+    const liveResult = await attemptLiveDiscovery(config, territory);
+    const dataStatus: "demo" | "connected" = liveResult ? "connected" : "demo";
+    const candidates = liveResult?.candidates ?? generateDemoCandidates(config, territory);
     const excludedDomains = (config.excludedDomains as string[]) ?? [];
 
     let qualifiedCount = 0;
@@ -874,6 +1014,11 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
       if (created) qualifiedCount++;
     }
 
+    // Stage 6.5: run-level search-productivity stats only exist on the live
+    // (dataStatus="connected") path -- a demo run leaves them at their
+    // schema defaults (0/null), which Territory Potential's saturation
+    // logic treats as "no real search productivity data", never as zero
+    // yield (see territoryPotentialService.ts).
     const [completedRun] = await db
       .update(scanRunsTable)
       .set({
@@ -882,6 +1027,17 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
         resultsFound: candidates.length,
         resultsQualified: qualifiedCount,
         dataStatus,
+        ...(liveResult
+          ? {
+              queriesRun: liveResult.stats.queriesRun,
+              uniqueCompaniesSeen: liveResult.stats.uniqueCompaniesSeen,
+              newCompaniesCount: liveResult.stats.newCompaniesCount,
+              duplicatesRemoved: liveResult.stats.duplicatesRemoved,
+              candidatesSentToLlm: liveResult.stats.candidatesSentToLlm,
+              candidatesQualified: liveResult.stats.candidatesQualified,
+              stoppedReason: liveResult.stats.stoppedReason,
+            }
+          : {}),
       })
       .where(eq(scanRunsTable.id, run!.id))
       .returning();

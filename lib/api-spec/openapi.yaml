@@ -52,6 +52,8 @@ tags:
     description: Stage 6.3 internal application search across every module
   - name: pam-copilot
     description: Stage 6.4 PAM Workspace Copilot -- grounded, read-only Q&A over a controlled snapshot of the caller's own workspace and a maintained App Guide
+  - name: territory-potential
+    description: Stage 6.5 Territory Potential -- deterministic, count-based Discovery capacity/saturation summary per territory. Context for target setting, never target automation.
 
 paths:
   /auth/login:
@@ -722,6 +724,31 @@ paths:
           description: Specified pam_user_id has no canonical territory
         "502":
           description: AI provider call failed or is not configured
+
+  /territory-potential:
+    get:
+      operationId: getTerritoryPotential
+      tags: [territory-potential]
+      summary: Deterministic Territory Potential summaries. Head/Admin sees all owned territories (or one, via ?territory=); a PAM always sees exactly their own regardless of ?territory=, which is never read for a non-global caller.
+      parameters:
+        - name: territory
+          in: query
+          description: Head/Admin only -- territory id or name to scope to a single summary. Ignored for a PAM caller.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Always an array -- one entry for a PAM or a scoped Head/Admin request, one entry per owned territory otherwise
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TerritoryPotentialSummary"
+        "403":
+          description: Caller has no canonical territory assigned
+        "404":
+          description: Head/Admin requested a ?territory= that doesn't exist
 
   /companies/search:
     get:
@@ -2559,6 +2586,78 @@ components:
           items:
             type: string
           description: Up to 4 short suggested next questions, as plain text only -- never an executable action.
+
+    SaturationState:
+      type: string
+      enum: [unexplored, exploring, productive, slowing, saturated, insufficient_data]
+
+    PotentialBand:
+      type: string
+      enum: [low, medium, high, insufficient_data]
+
+    TerritoryPotentialSummary:
+      type: object
+      required:
+        - territory_id
+        - territory_name
+        - discovered_company_count
+        - qualified_prospect_count
+        - accepted_prospect_count
+        - available_prospect_count
+        - existing_partner_count
+        - active_recruitment_count
+        - recent_new_company_count
+        - recent_unique_company_count
+        - duplicate_rate
+        - new_candidate_yield
+        - discovery_runs_count
+        - last_discovery_at
+        - saturation_state
+        - potential_band
+        - saturation_interpretation
+      properties:
+        territory_id:
+          type: string
+        territory_name:
+          type: string
+        discovered_company_count:
+          type: integer
+          description: Distinct companies with at least one Discovery prospect ever created in this territory.
+        qualified_prospect_count:
+          type: integer
+          description: Total prospects ever persisted for this territory (persistence only happens for candidates that already passed the 5-check qualification bar).
+        accepted_prospect_count:
+          type: integer
+        available_prospect_count:
+          type: integer
+          description: Prospects still in status=new -- not yet decided either way.
+        existing_partner_count:
+          type: integer
+          description: Active Portfolio relationships (any origin -- recruitment, PAM import, or manual).
+        active_recruitment_count:
+          type: integer
+        recent_new_company_count:
+          type: ["integer", "null"]
+          description: From the most recent live (dataStatus=connected) Discovery run with real search-productivity stats. Null when no such run exists yet.
+        recent_unique_company_count:
+          type: ["integer", "null"]
+        duplicate_rate:
+          type: ["number", "null"]
+          description: Fraction (0-1) of the most recent live run's raw results that were duplicates (already-known company or in-run repeat).
+        new_candidate_yield:
+          type: ["number", "null"]
+          description: Fraction (0-1) of the most recent live run's raw results that were genuinely new companies.
+        discovery_runs_count:
+          type: integer
+        last_discovery_at:
+          type: ["string", "null"]
+        saturation_state:
+          $ref: "#/components/schemas/SaturationState"
+        potential_band:
+          $ref: "#/components/schemas/PotentialBand"
+        saturation_interpretation:
+          type: string
+          description: Deterministic, template-based interpretation text (never DeepSeek-generated).
 
     CompanyRef:
       type: object

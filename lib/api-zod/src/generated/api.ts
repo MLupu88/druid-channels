@@ -1003,6 +1003,35 @@ export const ChatWithPamCopilotResponse = zod.object({
 
 
 /**
+ * @summary Deterministic Territory Potential summaries. Head/Admin sees all owned territories (or one, via ?territory=); a PAM always sees exactly their own regardless of ?territory=, which is never read for a non-global caller.
+ */
+export const GetTerritoryPotentialQueryParams = zod.object({
+  "territory": zod.coerce.string().optional().describe('Head\/Admin only -- territory id or name to scope to a single summary. Ignored for a PAM caller.')
+})
+
+export const GetTerritoryPotentialResponseItem = zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "discovered_company_count": zod.number().int().describe('Distinct companies with at least one Discovery prospect ever created in this territory.'),
+  "qualified_prospect_count": zod.number().int().describe('Total prospects ever persisted for this territory (persistence only happens for candidates that already passed the 5-check qualification bar).'),
+  "accepted_prospect_count": zod.number().int(),
+  "available_prospect_count": zod.number().int().describe('Prospects still in status=new -- not yet decided either way.'),
+  "existing_partner_count": zod.number().int().describe('Active Portfolio relationships (any origin -- recruitment, PAM import, or manual).'),
+  "active_recruitment_count": zod.number().int(),
+  "recent_new_company_count": zod.number().int().nullable().describe('From the most recent live (dataStatus=connected) Discovery run with real search-productivity stats. Null when no such run exists yet.'),
+  "recent_unique_company_count": zod.number().int().nullable(),
+  "duplicate_rate": zod.number().nullable().describe('Fraction (0-1) of the most recent live run\'s raw results that were duplicates (already-known company or in-run repeat).'),
+  "new_candidate_yield": zod.number().nullable().describe('Fraction (0-1) of the most recent live run\'s raw results that were genuinely new companies.'),
+  "discovery_runs_count": zod.number().int(),
+  "last_discovery_at": zod.string().nullable(),
+  "saturation_state": zod.enum(['unexplored', 'exploring', 'productive', 'slowing', 'saturated', 'insufficient_data']),
+  "potential_band": zod.enum(['low', 'medium', 'high', 'insufficient_data']),
+  "saturation_interpretation": zod.string().describe('Deterministic, template-based interpretation text (never DeepSeek-generated).')
+})
+export const GetTerritoryPotentialResponse = zod.array(GetTerritoryPotentialResponseItem)
+
+
+/**
  * @summary Lightweight canonical-company lookup by name/domain, for the Portfolio manual-add and import-review company picker
  */
 export const SearchCompaniesQueryParams = zod.object({

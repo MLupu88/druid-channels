@@ -3,8 +3,10 @@ import {
   useListTeamTargets,
   getListTeamTargetsQueryKey,
   useUpsertMetricTarget,
+  useGetTerritoryPotential,
 } from '@workspace/api-client-react';
 import type { TeamTargetRow } from '@workspace/api-client-react';
+import { TerritoryPotentialCard } from '@/components/territory-potential-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { PeriodSelector } from '@/components/period-selector';
@@ -40,8 +42,20 @@ export default function TeamTargets() {
   const [editingRow, setEditingRow] = useState<TeamTargetRow | null>(null);
 
   const { data: rows, isLoading } = useListTeamTargets({ period });
+  const { data: territoryPotential, isLoading: potentialLoading } = useGetTerritoryPotential({});
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListTeamTargetsQueryKey() });
+
+  // Stage 6.5: a plain deterministic fact cross-referencing the currently
+  // configured New Partner Prospects target against the available pool --
+  // never an automated target change (see the 6.5 spec section 9).
+  const targetFactFor = (territoryId: string): string | null => {
+    const targetRow = rows?.find((r) => r.territory_id === territoryId && r.metric_key === 'new_partner_prospects' && r.target_value !== null);
+    const potential = territoryPotential?.find((t) => t.territory_id === territoryId);
+    if (!targetRow || !potential || targetRow.target_value === null) return null;
+    if (potential.available_prospect_count >= targetRow.target_value) return null;
+    return `Current available qualified pool (${potential.available_prospect_count}) is below the configured target (${targetRow.target_value}) for ${targetRow.metric_label}.`;
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -51,6 +65,21 @@ export default function TeamTargets() {
           <p className="text-sm text-muted-foreground mt-1">What each PAM has been asked to achieve this period, and how they're doing against it.</p>
         </div>
         <PeriodSelector value={period} onChange={setPeriod} />
+      </div>
+
+      <div className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Territory Potential</h2>
+        {potentialLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : territoryPotential && territoryPotential.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {territoryPotential.map((summary) => (
+              <TerritoryPotentialCard key={summary.territory_id} summary={summary} targetFact={targetFactFor(summary.territory_id)} />
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No territories with an owning PAM yet.</p>
+        )}
       </div>
 
       <Card className="shadow-none border-border/70">

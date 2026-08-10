@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'wouter';
-import { useListProspects, useListCampaigns, useListTerritories, useListTeamTargets } from '@workspace/api-client-react';
+import { useListProspects, useListCampaigns, useListTerritories, useListTeamTargets, useGetTerritoryPotential } from '@workspace/api-client-react';
+import { TerritoryPotentialCard } from '@/components/territory-potential-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -32,6 +33,8 @@ export function PamWorkspace({ territoryId, pamName, pamUserId }: { territoryId?
 
   const { data: prospects, isLoading: prospectsLoading } = useListProspects(scopeParam);
   const { data: campaigns, isLoading: campaignsLoading } = useListCampaigns();
+  const { data: territoryPotential } = useGetTerritoryPotential(scopeParam);
+  const ownPotential = territoryPotential?.[0] ?? null;
 
   const [targetsPeriod, setTargetsPeriod] = useState(getDefaultPeriodKey());
   // No explicit pam_user_id here -- for the PAM's own workspace the server
@@ -109,7 +112,8 @@ export function PamWorkspace({ territoryId, pamName, pamUserId }: { territoryId?
           </Card>
         </TabsContent>
 
-        <TabsContent value="targets">
+        <TabsContent value="targets" className="space-y-4">
+          {ownPotential && <TerritoryPotentialCard summary={ownPotential} />}
           <Card className="shadow-none border-border/60">
             <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base font-medium">{pamName ? `${pamName}'s targets` : 'My targets'}</CardTitle>
