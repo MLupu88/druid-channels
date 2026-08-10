@@ -454,6 +454,34 @@ function partnerTypeSearchVariants(raw: string): string[] {
   return PARTNER_TYPE_SEARCH_TERMS[raw.trim().toLowerCase()] ?? [raw]; // unknown categories pass through literally
 }
 
+// Maps Settings "What to look for" target_signals ids to the canonical
+// signals.signal_type taxonomy -- used both for search-query phrasing below
+// and for the qualification context passed to DeepSeek (see
+// buildPartnerSearchCriteria). new_partners has no direct signal-type
+// equivalent -- it's a general "run discovery" toggle, not a specific
+// signal family, so it's intentionally left unmapped rather than forced
+// onto one of the seven real types.
+const TARGET_SIGNAL_TO_TYPE: Record<string, SignalType> = {
+  partnerships: "partnership",
+  ai_moves: "ai_investment",
+  rfps: "tender",
+  events: "event",
+  customer_wins: "enterprise_access",
+};
+
+const TARGET_SIGNAL_SEARCH_TERMS: Record<string, string> = {
+  partnerships: "partner program",
+  ai_moves: "AI investment",
+  rfps: "tender contract award",
+  events: "industry event",
+  customer_wins: "enterprise customer",
+};
+
+// Exported for testing -- pure, no DB/network involved.
+export function mapTargetSignalsToTypes(targetSignals: string[]): SignalType[] {
+  return targetSignals.map((s) => TARGET_SIGNAL_TO_TYPE[s]).filter((t): t is SignalType => !!t);
+}
+
 const MAX_AUTOMATIC_QUERIES = 12;
 
 // Builds the automatic (non-explicit) query set from the full Partner
@@ -464,12 +492,17 @@ const MAX_AUTOMATIC_QUERIES = 12;
 // Cartesian family can consume the whole budget before others get a turn.
 // Countries rotate via index, never cross-multiplied. Deduplicated, capped
 // at MAX_AUTOMATIC_QUERIES, and never padded when the profile is narrow.
-function buildAutomaticQueries(config: ScanConfig, territory: Territory): string[] {
+export function buildAutomaticQueries(config: ScanConfig, territory: Territory): string[] {
   const industries = (config.industries as string[]) ?? [];
   const technologies = (config.technologies as string[]) ?? [];
   const countries = (territory.countries as string[]) ?? [];
   const partnerTypeTerms = ((config.partnerTypes as string[]) ?? []).flatMap(partnerTypeSearchVariants);
   const geoSuffix = (i: number) => (countries.length > 0 ? ` ${countries[i % countries.length]}` : "");
+  // Rotated the same way as geoSuffix -- every configured target signal
+  // gets represented across the query set without multiplying query count
+  // (no extra search calls per signal).
+  const signalTerms = ((config.targetSignals as string[]) ?? []).map((s) => TARGET_SIGNAL_SEARCH_TERMS[s]).filter((t): t is string => !!t);
+  const signalSuffix = (i: number) => (signalTerms.length > 0 ? ` ${signalTerms[i % signalTerms.length]}` : "");
 
   const queries: string[] = [];
   const seen = new Set<string>();
@@ -489,7 +522,7 @@ function buildAutomaticQueries(config: ScanConfig, territory: Territory): string
       if (technologies.length > 0) parts.push(`"${technologies[i % technologies.length]}"`);
       if (partnerTypeTerms.length > 0) parts.push(`"${partnerTypeTerms[i % partnerTypeTerms.length]}"`);
       if (industries.length > 0) parts.push(industries[i % industries.length]);
-      push(`${parts.join(" ")}${geoSuffix(i)}`);
+      push(`${parts.join(" ")}${signalSuffix(i)}${geoSuffix(i)}`);
     }
   }
 
@@ -509,7 +542,7 @@ function buildAutomaticQueries(config: ScanConfig, territory: Territory): string
   for (let round = 0; round < MAX_AUTOMATIC_QUERIES * 3 && queries.length < MAX_AUTOMATIC_QUERIES && families.length > 0; round++) {
     for (const family of families) {
       if (queries.length >= MAX_AUTOMATIC_QUERIES) break;
-      push(`${family()}${geoSuffix(round)}`);
+      push(`${family()}${signalSuffix(round)}${geoSuffix(round)}`);
     }
   }
 
@@ -517,9 +550,16 @@ function buildAutomaticQueries(config: ScanConfig, territory: Territory): string
   // the passes above intentionally produce nothing for that case, so
   // search still gets *something* rather than an empty query list.
   if (queries.length === 0) {
-    for (const tech of technologies) push(`"${tech} partner"${geoSuffix(queries.length)}`);
-    for (const pt of partnerTypeTerms) push(`"${pt}"${geoSuffix(queries.length)}`);
-    for (const ind of industries) push(`${ind} technology partner${geoSuffix(queries.length)}`);
+    for (const tech of technologies) push(`"${tech} partner"${signalSuffix(queries.length)}${geoSuffix(queries.length)}`);
+    for (const pt of partnerTypeTerms) push(`"${pt}"${signalSuffix(queries.length)}${geoSuffix(queries.length)}`);
+    for (const ind of industries) push(`${ind} technology partner${signalSuffix(queries.length)}${geoSuffix(queries.length)}`);
+  }
+
+  // Only target_signals were ever configured (no technologies, partner
+  // types, or industries at all) -- give search something signal-shaped
+  // to work with rather than an empty query list.
+  if (queries.length === 0 && signalTerms.length > 0) {
+    for (const term of signalTerms) push(`"${term}"${geoSuffix(queries.length)}`);
   }
 
   return queries;
@@ -538,7 +578,7 @@ function buildSearchQueries(config: ScanConfig, territory: Territory): string[] 
 // exists only for the demo generator below, and using it here would let
 // Settings show no configured countries while the AI is silently told a
 // hardcoded list.
-function buildPartnerSearchCriteria(config: ScanConfig, territory: Territory): aiProvider.PartnerSearchCriteria {
+export function buildPartnerSearchCriteria(config: ScanConfig, territory: Territory): aiProvider.PartnerSearchCriteria {
   return {
     partnerTypes: (config.partnerTypes as string[]) ?? [],
     industries: (config.industries as string[]) ?? [],
@@ -548,6 +588,7 @@ function buildPartnerSearchCriteria(config: ScanConfig, territory: Territory): a
     excludedDomains: (config.excludedDomains as string[]) ?? [],
     minChecksRequired: config.minChecksRequired,
     searchIntent: buildSearchQueries(config, territory),
+    targetSignalTypes: mapTargetSignalsToTypes((config.targetSignals as string[]) ?? []),
   };
 }
 

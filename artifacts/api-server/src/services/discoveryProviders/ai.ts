@@ -47,6 +47,13 @@ export interface PartnerSearchCriteria {
   excludedDomains: string[];
   minChecksRequired: number;
   searchIntent: string[];
+  // Signal families this territory's Settings > What to look for is
+  // prioritizing (mapped from target_signals -- see discoveryEngine.ts's
+  // TARGET_SIGNAL_TO_TYPE). Context only: it informs signal_type
+  // classification and framing, but never overrides the evidence-grounded
+  // five-check gate -- evidence outside this list is still assessed
+  // honestly on its own merits, never rejected just for being unlisted.
+  targetSignalTypes: string[];
 }
 
 export interface AiQualificationInput {
@@ -122,7 +129,9 @@ const SYSTEM_PROMPT = `You are an assistant that evaluates whether a company fou
 You will be given:
 - The company's name and domain, as returned by search (not independently verified).
 - Evidence: one or more {url, text} pairs -- actual text found on the web about this company. This is your ONLY source of truth. Never invent a fact, event, product, partnership, or capability not present in this text.
-- Partner Search Criteria this evaluation is being run against (target partner types, industries, technologies, territory).
+- Partner Search Criteria this evaluation is being run against (target partner types, industries, technologies, territory, and target_signal_types -- the signal families this territory is prioritizing, e.g. partnership announcements or tenders).
+
+target_signal_types is context, not a filter: use it to inform signal_type classification and how you frame why_now, but never reject or downgrade evidence just because its signal_type falls outside that list, and never fabricate a signal to match it. The five-check gate remains authoritative regardless of target_signal_types.
 
 Assess exactly five yes/no checks, each grounded in the supplied evidence text -- never inferred from the company name or domain alone:
 - enterprise_access: evidence the company already serves enterprise/large customers.
@@ -200,6 +209,7 @@ export async function qualifyViaDeepSeek(input: AiQualificationInput): Promise<A
       technologies: input.criteria.technologies,
       territory_name: input.criteria.territoryName,
       territory_countries: input.criteria.territoryCountries,
+      target_signal_types: input.criteria.targetSignalTypes,
     },
   };
 

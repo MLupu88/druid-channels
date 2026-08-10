@@ -4,6 +4,8 @@ import { scanConfigsTable, territoriesTable, scanRunsTable } from "@workspace/db
 import {
   ListScanConfigsResponse,
   GetScanConfigResponse,
+  CreateScanConfigBody,
+  CreateScanConfigResponse,
   UpdateScanConfigBody,
   UpdateScanConfigResponse,
 } from "@workspace/api-zod";
@@ -121,6 +123,41 @@ router.get("/scan-configs/:id", requireAuth, async (req, res): Promise<void> => 
   const lastRuns = await loadLastRunsByConfig([row.config.id]);
 
   res.json(GetScanConfigResponse.parse(shapeConfig(row.config, row.territory?.name ?? "", lastRuns.get(row.config.id))));
+});
+
+// Management-only, same convention as PUT below. One scan config per
+// territory (enforced here with a 409) -- matches the "one scan config is
+// expected per territory" assumption already relied on elsewhere (see
+// routes/prospects.ts's loadRecencyWindowsByTerritory,
+// prospects.tsx's selectActiveScanConfig). Created with schema defaults
+// (active: true, no criteria yet) -- the operator defines partner types/
+// industries/technologies/target signals afterward via the existing PUT.
+router.post("/scan-configs", requireAdmin, async (req, res): Promise<void> => {
+  const parsed = CreateScanConfigBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const { territory_id } = parsed.data;
+
+  const [territory] = await db.select().from(territoriesTable).where(eq(territoriesTable.id, territory_id));
+  if (!territory) {
+    res.status(404).json({ error: "Territory not found" });
+    return;
+  }
+
+  const [existing] = await db.select().from(scanConfigsTable).where(eq(scanConfigsTable.territoryId, territory_id));
+  if (existing) {
+    res.status(409).json({ error: "A scan config already exists for this territory." });
+    return;
+  }
+
+  const [created] = await db
+    .insert(scanConfigsTable)
+    .values({ territoryId: territory_id, name: `${territory.name} search criteria` })
+    .returning();
+
+  res.status(201).json(CreateScanConfigResponse.parse(shapeConfig(created!, territory.name, undefined)));
 });
 
 // Management-only: Partner Search Criteria is a management control, not a

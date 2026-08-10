@@ -32,6 +32,7 @@ export * from './connectionProviderType';
 export * from './connectionStatus';
 export * from './connectionUpdateInput';
 export * from './connectionUpdateInputConfigJson';
+export * from './createScanConfigInput';
 export * from './createUserInput';
 export * from './dataStatus';
 export * from './deleteResult';

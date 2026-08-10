@@ -28,6 +28,7 @@ import type {
   CampaignInput,
   Connection,
   ConnectionUpdateInput,
+  CreateScanConfigInput,
   CreateUserInput,
   DeleteResult,
   ExportQuarterlyPptxParams,
@@ -1143,6 +1144,77 @@ export function useListScanConfigs<TData = Awaited<ReturnType<typeof listScanCon
 
 
 
+
+export const getCreateScanConfigUrl = () => {
+
+
+
+
+  return `/api/scan-configs`
+}
+
+/**
+ * @summary Create the Discovery scan configuration for a territory that doesn't have one yet (Head of Channels/admin only). Created with schema defaults (active, no criteria yet) -- criteria is defined afterward via PUT.
+ */
+export const createScanConfig = async (createScanConfigInput: CreateScanConfigInput, options?: Parameters<typeof customFetch>[1]): Promise<ScanConfig> => {
+
+  return customFetch<ScanConfig>(getCreateScanConfigUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createScanConfigInput)
+  }
+);}
+
+
+
+
+
+export const getCreateScanConfigMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createScanConfig>>, TError,{data: BodyType<CreateScanConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createScanConfig>>, TError,{data: BodyType<CreateScanConfigInput>}, TContext> => {
+
+const mutationKey = ['createScanConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createScanConfig>>, {data: BodyType<CreateScanConfigInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createScanConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateScanConfigMutationResult = NonNullable<Awaited<ReturnType<typeof createScanConfig>>>
+    export type CreateScanConfigMutationBody = BodyType<CreateScanConfigInput>
+    export type CreateScanConfigMutationError = ErrorType<void>
+
+    /**
+ * @summary Create the Discovery scan configuration for a territory that doesn't have one yet (Head of Channels/admin only). Created with schema defaults (active, no criteria yet) -- criteria is defined afterward via PUT.
+ */
+export const useCreateScanConfig = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createScanConfig>>, TError,{data: BodyType<CreateScanConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createScanConfig>>,
+        TError,
+        {data: BodyType<CreateScanConfigInput>},
+        TContext
+      > => {
+      return useMutation(getCreateScanConfigMutationOptions(options));
+    }
 
 export const getGetScanConfigUrl = (id: string,) => {
 

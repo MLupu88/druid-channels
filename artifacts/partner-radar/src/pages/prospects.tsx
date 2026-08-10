@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   useListProspects, 
   useListTerritories, 
@@ -241,6 +241,17 @@ export default function Prospects() {
     ...(freshness !== 'all' ? { freshness } : {}),
   });
 
+  // Live/demo prospects carry whatever partner_type DeepSeek (or the demo
+  // generator) actually produced -- e.g. "System integrator" -- which never
+  // matched the old hardcoded SI/VAR/ISV/Consulting option list. Deriving
+  // options from the currently-loaded data instead keeps the filter always
+  // in sync with real filterable values, no separate taxonomy to maintain.
+  const availablePartnerTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const p of prospects ?? []) types.add(p.partner_type);
+    return Array.from(types).sort();
+  }, [prospects]);
+
   const { data: detail, isLoading: isLoadingDetail } = useGetProspect(
     selectedId || '', 
     { query: { enabled: !!selectedId, queryKey: getGetProspectQueryKey(selectedId || '') } }
@@ -375,13 +386,17 @@ export default function Prospects() {
 
   const handleDecision = (decision: ProspectDecisionInputDecision) => {
     if (!selectedId) return;
+    // Deliberately no assigned_user_id here: the territory owner/PAM was
+    // already assigned at discovery time, and accepting/rejecting/deferring
+    // must never silently reassign a prospect to whoever clicked the
+    // button. Reassignment stays an explicit, separate action (the Edit
+    // dialog's Assigned PAM field, see handleSaveEdit above).
     decisionMutation.mutate({
       id: selectedId,
       data: {
         decision,
         note: note || undefined,
         rejection_reason: rejectionReason || undefined,
-        assigned_user_id: activeUser?.id
       }
     });
   };
@@ -551,10 +566,9 @@ export default function Prospects() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="SI">System Integrator</SelectItem>
-              <SelectItem value="VAR">Value Added Reseller</SelectItem>
-              <SelectItem value="ISV">ISV</SelectItem>
-              <SelectItem value="Consulting">Consulting</SelectItem>
+              {availablePartnerTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
 

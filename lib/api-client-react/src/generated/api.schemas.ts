@@ -366,6 +366,10 @@ export interface ScanConfig {
   last_run?: ScanRun | null;
 }
 
+export interface CreateScanConfigInput {
+  territory_id: string;
+}
+
 export interface ScanConfigInput {
   name?: string;
   /** The partner types DRUID is looking for (e.g. System Integrator, Consulting). */

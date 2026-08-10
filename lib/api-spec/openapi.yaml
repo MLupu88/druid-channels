@@ -336,6 +336,27 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ScanConfig"
+    post:
+      operationId: createScanConfig
+      tags: [scan-configs]
+      summary: Create the Discovery scan configuration for a territory that doesn't have one yet (Head of Channels/admin only). Created with schema defaults (active, no criteria yet) -- criteria is defined afterward via PUT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScanConfigInput"
+      responses:
+        "201":
+          description: Created scan configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanConfig"
+        "404":
+          description: Territory not found
+        "409":
+          description: A scan config already exists for this territory
 
   /scan-configs/{id}:
     get:
@@ -1382,6 +1403,13 @@ components:
           anyOf:
             - $ref: "#/components/schemas/ScanRun"
             - type: "null"
+
+    CreateScanConfigInput:
+      type: object
+      required: [territory_id]
+      properties:
+        territory_id:
+          type: string
 
     ScanConfigInput:
       type: object

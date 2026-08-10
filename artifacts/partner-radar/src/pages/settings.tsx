@@ -8,6 +8,7 @@ import {
   useUpdateTerritory,
   useListScanConfigs,
   useGetScanConfig,
+  useCreateScanConfig,
   useUpdateScanConfig,
   useListConnections,
   useTestConnection,
@@ -621,6 +622,10 @@ function WhatToLookForTab() {
   const { data: configs, isLoading: isConfigsLoading } = useListScanConfigs();
   const { data: territories } = useListTerritories();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A territory clicked in the left nav that has no scan_config yet -- shows
+  // the "Create configuration" CTA instead of the edit form. Mutually
+  // exclusive with selectedId (selecting one clears the other).
+  const [pendingTerritoryId, setPendingTerritoryId] = useState<string | null>(null);
   const [localConfig, setLocalConfig] = useState<any>(null);
   const [localCountries, setLocalCountries] = useState<string>('');
 
@@ -642,6 +647,20 @@ function WhatToLookForTab() {
         queryClient.invalidateQueries({ queryKey: getListScanConfigsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetScanConfigQueryKey(data.id) });
         setLocalConfig(data);
+      },
+    },
+  });
+
+  const createMutation = useCreateScanConfig({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getListScanConfigsQueryKey() });
+        setPendingTerritoryId(null);
+        setSelectedId(data.id);
+        toast({ title: 'Discovery configuration created', description: 'Define partner types, industries, technologies, and target signals below.' });
+      },
+      onError: (err: any) => {
+        toast({ variant: 'destructive', title: 'Could not create configuration', description: err?.message ?? 'Please try again.' });
       },
     },
   });
@@ -749,27 +768,66 @@ function WhatToLookForTab() {
           {isConfigsLoading ? (
             Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)
           ) : (
-            configs?.map(config => (
-              <button
-                key={config.id}
-                onClick={() => setSelectedId(config.id)}
-                className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${selectedId === config.id ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-muted text-foreground/80'}`}
-              >
-                {config.territory_name}
-              </button>
-            ))
+            territories?.map(t => {
+              const config = configs?.find(c => c.territory_id === t.id);
+              const isSelected = config ? selectedId === config.id : pendingTerritoryId === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    if (config) { setSelectedId(config.id); setPendingTerritoryId(null); }
+                    else { setPendingTerritoryId(t.id); setSelectedId(null); }
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between gap-2 ${isSelected ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-muted text-foreground/80'}`}
+                >
+                  <span className="truncate">{t.name}</span>
+                  {config && !config.active && (
+                    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 shrink-0 ${isSelected ? 'border-primary-foreground/40 text-primary-foreground' : ''}`}>Inactive</Badge>
+                  )}
+                  {!config && (
+                    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 shrink-0 ${isSelected ? 'border-primary-foreground/40 text-primary-foreground' : 'text-muted-foreground'}`}>Not set up</Badge>
+                  )}
+                </button>
+              );
+            })
           )}
         </div>
       </div>
 
       <div className="flex-1 min-w-0 space-y-6">
-        {isDetailLoading || !localConfig ? (
+        {pendingTerritoryId ? (
+          <Card className="shadow-none border-border/60">
+            <CardContent className="p-8 flex flex-col items-center text-center gap-3">
+              <p className="text-sm text-muted-foreground max-w-sm">
+                {territories?.find(t => t.id === pendingTerritoryId)?.name} doesn't have a Discovery configuration yet. Create one to start defining what DRUID should look for in this territory.
+              </p>
+              <Button
+                onClick={() => createMutation.mutate({ data: { territory_id: pendingTerritoryId! } })}
+                disabled={createMutation.isPending}
+              >
+                Create configuration
+              </Button>
+            </CardContent>
+          </Card>
+        ) : isDetailLoading || !localConfig ? (
           <div className="space-y-4">
             <Skeleton className="h-40 w-full" />
             <Skeleton className="h-40 w-full" />
           </div>
         ) : (
           <>
+            {!localConfig.active && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between gap-3">
+                <p className="text-sm text-amber-800">This configuration is inactive -- Discovery scans can't run for this territory until it's activated.</p>
+                <Button
+                  size="sm"
+                  onClick={() => selectedId && updateMutation.mutate({ id: selectedId, data: { active: true } })}
+                  disabled={updateMutation.isPending}
+                >
+                  Activate
+                </Button>
+              </div>
+            )}
             <Card className="shadow-none border-border/60">
               <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
                 <CardTitle className="text-base font-medium">What to look for</CardTitle>

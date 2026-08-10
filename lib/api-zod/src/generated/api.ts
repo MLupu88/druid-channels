@@ -473,6 +473,43 @@ export const ListScanConfigsResponse = zod.array(ListScanConfigsResponseItem)
 
 
 /**
+ * @summary Create the Discovery scan configuration for a territory that doesn't have one yet (Head of Channels/admin only). Created with schema defaults (active, no criteria yet) -- criteria is defined afterward via PUT.
+ */
+export const CreateScanConfigBody = zod.object({
+  "territory_id": zod.string()
+})
+
+export const CreateScanConfigResponse = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "name": zod.string(),
+  "search_queries": zod.array(zod.string()).optional(),
+  "partner_types": zod.array(zod.string()),
+  "industries": zod.array(zod.string()),
+  "technologies": zod.array(zod.string()),
+  "excluded_domains": zod.array(zod.string()),
+  "target_signals": zod.array(zod.string()),
+  "max_results": zod.number(),
+  "min_checks_required": zod.number().optional(),
+  "recency_window_days": zod.number().optional(),
+  "active": zod.boolean(),
+  "last_run": zod.union([zod.object({
+  "id": zod.string(),
+  "scan_config_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "results_found": zod.number(),
+  "results_qualified": zod.number(),
+  "data_status": zod.enum(['demo', 'connected']).describe('Whether this scan ran against a live provider chain (\"connected\") or the deterministic fallback generator (\"demo\") -- never fabricated as connected.'),
+  "error_message": zod.string().nullish(),
+  "started_at": zod.string(),
+  "completed_at": zod.string().nullish()
+}),zod.null()]).optional()
+})
+
+
+/**
  * @summary Get a scan configuration
  */
 export const GetScanConfigParams = zod.object({

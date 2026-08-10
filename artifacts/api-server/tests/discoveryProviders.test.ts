@@ -83,6 +83,7 @@ test("qualifyViaDeepSeek parses a valid qualification and filters invalid eviden
       excludedDomains: [],
       minChecksRequired: 3,
       searchIntent: [],
+      targetSignalTypes: [],
     },
   });
 
@@ -116,6 +117,7 @@ test("qualifyViaDeepSeek throws AiProviderError on malformed model output", asyn
           excludedDomains: [],
           minChecksRequired: 3,
           searchIntent: [],
+          targetSignalTypes: [],
         },
       }),
     AiProviderError,
