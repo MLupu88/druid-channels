@@ -8,7 +8,10 @@
 
 export interface TerritoryEditInput {
   name?: string;
-  /** @nullable */
+  /**
+     * Reassigning ownership auto-releases this PAM's previous territory (one PAM owns one territory). 409 if the target territory is already owned by a different PAM -- unassign it there first.
+     * @nullable
+     */
   owner_user_id?: string | null;
   /** The territory's geography. This is the single canonical source of geography across the app -- never duplicated on a scan config. */
   countries?: string[];

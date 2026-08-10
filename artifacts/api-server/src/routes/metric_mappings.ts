@@ -197,13 +197,22 @@ router.put("/manual-metric-values", requireAdmin, async (req, res): Promise<void
   const existing = existingRows.find((r) => (body.territory_id ? r.territoryId === body.territory_id : r.territoryId === null));
 
   const now = new Date();
+  // Stage 6.1: the Manual Metric setup form no longer exposes a Target
+  // field (current/manual value only -- metric_targets is the sole
+  // canonical target source). When target_value is omitted from the
+  // request (the normal case now), preserve whatever was already stored
+  // rather than silently wiping it on an unrelated current-value edit;
+  // explicitly sending null still clears it.
+  const resolvedTargetValue =
+    body.target_value === undefined ? (existing ? existing.targetValue : null) : body.target_value === null ? null : String(body.target_value);
+
   let saved: typeof manualMetricValuesTable.$inferSelect;
   if (existing) {
     [saved] = await db
       .update(manualMetricValuesTable)
       .set({
         currentValue: String(body.current_value),
-        targetValue: body.target_value !== undefined && body.target_value !== null ? String(body.target_value) : null,
+        targetValue: resolvedTargetValue,
         note: body.note ?? null,
         updatedAt: now,
       })
@@ -217,7 +226,7 @@ router.put("/manual-metric-values", requireAdmin, async (req, res): Promise<void
         period: body.period,
         territoryId: body.territory_id ?? null,
         currentValue: String(body.current_value),
-        targetValue: body.target_value !== undefined && body.target_value !== null ? String(body.target_value) : null,
+        targetValue: resolvedTargetValue,
         note: body.note ?? null,
       })
       .returning();

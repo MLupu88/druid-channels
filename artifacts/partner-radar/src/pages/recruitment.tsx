@@ -343,6 +343,12 @@ export default function Recruitment() {
                     </div>
                   </div>
 
+                  {detail.existing_partner_context?.relationship && (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                      Already a Portfolio partner ({detail.existing_partner_context.relationship.status}) in {detail.existing_partner_context.relationship.territory_name ?? 'this territory'}.
+                    </div>
+                  )}
+
                   {detail.stage === 'not_pursuing' && detail.not_pursuing_reason && (
                     <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
                       Not pursuing: {NOT_PURSUING_REASONS.find((r) => r.value === detail.not_pursuing_reason)?.label ?? detail.not_pursuing_reason}

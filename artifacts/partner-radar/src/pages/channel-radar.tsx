@@ -349,6 +349,13 @@ export default function ChannelRadar() {
                     <Badge variant="outline" className="font-normal text-muted-foreground capitalize">{detail.confidence} confidence</Badge>
                   </div>
 
+                  {detail.existing_partner_context?.relationship && (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                      Existing Partner ({detail.existing_partner_context.relationship.status}) in {detail.existing_partner_context.relationship.territory_name ?? 'this territory'}
+                      {detail.existing_partner_context.relationship.assigned_user_name && ` -- owned by ${detail.existing_partner_context.relationship.assigned_user_name}`}. Consider expansion/protection, not a new recruitment.
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-md border border-border/60 p-3">
                       <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Entity type</p>

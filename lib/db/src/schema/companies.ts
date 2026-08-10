@@ -6,7 +6,12 @@ export const companiesTable = pgTable("companies", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   normalizedName: text("normalized_name"),
-  domain: text("domain").notNull(),
+  // Nullable as of Stage 6.1 -- Manual Add / PAM Portfolio import may create
+  // a company with no known domain. Never fabricate a placeholder here
+  // (e.g. "unknown-<timestamp>.example"); Discovery/Recruitment continue to
+  // always resolve a real domain before creating a company, so this stays
+  // non-null in practice for those paths.
+  domain: text("domain"),
   websiteUrl: text("website_url"),
   country: text("country").notNull(),
   headquarters: text("headquarters"),

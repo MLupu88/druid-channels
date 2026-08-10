@@ -11,6 +11,7 @@ import type { ChannelRadarImpact } from './channelRadarImpact';
 import type { ChannelRadarImplication } from './channelRadarImplication';
 import type { ChannelRadarSignalStatus } from './channelRadarSignalStatus';
 import type { ChannelRadarSignalType } from './channelRadarSignalType';
+import type { ExistingPartnerContext } from './existingPartnerContext';
 import type { User } from './user';
 
 export interface ChannelRadarSignal {
@@ -42,4 +43,5 @@ export interface ChannelRadarSignal {
   status: ChannelRadarSignalStatus;
   created_at: string;
   updated_at: string;
+  existing_partner_context?: ExistingPartnerContext;
 }

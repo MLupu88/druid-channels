@@ -26,7 +26,8 @@ import {
   Handshake,
   Satellite,
   LogOut,
-  UserCircle
+  UserCircle,
+  Building2
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -58,6 +59,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/', label: 'Overview', icon: LayoutDashboard },
         { href: '/new-partners', label: 'Discovery', icon: Radio },
         { href: '/recruitment', label: 'Recruitment', icon: Handshake },
+        { href: '/portfolio', label: 'Portfolio', icon: Building2 },
         { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
         { href: '/pams', label: 'PAMs', icon: Users },
         { href: '/activities', label: 'Activities', icon: ListOrdered },
@@ -66,6 +68,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/', label: 'Overview', icon: LayoutDashboard },
         { href: '/new-partners', label: 'Discovery', icon: Radio },
         { href: '/recruitment', label: 'Recruitment', icon: Handshake },
+        { href: '/portfolio', label: 'Portfolio', icon: Building2 },
         { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
         { href: '/my-workspace', label: 'My workspace', icon: Briefcase },
         { href: '/activities', label: 'Activities', icon: ListOrdered },

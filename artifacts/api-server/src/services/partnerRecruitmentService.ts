@@ -7,6 +7,7 @@ import {
   NOT_PURSUING_REASONS,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { createRelationshipIfMissing, recordRecruitmentSignedEvent } from "./partnerRelationshipService";
 
 // Stage 4: the recruitment PROCESS for one accepted Discovery prospect.
 // Deliberately small and stage-derived rather than a generic state-machine
@@ -163,6 +164,31 @@ export async function transitionRecruitmentStage(
       note: opts.note ?? null,
       changedByUserId: actingUserId,
     });
+
+    // Stage 6: Signed idempotently establishes the canonical Partner
+    // Relationship for this (company, territory). If one already exists
+    // (e.g. originally created via PAM import), it is never overwritten --
+    // only a recruitment_signed history event is appended to it.
+    if (toStage === "signed" && updated) {
+      const { relationship, created } = await createRelationshipIfMissing(
+        {
+          companyId: updated.companyId,
+          territoryId: updated.territoryId,
+          assignedUserId: updated.assignedUserId,
+          status: "active",
+          relationshipStartedAt: now.toISOString().slice(0, 10),
+          startedAtPrecision: "exact_date",
+          startedAtProvenance: "system_generated",
+          originType: "recruitment",
+          originRecruitmentId: updated.id,
+        },
+        actingUserId,
+        tx,
+      );
+      if (!created) {
+        await recordRecruitmentSignedEvent(relationship.id, updated.id, now, actingUserId, tx);
+      }
+    }
 
     return updated!;
   });

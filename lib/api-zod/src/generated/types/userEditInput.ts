@@ -9,8 +9,21 @@
 export interface UserEditInput {
   /** @minLength 1 */
   name?: string;
-  /** @nullable */
+  /**
+     * Deprecated display-only override. Prefer territory_id/new_territory_name, which also update the canonical territories.owner_user_id and recompute this field server-side.
+     * @nullable
+     */
   territory?: string | null;
+  /**
+     * Assign this PAM as the canonical owner of an existing, currently-unowned territory. 409 if it is already owned by someone else. If this PAM currently owns a different territory, that ownership is released automatically (one PAM owns one territory).
+     * @nullable
+     */
+  territory_id?: string | null;
+  /**
+     * Create a brand-new canonical territory with this name and assign this PAM as its owner. Mutually exclusive with territory_id.
+     * @nullable
+     */
+  new_territory_name?: string | null;
   /** @nullable */
   location_label?: string | null;
   /**

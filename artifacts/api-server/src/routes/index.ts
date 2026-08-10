@@ -17,6 +17,9 @@ import aiChannelBriefRouter from "./ai_channel_brief";
 import recruitmentRouter from "./recruitment";
 import channelRadarConfigsRouter from "./channel_radar_configs";
 import channelRadarRouter from "./channel_radar";
+import companiesRouter from "./companies";
+import portfolioRouter from "./portfolio";
+import portfolioImportsRouter from "./portfolio_imports";
 
 const router: IRouter = Router();
 
@@ -38,5 +41,8 @@ router.use(aiChannelBriefRouter);
 router.use(recruitmentRouter);
 router.use(channelRadarConfigsRouter);
 router.use(channelRadarRouter);
+router.use(companiesRouter);
+router.use(portfolioRouter);
+router.use(portfolioImportsRouter);
 
 export default router;

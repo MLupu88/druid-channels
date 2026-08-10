@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db";
+import { usersTable, territoriesTable } from "@workspace/db";
 import {
   ListUsersResponse,
   CreateUserBody,
@@ -12,6 +12,7 @@ import {
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middleware/auth";
 import { hashPassword, generateTemporaryPassword } from "../services/password";
+import { assignTerritoryOwner, TerritoryAlreadyOwnedError, type Executor } from "../services/territoryOwnership";
 
 const router: IRouter = Router();
 
@@ -39,6 +40,45 @@ function isValidIanaTimezone(tz: string): boolean {
   }
 }
 
+class TerritoryAssignmentInputError extends Error {}
+
+// Resolves territory_id/new_territory_name into a canonical
+// territories.owner_user_id assignment for `userId` (see
+// services/territoryOwnership.ts for the one-PAM-one-territory invariant
+// this enforces). Run inside the caller's own transaction. Returns the
+// resolved territory's name (to sync onto users.territory, the display-only
+// field) or undefined when neither field was provided -- i.e. no change.
+async function resolveTerritoryAssignment(
+  tx: Executor,
+  userId: string,
+  input: { territory_id?: string | null; new_territory_name?: string | null },
+): Promise<string | undefined> {
+  const territoryId = input.territory_id ?? null;
+  const newTerritoryName = input.new_territory_name?.trim() || null;
+
+  if (territoryId && newTerritoryName) {
+    throw new TerritoryAssignmentInputError("Provide only one of territory_id or new_territory_name.");
+  }
+
+  if (newTerritoryName) {
+    const [existingByName] = await tx.select().from(territoriesTable).where(eq(territoriesTable.name, newTerritoryName));
+    if (existingByName) {
+      throw new TerritoryAssignmentInputError(`A territory named "${newTerritoryName}" already exists.`);
+    }
+    const [created] = await tx.insert(territoriesTable).values({ name: newTerritoryName, countries: [], languages: [] }).returning();
+    await assignTerritoryOwner(tx, created!.id, userId);
+    return created!.name;
+  }
+
+  if (territoryId) {
+    await assignTerritoryOwner(tx, territoryId, userId);
+    const [territory] = await tx.select().from(territoriesTable).where(eq(territoriesTable.id, territoryId));
+    return territory?.name;
+  }
+
+  return undefined;
+}
+
 // Team directory / roster: only head_of_channels/admin may list the full
 // team (used by the Team admin tab and the PAMs directory page). A PAM's
 // own identity comes from GET /auth/me, not this endpoint.
@@ -56,7 +96,7 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { name, territory, password } = parsed.data;
+  const { name, territory, password, territory_id, new_territory_name } = parsed.data;
   const email = parsed.data.email.trim().toLowerCase();
 
   if (parsed.data.timezone && !isValidIanaTimezone(parsed.data.timezone)) {
@@ -71,27 +111,43 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
   }
 
   try {
-    const [created] = await db
-      .insert(usersTable)
-      .values({
-        name,
-        email,
-        role: "pam",
-        territory: territory ?? null,
-        locationLabel: parsed.data.location_label ?? null,
-        timezone: parsed.data.timezone ?? null,
-        active: true,
-        passwordHash: hashPassword(password),
-      })
-      .returning();
+    const created = await db.transaction(async (tx) => {
+      const [insertedUser] = await tx
+        .insert(usersTable)
+        .values({
+          name,
+          email,
+          role: "pam",
+          territory: territory ?? null,
+          locationLabel: parsed.data.location_label ?? null,
+          timezone: parsed.data.timezone ?? null,
+          active: true,
+          passwordHash: hashPassword(password),
+        })
+        .returning();
+
+      const resolvedTerritoryName = await resolveTerritoryAssignment(tx, insertedUser!.id, { territory_id, new_territory_name });
+      if (resolvedTerritoryName === undefined) return insertedUser!;
+
+      const [updated] = await tx.update(usersTable).set({ territory: resolvedTerritoryName }).where(eq(usersTable.id, insertedUser!.id)).returning();
+      return updated!;
+    });
 
     res.status(201).json(CreateUserResponse.parse(shapeUser(created)));
   } catch (err: any) {
-    // Guards the race between the existence check above and this insert
+    // Guards the race between the existence check above and the insert
     // (two concurrent creates for the same email). Postgres unique
     // violation code: 23505.
     if (err?.code === "23505") {
       res.status(409).json({ error: "A user with this email already exists." });
+      return;
+    }
+    if (err instanceof TerritoryAlreadyOwnedError) {
+      res.status(409).json({ error: err.message });
+      return;
+    }
+    if (err instanceof TerritoryAssignmentInputError) {
+      res.status(400).json({ error: err.message });
       return;
     }
     throw err;
@@ -134,12 +190,40 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
   if (data.timezone !== undefined) updates.timezone = data.timezone;
   if (data.active !== undefined) updates.active = data.active;
 
-  if (Object.keys(updates).length === 0) {
+  const hasTerritoryAssignment = data.territory_id !== undefined || data.new_territory_name !== undefined;
+  if (Object.keys(updates).length === 0 && !hasTerritoryAssignment) {
     res.status(400).json({ error: "No changes provided" });
     return;
   }
 
-  const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning();
+  let updated: typeof usersTable.$inferSelect;
+  try {
+    updated = await db.transaction(async (tx) => {
+      if (hasTerritoryAssignment) {
+        const resolvedTerritoryName = await resolveTerritoryAssignment(tx, id, {
+          territory_id: data.territory_id,
+          new_territory_name: data.new_territory_name,
+        });
+        if (resolvedTerritoryName !== undefined) updates.territory = resolvedTerritoryName;
+      }
+      if (Object.keys(updates).length === 0) {
+        const [row] = await tx.select().from(usersTable).where(eq(usersTable.id, id));
+        return row!;
+      }
+      const [row] = await tx.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning();
+      return row!;
+    });
+  } catch (err) {
+    if (err instanceof TerritoryAlreadyOwnedError) {
+      res.status(409).json({ error: err.message });
+      return;
+    }
+    if (err instanceof TerritoryAssignmentInputError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 
   res.json(UpdateUserResponse.parse(shapeUser(updated)));
 });

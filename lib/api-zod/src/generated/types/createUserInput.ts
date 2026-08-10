@@ -10,8 +10,21 @@ export interface CreateUserInput {
   /** @minLength 1 */
   name: string;
   email: string;
-  /** @nullable */
+  /**
+     * Deprecated display-only override. Prefer territory_id/new_territory_name, which also set the canonical territories.owner_user_id and recompute this field server-side.
+     * @nullable
+     */
   territory?: string | null;
+  /**
+     * Assign this new PAM as the canonical owner of an existing, currently-unowned territory. 409 if it is already owned by someone else.
+     * @nullable
+     */
+  territory_id?: string | null;
+  /**
+     * Create a brand-new canonical territory with this name and assign this new PAM as its owner. Mutually exclusive with territory_id.
+     * @nullable
+     */
+  new_territory_name?: string | null;
   /** @nullable */
   location_label?: string | null;
   /**

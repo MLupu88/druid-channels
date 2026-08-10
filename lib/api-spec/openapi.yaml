@@ -42,6 +42,12 @@ tags:
     description: Stage 4 native partner recruitment -- the operational process from an accepted Discovery prospect to Signed
   - name: channel-radar
     description: Stage 5 Channel Radar -- regional competitive/ecosystem intelligence, separate from Discovery and Recruitment
+  - name: portfolio
+    description: Stage 6 Partner Portfolio -- the persistent Company+Territory partner relationship, converging Discovery/Recruitment, PAM book import, and manual add
+  - name: portfolio-import
+    description: Stage 6 PAM Portfolio book import -- Excel/CSV/pasted-text ingestion, deterministic+DeepSeek normalization, and PAM review before canonical records are created
+  - name: companies
+    description: Lightweight canonical-company lookup, used by Portfolio manual add and import review to find/reuse an existing company
 
 paths:
   /auth/login:
@@ -156,6 +162,27 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Territory"
+    post:
+      operationId: createTerritory
+      tags: [territories]
+      summary: Create a new canonical territory. Head of Channels/admin only. Immediately available everywhere GET /territories is read (Discovery, Recruitment, Channel Radar, Portfolio, Settings).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTerritoryInput"
+      responses:
+        "200":
+          description: The created territory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Territory"
+        "400":
+          description: Missing/invalid name
+        "409":
+          description: A territory with this name already exists
 
   /prospects:
     get:
@@ -641,6 +668,396 @@ paths:
           description: No Channel Radar config exists yet for this territory
         "500":
           description: Scan failed after starting (provider call failed mid-run)
+
+  /companies/search:
+    get:
+      operationId: searchCompanies
+      tags: [companies]
+      summary: Lightweight canonical-company lookup by name/domain, for the Portfolio manual-add and import-review company picker
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching companies (bounded, exact/prefix match only -- no fuzzy search)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CompanyRef"
+
+  /portfolio/summary:
+    get:
+      operationId: getPortfolioSummary
+      tags: [portfolio]
+      summary: Aggregate Portfolio cards (Active Partners, New Partners in period, In Recruitment, Needs Attention) for the Irina/global view. PAM sees only their own territory.
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: period
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Portfolio summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioSummary"
+
+  /portfolio:
+    get:
+      operationId: listPortfolio
+      tags: [portfolio]
+      summary: List Partner Relationships with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: pam_user_id
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of Partner Relationships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PartnerRelationship"
+    post:
+      operationId: createPortfolioRelationship
+      tags: [portfolio]
+      summary: Manual Add -- create a Partner Relationship directly, resolving/creating its canonical company deterministically
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePortfolioRelationshipInput"
+      responses:
+        "200":
+          description: The relationship (existing, unchanged, if one already existed for this company+territory)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRelationship"
+        "400":
+          description: Missing company reference, or a new company is missing a required field (e.g. country)
+        "403":
+          description: Outside caller's authorized scope
+
+  /portfolio/{id}:
+    get:
+      operationId: getPortfolioRelationship
+      tags: [portfolio]
+      summary: Get a Partner Relationship's full detail, including history, activities, and related Discovery/Recruitment/Radar context
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Partner Relationship detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRelationshipDetail"
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+    patch:
+      operationId: updatePortfolioRelationship
+      tags: [portfolio]
+      summary: Edit relationship summary/type/tier/next action (does not change status or owner)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePortfolioRelationshipInput"
+      responses:
+        "200":
+          description: Updated relationship
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRelationship"
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+
+  /portfolio/{id}/status:
+    post:
+      operationId: transitionPortfolioStatus
+      tags: [portfolio]
+      summary: Move a relationship to a new status (active/dormant/closed). Transition validity is enforced server-side.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransitionPortfolioStatusInput"
+      responses:
+        "200":
+          description: Relationship after the transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRelationship"
+        "400":
+          description: Invalid transition for the relationship's current status
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+
+  /portfolio/{id}/reassign:
+    post:
+      operationId: reassignPortfolioRelationship
+      tags: [portfolio]
+      summary: Reassign ownership to a different PAM. Head of Channels/admin only -- a PAM cannot reassign their own or any other relationship. The target PAM must already be the canonical owner (territories.owner_user_id) of this relationship's territory.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReassignPortfolioRelationshipInput"
+      responses:
+        "200":
+          description: Relationship after reassignment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRelationship"
+        "400":
+          description: Target PAM does not own this relationship's territory -- change territory ownership first
+        "403":
+          description: Not a global-role caller
+        "404":
+          description: Not found
+
+  /portfolio/{id}/activities:
+    post:
+      operationId: addPortfolioActivity
+      tags: [portfolio]
+      summary: Log a dated activity (meeting, call, review, ...) against a relationship
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPartnerActivityInput"
+      responses:
+        "200":
+          description: The created activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerActivityItem"
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+
+  /portfolio/imports:
+    get:
+      operationId: listPortfolioImports
+      tags: [portfolio-import]
+      summary: List PAM Portfolio import batches (PAM sees only their own territory; Head of Channels/admin sees all)
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of import batches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortfolioImportBatch"
+    post:
+      operationId: createPortfolioImport
+      tags: [portfolio-import]
+      summary: Create an import batch from client-parsed rows (Excel/CSV) or a single pasted-text description, and run deterministic + DeepSeek normalization synchronously
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePortfolioImportInput"
+      responses:
+        "200":
+          description: The processed batch, ready for review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioImportBatchDetail"
+        "400":
+          description: Empty payload, or row count exceeds the v1 import cap
+        "403":
+          description: Outside caller's authorized scope
+        "503":
+          description: Normalization provider not connected
+
+  /portfolio/imports/{id}:
+    get:
+      operationId: getPortfolioImport
+      tags: [portfolio-import]
+      summary: Get one import batch, including every row and its current review status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Import batch detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioImportBatchDetail"
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+
+  /portfolio/imports/{id}/rows/{rowId}:
+    patch:
+      operationId: updatePortfolioImportRow
+      tags: [portfolio-import]
+      summary: Resolve ambiguity on one row before confirming -- pick/clear the matched company, edit the normalized proposal, or leave a review note
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: rowId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePortfolioImportRowInput"
+      responses:
+        "200":
+          description: Updated row
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioImportRow"
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+
+  /portfolio/imports/{id}/rows/{rowId}/confirm:
+    post:
+      operationId: confirmPortfolioImportRow
+      tags: [portfolio-import]
+      summary: Confirm one row into the canonical Partner Portfolio (creates or, if a relationship already exists for the resolved company+territory, links to it without duplicating)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: rowId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The row after confirmation, with resulting_relationship_id set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioImportRow"
+        "400":
+          description: Row is invalid, or still needs review/company resolution before it can be confirmed
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+
+  /portfolio/imports/{id}/confirm-ready:
+    post:
+      operationId: confirmPortfolioImportReady
+      tags: [portfolio-import]
+      summary: Bulk-confirm every row currently in ready/matched_existing_company status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bulk confirmation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmPortfolioImportReadyResult"
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
 
   /scan-configs:
     get:
@@ -1297,6 +1714,8 @@ paths:
                 $ref: "#/components/schemas/Territory"
         "404":
           description: Not found
+        "409":
+          description: owner_user_id targets a territory already owned by a different PAM
 
   /partners:
     get:
@@ -1764,6 +2183,27 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/RecruitmentHistoryItem"
+            existing_partner_context:
+              $ref: "#/components/schemas/ExistingPartnerContext"
+
+    ExistingPartnerContext:
+      type: object
+      description: Read-only Stage 6 Portfolio context surfaced on Recruitment/Radar detail views when the underlying company is known. Never used to auto-create or auto-reopen anything.
+      properties:
+        relationship:
+          oneOf:
+            - type: object
+              required: [id, status]
+              properties:
+                id:
+                  type: string
+                status:
+                  type: string
+                territory_name:
+                  type: ["string", "null"]
+                assigned_user_name:
+                  type: ["string", "null"]
+            - type: "null"
 
     RecruitmentHistoryItem:
       type: object
@@ -1929,6 +2369,8 @@ components:
           type: string
         updated_at:
           type: string
+        existing_partner_context:
+          $ref: "#/components/schemas/ExistingPartnerContext"
 
     UpdateChannelRadarSignalInput:
       type: object
@@ -1954,6 +2396,446 @@ components:
           type: number
         message:
           type: string
+
+    CompanyRef:
+      type: object
+      required: [id, name, domain, country]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        domain:
+          type: ["string", "null"]
+          description: Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.
+        country:
+          type: string
+
+    PartnerRelationshipStatus:
+      type: string
+      enum: [active, dormant, closed]
+
+    RelationshipStrategicImportance:
+      type: string
+      enum: [high, medium, low]
+
+    StartedAtPrecision:
+      type: string
+      enum: [exact_date, month, quarter, year, unknown]
+
+    StartedAtProvenance:
+      type: string
+      enum: [explicit, inferred, user_confirmed, system_generated]
+
+    RelationshipOriginType:
+      type: string
+      enum: [recruitment, pam_import, manual]
+
+    RelationshipHistoryEventType:
+      type: string
+      enum: [created, status_changed, owner_changed, reactivated, closed, recruitment_signed]
+
+    PartnerActivityType:
+      type: string
+      enum: [meeting, call, review, partner_update, opportunity_discussion, next_action, other]
+
+    PortfolioImportSourceFormat:
+      type: string
+      enum: [excel, csv, pasted_text]
+
+    PortfolioImportBatchStatus:
+      type: string
+      enum: [processing, ready_for_review, completed, failed]
+
+    PortfolioImportMatchStatus:
+      type: string
+      enum: [ready, matched_existing_company, possible_duplicate, existing_relationship, needs_review, invalid]
+
+    PartnerRelationshipContext:
+      type: object
+      description: Read-only cross-domain context surfaced on the relationship detail view. Never used to auto-create/reopen a recruitment.
+      properties:
+        related_recruitment:
+          oneOf:
+            - type: object
+              required: [id, stage]
+              properties:
+                id:
+                  type: string
+                stage:
+                  type: string
+                not_pursuing_reason:
+                  type: ["string", "null"]
+                updated_at:
+                  type: string
+            - type: "null"
+        related_radar_signals:
+          type: array
+          items:
+            type: object
+            required: [id, headline, signal_type, discovered_at]
+            properties:
+              id:
+                type: string
+              headline:
+                type: string
+              signal_type:
+                type: string
+              discovered_at:
+                type: string
+
+    PartnerRelationship:
+      type: object
+      required: [id, company, territory_id, status, origin_type, started_at_precision, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        company:
+          $ref: "#/components/schemas/CompanyRef"
+        territory_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        assigned_user:
+          oneOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
+        status:
+          $ref: "#/components/schemas/PartnerRelationshipStatus"
+        partner_type:
+          type: ["string", "null"]
+        strategic_importance:
+          oneOf:
+            - $ref: "#/components/schemas/RelationshipStrategicImportance"
+            - type: "null"
+        relationship_summary:
+          type: ["string", "null"]
+        relationship_started_at:
+          type: ["string", "null"]
+        started_at_precision:
+          $ref: "#/components/schemas/StartedAtPrecision"
+        started_at_provenance:
+          oneOf:
+            - $ref: "#/components/schemas/StartedAtProvenance"
+            - type: "null"
+        relationship_ended_at:
+          type: ["string", "null"]
+        last_interaction_at:
+          type: ["string", "null"]
+        next_action:
+          type: ["string", "null"]
+        next_action_due_at:
+          type: ["string", "null"]
+        origin_type:
+          $ref: "#/components/schemas/RelationshipOriginType"
+        origin_recruitment_id:
+          type: ["string", "null"]
+        source_as_of_date:
+          type: ["string", "null"]
+        imported_at:
+          type: ["string", "null"]
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    PartnerRelationshipHistoryItem:
+      type: object
+      required: [id, event_type, occurred_at, created_at]
+      properties:
+        id:
+          type: string
+        event_type:
+          $ref: "#/components/schemas/RelationshipHistoryEventType"
+        from_status:
+          oneOf:
+            - $ref: "#/components/schemas/PartnerRelationshipStatus"
+            - type: "null"
+        to_status:
+          oneOf:
+            - $ref: "#/components/schemas/PartnerRelationshipStatus"
+            - type: "null"
+        from_user_name:
+          type: ["string", "null"]
+        to_user_name:
+          type: ["string", "null"]
+        source_recruitment_id:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+        changed_by_name:
+          type: ["string", "null"]
+        occurred_at:
+          type: string
+        created_at:
+          type: string
+
+    PartnerActivityItem:
+      type: object
+      required: [id, activity_type, note, occurred_at, created_at]
+      properties:
+        id:
+          type: string
+        activity_type:
+          $ref: "#/components/schemas/PartnerActivityType"
+        note:
+          type: string
+        actor_name:
+          type: ["string", "null"]
+        occurred_at:
+          type: string
+        created_at:
+          type: string
+
+    PartnerRelationshipDetail:
+      allOf:
+        - $ref: "#/components/schemas/PartnerRelationship"
+        - type: object
+          required: [history, activities]
+          properties:
+            history:
+              type: array
+              items:
+                $ref: "#/components/schemas/PartnerRelationshipHistoryItem"
+            activities:
+              type: array
+              items:
+                $ref: "#/components/schemas/PartnerActivityItem"
+            context:
+              $ref: "#/components/schemas/PartnerRelationshipContext"
+
+    CreatePortfolioRelationshipInput:
+      type: object
+      required: [territory_id]
+      properties:
+        territory_id:
+          type: string
+        company_id:
+          type: ["string", "null"]
+          description: Use an existing canonical company. Exactly one of company_id/new_company must be provided.
+        new_company:
+          oneOf:
+            - type: object
+              required: [name, country]
+              properties:
+                name:
+                  type: string
+                domain:
+                  type: ["string", "null"]
+                country:
+                  type: string
+            - type: "null"
+        assigned_user_id:
+          type: ["string", "null"]
+        status:
+          oneOf:
+            - $ref: "#/components/schemas/PartnerRelationshipStatus"
+            - type: "null"
+        partner_type:
+          type: ["string", "null"]
+        strategic_importance:
+          oneOf:
+            - $ref: "#/components/schemas/RelationshipStrategicImportance"
+            - type: "null"
+        relationship_summary:
+          type: ["string", "null"]
+        relationship_started_at:
+          type: ["string", "null"]
+        started_at_precision:
+          oneOf:
+            - $ref: "#/components/schemas/StartedAtPrecision"
+            - type: "null"
+        started_at_provenance:
+          oneOf:
+            - $ref: "#/components/schemas/StartedAtProvenance"
+            - type: "null"
+        next_action:
+          type: ["string", "null"]
+        next_action_due_at:
+          type: ["string", "null"]
+
+    UpdatePortfolioRelationshipInput:
+      type: object
+      properties:
+        partner_type:
+          type: ["string", "null"]
+        strategic_importance:
+          oneOf:
+            - $ref: "#/components/schemas/RelationshipStrategicImportance"
+            - type: "null"
+        relationship_summary:
+          type: ["string", "null"]
+        next_action:
+          type: ["string", "null"]
+        next_action_due_at:
+          type: ["string", "null"]
+
+    TransitionPortfolioStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/PartnerRelationshipStatus"
+        occurred_at:
+          type: ["string", "null"]
+          description: When the transition actually happened, if backdated. Defaults to now.
+        note:
+          type: ["string", "null"]
+
+    ReassignPortfolioRelationshipInput:
+      type: object
+      required: [assigned_user_id]
+      properties:
+        assigned_user_id:
+          type: ["string", "null"]
+
+    AddPartnerActivityInput:
+      type: object
+      required: [activity_type, note, occurred_at]
+      properties:
+        activity_type:
+          $ref: "#/components/schemas/PartnerActivityType"
+        note:
+          type: string
+        occurred_at:
+          type: string
+
+    PortfolioSummary:
+      type: object
+      required: [period, active_partners, new_partners_in_period, in_recruitment, needs_attention]
+      properties:
+        period:
+          type: string
+        active_partners:
+          type: number
+        new_partners_in_period:
+          type: number
+        in_recruitment:
+          type: number
+        needs_attention:
+          type: number
+          description: Active relationships with no logged activity in 30+ days and no next_action set.
+
+    PortfolioImportRowPayload:
+      type: object
+      description: One source row -- a header/value map for Excel/CSV, or a single {"text} entry for pasted_text.
+      additionalProperties:
+        type: string
+
+    CreatePortfolioImportInput:
+      type: object
+      required: [territory_id, source_format, rows]
+      properties:
+        territory_id:
+          type: string
+        source_format:
+          $ref: "#/components/schemas/PortfolioImportSourceFormat"
+        original_filename:
+          type: ["string", "null"]
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortfolioImportRowPayload"
+
+    PortfolioImportRow:
+      type: object
+      required: [id, row_index, source_raw, match_status, created_at]
+      properties:
+        id:
+          type: string
+        row_index:
+          type: number
+        source_raw:
+          $ref: "#/components/schemas/PortfolioImportRowPayload"
+        normalized_proposal:
+          type: ["object", "null"]
+          additionalProperties: true
+        match_status:
+          $ref: "#/components/schemas/PortfolioImportMatchStatus"
+        matched_company:
+          oneOf:
+            - $ref: "#/components/schemas/CompanyRef"
+            - type: "null"
+        review_note:
+          type: ["string", "null"]
+        resulting_relationship_id:
+          type: ["string", "null"]
+        created_at:
+          type: string
+        resolved_at:
+          type: ["string", "null"]
+
+    PortfolioImportBatch:
+      type: object
+      required: [id, territory_id, source_format, status, row_count, created_at, counts]
+      properties:
+        id:
+          type: string
+        territory_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        source_format:
+          $ref: "#/components/schemas/PortfolioImportSourceFormat"
+        original_filename:
+          type: ["string", "null"]
+        row_count:
+          type: number
+        status:
+          $ref: "#/components/schemas/PortfolioImportBatchStatus"
+        error_message:
+          type: ["string", "null"]
+        counts:
+          type: object
+          required: [ready, matched_existing_company, possible_duplicate, existing_relationship, needs_review, invalid]
+          properties:
+            ready:
+              type: number
+            matched_existing_company:
+              type: number
+            possible_duplicate:
+              type: number
+            existing_relationship:
+              type: number
+            needs_review:
+              type: number
+            invalid:
+              type: number
+        created_at:
+          type: string
+        completed_at:
+          type: ["string", "null"]
+
+    PortfolioImportBatchDetail:
+      allOf:
+        - $ref: "#/components/schemas/PortfolioImportBatch"
+        - type: object
+          required: [rows]
+          properties:
+            rows:
+              type: array
+              items:
+                $ref: "#/components/schemas/PortfolioImportRow"
+
+    UpdatePortfolioImportRowInput:
+      type: object
+      properties:
+        matched_company_id:
+          type: ["string", "null"]
+        review_note:
+          type: ["string", "null"]
+        normalized_proposal:
+          type: ["object", "null"]
+          additionalProperties: true
+
+    ConfirmPortfolioImportReadyResult:
+      type: object
+      required: [confirmed_count, skipped_count]
+      properties:
+        confirmed_count:
+          type: number
+        skipped_count:
+          type: number
 
     ProspectDecisionInput:
       type: object
@@ -2125,6 +3007,13 @@ components:
           minLength: 1
         territory:
           type: ["string", "null"]
+          description: Deprecated display-only override. Prefer territory_id/new_territory_name, which also update the canonical territories.owner_user_id and recompute this field server-side.
+        territory_id:
+          type: ["string", "null"]
+          description: Assign this PAM as the canonical owner of an existing, currently-unowned territory. 409 if it is already owned by someone else. If this PAM currently owns a different territory, that ownership is released automatically (one PAM owns one territory).
+        new_territory_name:
+          type: ["string", "null"]
+          description: Create a brand-new canonical territory with this name and assign this PAM as its owner. Mutually exclusive with territory_id.
         location_label:
           type: ["string", "null"]
         timezone:
@@ -2145,6 +3034,13 @@ components:
           format: email
         territory:
           type: ["string", "null"]
+          description: Deprecated display-only override. Prefer territory_id/new_territory_name, which also set the canonical territories.owner_user_id and recompute this field server-side.
+        territory_id:
+          type: ["string", "null"]
+          description: Assign this new PAM as the canonical owner of an existing, currently-unowned territory. 409 if it is already owned by someone else.
+        new_territory_name:
+          type: ["string", "null"]
+          description: Create a brand-new canonical territory with this name and assign this new PAM as its owner. Mutually exclusive with territory_id.
         location_label:
           type: ["string", "null"]
         timezone:
@@ -2165,6 +3061,21 @@ components:
           type: string
           description: One-time plaintext temporary password. Shown only in this response; never persisted or logged.
 
+    CreateTerritoryInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        owner_user_id:
+          type: ["string", "null"]
+          description: Optionally assign an owning PAM immediately (their previous territory, if any, is released automatically -- one PAM owns one territory).
+        countries:
+          type: array
+          items:
+            type: string
+
     TerritoryEditInput:
       type: object
       properties:
@@ -2172,6 +3083,7 @@ components:
           type: string
         owner_user_id:
           type: ["string", "null"]
+          description: Reassigning ownership auto-releases this PAM's previous territory (one PAM owns one territory). 409 if the target territory is already owned by a different PAM -- unassign it there first.
         countries:
           type: array
           items:

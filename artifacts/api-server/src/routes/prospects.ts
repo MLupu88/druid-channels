@@ -301,7 +301,7 @@ router.get("/prospects", requireAuth, async (req, res): Promise<void> => {
     const q = search.toLowerCase();
     filtered = filtered.filter((r) =>
       r.company!.name.toLowerCase().includes(q) ||
-      r.company!.domain.toLowerCase().includes(q) ||
+      (r.company!.domain ?? "").toLowerCase().includes(q) ||
       r.prospect.whyNow.toLowerCase().includes(q) ||
       r.prospect.whyItFits.toLowerCase().includes(q)
     );

@@ -14,6 +14,7 @@ import { eq } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
 import { runRadarForConfig, isValidStatusTransition, ChannelRadarNotConfiguredError, ChannelRadarRunFailedError } from "../services/channelRadarEngine";
+import { getExistingPartnerContext, type ExistingPartnerContext } from "../services/partnerRelationshipService";
 
 const router: IRouter = Router();
 
@@ -26,6 +27,7 @@ function shapeSignal(
   s: typeof channelRadarSignalsTable.$inferSelect,
   territory: typeof territoriesTable.$inferSelect | null,
   assignedUser: typeof usersTable.$inferSelect | null,
+  existingPartnerContext?: ExistingPartnerContext,
 ) {
   return {
     id: s.id,
@@ -50,6 +52,7 @@ function shapeSignal(
     status: s.status,
     created_at: s.createdAt.toISOString(),
     updated_at: s.updatedAt.toISOString(),
+    ...(existingPartnerContext ? { existing_partner_context: existingPartnerContext } : {}),
   };
 }
 
@@ -126,7 +129,8 @@ router.get("/channel-radar/:id", requireAuth, async (req, res): Promise<void> =>
     throw err;
   }
 
-  res.json(GetChannelRadarSignalResponse.parse(shapeSignal(row.signal, row.territory, row.assignedUser)));
+  const existingPartnerContext = await getExistingPartnerContext(row.signal.companyId, row.signal.territoryId);
+  res.json(GetChannelRadarSignalResponse.parse(shapeSignal(row.signal, row.territory, row.assignedUser, existingPartnerContext)));
 });
 
 router.patch("/channel-radar/:id", requireAuth, async (req, res): Promise<void> => {

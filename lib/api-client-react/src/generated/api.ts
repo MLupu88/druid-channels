@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AddPartnerActivityInput,
   AiChannelBrief,
   AuthLoginResponse,
   AuthLogoutResponse,
@@ -28,16 +29,22 @@ import type {
   CampaignInput,
   ChannelRadarConfig,
   ChannelRadarSignal,
+  CompanyRef,
+  ConfirmPortfolioImportReadyResult,
   Connection,
   ConnectionUpdateInput,
   CreateChannelRadarConfigInput,
+  CreatePortfolioImportInput,
+  CreatePortfolioRelationshipInput,
   CreateScanConfigInput,
+  CreateTerritoryInput,
   CreateUserInput,
   DeleteResult,
   ExportQuarterlyPptxParams,
   GetAiChannelBriefParams,
   GetHeadOfChannelsKpisParams,
   GetKpiDetailsParams,
+  GetPortfolioSummaryParams,
   HeadOfChannelsKpis,
   HealthStatus,
   HelpNeededInput,
@@ -47,6 +54,8 @@ import type {
   ListManualMetricValuesParams,
   ListMetricTargetsParams,
   ListPartnersParams,
+  ListPortfolioImportsParams,
+  ListPortfolioParams,
   ListProspectsParams,
   ListRecruitmentsParams,
   ListScanRunsParams,
@@ -59,12 +68,20 @@ import type {
   MetricTarget,
   MetricTargetInput,
   Partner,
+  PartnerActivityItem,
   PartnerDetail,
+  PartnerRelationship,
+  PartnerRelationshipDetail,
+  PortfolioImportBatch,
+  PortfolioImportBatchDetail,
+  PortfolioImportRow,
+  PortfolioSummary,
   Prospect,
   ProspectDecisionInput,
   ProspectDetail,
   ProspectEditInput,
   ProspectStats,
+  ReassignPortfolioRelationshipInput,
   Recruitment,
   RecruitmentDetail,
   RegenerateAiChannelBriefInput,
@@ -75,11 +92,15 @@ import type {
   ScanRun,
   ScanRunInput,
   ScanRunResult,
+  SearchCompaniesParams,
   Territory,
   TerritoryEditInput,
+  TransitionPortfolioStatusInput,
   TransitionRecruitmentInput,
   UpdateChannelRadarConfigInput,
   UpdateChannelRadarSignalInput,
+  UpdatePortfolioImportRowInput,
+  UpdatePortfolioRelationshipInput,
   UpdateRecruitmentInput,
   User,
   UserEditInput,
@@ -633,6 +654,77 @@ export function useListTerritories<TData = Awaited<ReturnType<typeof listTerrito
 
 
 
+
+export const getCreateTerritoryUrl = () => {
+
+
+
+
+  return `/api/territories`
+}
+
+/**
+ * @summary Create a new canonical territory. Head of Channels/admin only. Immediately available everywhere GET /territories is read (Discovery, Recruitment, Channel Radar, Portfolio, Settings).
+ */
+export const createTerritory = async (createTerritoryInput: CreateTerritoryInput, options?: Parameters<typeof customFetch>[1]): Promise<Territory> => {
+
+  return customFetch<Territory>(getCreateTerritoryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createTerritoryInput)
+  }
+);}
+
+
+
+
+
+export const getCreateTerritoryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTerritory>>, TError,{data: BodyType<CreateTerritoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTerritory>>, TError,{data: BodyType<CreateTerritoryInput>}, TContext> => {
+
+const mutationKey = ['createTerritory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTerritory>>, {data: BodyType<CreateTerritoryInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createTerritory(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTerritoryMutationResult = NonNullable<Awaited<ReturnType<typeof createTerritory>>>
+    export type CreateTerritoryMutationBody = BodyType<CreateTerritoryInput>
+    export type CreateTerritoryMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a new canonical territory. Head of Channels/admin only. Immediately available everywhere GET /territories is read (Discovery, Recruitment, Channel Radar, Portfolio, Settings).
+ */
+export const useCreateTerritory = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTerritory>>, TError,{data: BodyType<CreateTerritoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTerritory>>,
+        TError,
+        {data: BodyType<CreateTerritoryInput>},
+        TContext
+      > => {
+      return useMutation(getCreateTerritoryMutationOptions(options));
+    }
 
 export const getListProspectsUrl = (params?: ListProspectsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -1985,6 +2077,1144 @@ export const useRunChannelRadar = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getRunChannelRadarMutationOptions(options));
+    }
+
+export const getSearchCompaniesUrl = (params: SearchCompaniesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/companies/search?${stringifiedParams}` : `/api/companies/search`
+}
+
+/**
+ * @summary Lightweight canonical-company lookup by name/domain, for the Portfolio manual-add and import-review company picker
+ */
+export const searchCompanies = async (params: SearchCompaniesParams, options?: Parameters<typeof customFetch>[1]): Promise<CompanyRef[]> => {
+
+  return customFetch<CompanyRef[]>(getSearchCompaniesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchCompaniesQueryKey = (params?: SearchCompaniesParams,) => {
+    return [
+    `/api/companies/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchCompaniesQueryOptions = <TData = Awaited<ReturnType<typeof searchCompanies>>, TError = ErrorType<unknown>>(params: SearchCompaniesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchCompanies>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchCompaniesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchCompanies>>> = ({ signal }) => searchCompanies(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchCompanies>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchCompaniesQueryResult = NonNullable<Awaited<ReturnType<typeof searchCompanies>>>
+export type SearchCompaniesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Lightweight canonical-company lookup by name/domain, for the Portfolio manual-add and import-review company picker
+ */
+
+export function useSearchCompanies<TData = Awaited<ReturnType<typeof searchCompanies>>, TError = ErrorType<unknown>>(
+ params: SearchCompaniesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchCompanies>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchCompaniesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPortfolioSummaryUrl = (params?: GetPortfolioSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/portfolio/summary?${stringifiedParams}` : `/api/portfolio/summary`
+}
+
+/**
+ * @summary Aggregate Portfolio cards (Active Partners, New Partners in period, In Recruitment, Needs Attention) for the Irina/global view. PAM sees only their own territory.
+ */
+export const getPortfolioSummary = async (params?: GetPortfolioSummaryParams, options?: Parameters<typeof customFetch>[1]): Promise<PortfolioSummary> => {
+
+  return customFetch<PortfolioSummary>(getGetPortfolioSummaryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortfolioSummaryQueryKey = (params?: GetPortfolioSummaryParams,) => {
+    return [
+    `/api/portfolio/summary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPortfolioSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getPortfolioSummary>>, TError = ErrorType<unknown>>(params?: GetPortfolioSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortfolioSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortfolioSummaryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortfolioSummary>>> = ({ signal }) => getPortfolioSummary(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortfolioSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortfolioSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getPortfolioSummary>>>
+export type GetPortfolioSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Aggregate Portfolio cards (Active Partners, New Partners in period, In Recruitment, Needs Attention) for the Irina/global view. PAM sees only their own territory.
+ */
+
+export function useGetPortfolioSummary<TData = Awaited<ReturnType<typeof getPortfolioSummary>>, TError = ErrorType<unknown>>(
+ params?: GetPortfolioSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortfolioSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortfolioSummaryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListPortfolioUrl = (params?: ListPortfolioParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/portfolio?${stringifiedParams}` : `/api/portfolio`
+}
+
+/**
+ * @summary List Partner Relationships with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+export const listPortfolio = async (params?: ListPortfolioParams, options?: Parameters<typeof customFetch>[1]): Promise<PartnerRelationship[]> => {
+
+  return customFetch<PartnerRelationship[]>(getListPortfolioUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPortfolioQueryKey = (params?: ListPortfolioParams,) => {
+    return [
+    `/api/portfolio`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPortfolioQueryOptions = <TData = Awaited<ReturnType<typeof listPortfolio>>, TError = ErrorType<unknown>>(params?: ListPortfolioParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPortfolio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPortfolioQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPortfolio>>> = ({ signal }) => listPortfolio(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPortfolio>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPortfolioQueryResult = NonNullable<Awaited<ReturnType<typeof listPortfolio>>>
+export type ListPortfolioQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List Partner Relationships with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+
+export function useListPortfolio<TData = Awaited<ReturnType<typeof listPortfolio>>, TError = ErrorType<unknown>>(
+ params?: ListPortfolioParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPortfolio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPortfolioQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePortfolioRelationshipUrl = () => {
+
+
+
+
+  return `/api/portfolio`
+}
+
+/**
+ * @summary Manual Add -- create a Partner Relationship directly, resolving/creating its canonical company deterministically
+ */
+export const createPortfolioRelationship = async (createPortfolioRelationshipInput: CreatePortfolioRelationshipInput, options?: Parameters<typeof customFetch>[1]): Promise<PartnerRelationship> => {
+
+  return customFetch<PartnerRelationship>(getCreatePortfolioRelationshipUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createPortfolioRelationshipInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePortfolioRelationshipMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPortfolioRelationship>>, TError,{data: BodyType<CreatePortfolioRelationshipInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPortfolioRelationship>>, TError,{data: BodyType<CreatePortfolioRelationshipInput>}, TContext> => {
+
+const mutationKey = ['createPortfolioRelationship'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPortfolioRelationship>>, {data: BodyType<CreatePortfolioRelationshipInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPortfolioRelationship(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePortfolioRelationshipMutationResult = NonNullable<Awaited<ReturnType<typeof createPortfolioRelationship>>>
+    export type CreatePortfolioRelationshipMutationBody = BodyType<CreatePortfolioRelationshipInput>
+    export type CreatePortfolioRelationshipMutationError = ErrorType<void>
+
+    /**
+ * @summary Manual Add -- create a Partner Relationship directly, resolving/creating its canonical company deterministically
+ */
+export const useCreatePortfolioRelationship = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPortfolioRelationship>>, TError,{data: BodyType<CreatePortfolioRelationshipInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPortfolioRelationship>>,
+        TError,
+        {data: BodyType<CreatePortfolioRelationshipInput>},
+        TContext
+      > => {
+      return useMutation(getCreatePortfolioRelationshipMutationOptions(options));
+    }
+
+export const getGetPortfolioRelationshipUrl = (id: string,) => {
+
+
+
+
+  return `/api/portfolio/${id}`
+}
+
+/**
+ * @summary Get a Partner Relationship's full detail, including history, activities, and related Discovery/Recruitment/Radar context
+ */
+export const getPortfolioRelationship = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PartnerRelationshipDetail> => {
+
+  return customFetch<PartnerRelationshipDetail>(getGetPortfolioRelationshipUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortfolioRelationshipQueryKey = (id: string,) => {
+    return [
+    `/api/portfolio/${id}`
+    ] as const;
+    }
+
+
+export const getGetPortfolioRelationshipQueryOptions = <TData = Awaited<ReturnType<typeof getPortfolioRelationship>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortfolioRelationship>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortfolioRelationshipQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortfolioRelationship>>> = ({ signal }) => getPortfolioRelationship(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortfolioRelationship>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortfolioRelationshipQueryResult = NonNullable<Awaited<ReturnType<typeof getPortfolioRelationship>>>
+export type GetPortfolioRelationshipQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a Partner Relationship's full detail, including history, activities, and related Discovery/Recruitment/Radar context
+ */
+
+export function useGetPortfolioRelationship<TData = Awaited<ReturnType<typeof getPortfolioRelationship>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortfolioRelationship>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortfolioRelationshipQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdatePortfolioRelationshipUrl = (id: string,) => {
+
+
+
+
+  return `/api/portfolio/${id}`
+}
+
+/**
+ * @summary Edit relationship summary/type/tier/next action (does not change status or owner)
+ */
+export const updatePortfolioRelationship = async (id: string,
+    updatePortfolioRelationshipInput: UpdatePortfolioRelationshipInput, options?: Parameters<typeof customFetch>[1]): Promise<PartnerRelationship> => {
+
+  return customFetch<PartnerRelationship>(getUpdatePortfolioRelationshipUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updatePortfolioRelationshipInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePortfolioRelationshipMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortfolioRelationship>>, TError,{id: string;data: BodyType<UpdatePortfolioRelationshipInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePortfolioRelationship>>, TError,{id: string;data: BodyType<UpdatePortfolioRelationshipInput>}, TContext> => {
+
+const mutationKey = ['updatePortfolioRelationship'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePortfolioRelationship>>, {id: string;data: BodyType<UpdatePortfolioRelationshipInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updatePortfolioRelationship(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePortfolioRelationshipMutationResult = NonNullable<Awaited<ReturnType<typeof updatePortfolioRelationship>>>
+    export type UpdatePortfolioRelationshipMutationBody = BodyType<UpdatePortfolioRelationshipInput>
+    export type UpdatePortfolioRelationshipMutationError = ErrorType<void>
+
+    /**
+ * @summary Edit relationship summary/type/tier/next action (does not change status or owner)
+ */
+export const useUpdatePortfolioRelationship = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortfolioRelationship>>, TError,{id: string;data: BodyType<UpdatePortfolioRelationshipInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePortfolioRelationship>>,
+        TError,
+        {id: string;data: BodyType<UpdatePortfolioRelationshipInput>},
+        TContext
+      > => {
+      return useMutation(getUpdatePortfolioRelationshipMutationOptions(options));
+    }
+
+export const getTransitionPortfolioStatusUrl = (id: string,) => {
+
+
+
+
+  return `/api/portfolio/${id}/status`
+}
+
+/**
+ * @summary Move a relationship to a new status (active/dormant/closed). Transition validity is enforced server-side.
+ */
+export const transitionPortfolioStatus = async (id: string,
+    transitionPortfolioStatusInput: TransitionPortfolioStatusInput, options?: Parameters<typeof customFetch>[1]): Promise<PartnerRelationship> => {
+
+  return customFetch<PartnerRelationship>(getTransitionPortfolioStatusUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(transitionPortfolioStatusInput)
+  }
+);}
+
+
+
+
+
+export const getTransitionPortfolioStatusMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transitionPortfolioStatus>>, TError,{id: string;data: BodyType<TransitionPortfolioStatusInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof transitionPortfolioStatus>>, TError,{id: string;data: BodyType<TransitionPortfolioStatusInput>}, TContext> => {
+
+const mutationKey = ['transitionPortfolioStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof transitionPortfolioStatus>>, {id: string;data: BodyType<TransitionPortfolioStatusInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  transitionPortfolioStatus(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TransitionPortfolioStatusMutationResult = NonNullable<Awaited<ReturnType<typeof transitionPortfolioStatus>>>
+    export type TransitionPortfolioStatusMutationBody = BodyType<TransitionPortfolioStatusInput>
+    export type TransitionPortfolioStatusMutationError = ErrorType<void>
+
+    /**
+ * @summary Move a relationship to a new status (active/dormant/closed). Transition validity is enforced server-side.
+ */
+export const useTransitionPortfolioStatus = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transitionPortfolioStatus>>, TError,{id: string;data: BodyType<TransitionPortfolioStatusInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof transitionPortfolioStatus>>,
+        TError,
+        {id: string;data: BodyType<TransitionPortfolioStatusInput>},
+        TContext
+      > => {
+      return useMutation(getTransitionPortfolioStatusMutationOptions(options));
+    }
+
+export const getReassignPortfolioRelationshipUrl = (id: string,) => {
+
+
+
+
+  return `/api/portfolio/${id}/reassign`
+}
+
+/**
+ * @summary Reassign ownership to a different PAM. Head of Channels/admin only -- a PAM cannot reassign their own or any other relationship.
+ */
+export const reassignPortfolioRelationship = async (id: string,
+    reassignPortfolioRelationshipInput: ReassignPortfolioRelationshipInput, options?: Parameters<typeof customFetch>[1]): Promise<PartnerRelationship> => {
+
+  return customFetch<PartnerRelationship>(getReassignPortfolioRelationshipUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reassignPortfolioRelationshipInput)
+  }
+);}
+
+
+
+
+
+export const getReassignPortfolioRelationshipMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reassignPortfolioRelationship>>, TError,{id: string;data: BodyType<ReassignPortfolioRelationshipInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reassignPortfolioRelationship>>, TError,{id: string;data: BodyType<ReassignPortfolioRelationshipInput>}, TContext> => {
+
+const mutationKey = ['reassignPortfolioRelationship'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reassignPortfolioRelationship>>, {id: string;data: BodyType<ReassignPortfolioRelationshipInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reassignPortfolioRelationship(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReassignPortfolioRelationshipMutationResult = NonNullable<Awaited<ReturnType<typeof reassignPortfolioRelationship>>>
+    export type ReassignPortfolioRelationshipMutationBody = BodyType<ReassignPortfolioRelationshipInput>
+    export type ReassignPortfolioRelationshipMutationError = ErrorType<void>
+
+    /**
+ * @summary Reassign ownership to a different PAM. Head of Channels/admin only -- a PAM cannot reassign their own or any other relationship.
+ */
+export const useReassignPortfolioRelationship = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reassignPortfolioRelationship>>, TError,{id: string;data: BodyType<ReassignPortfolioRelationshipInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reassignPortfolioRelationship>>,
+        TError,
+        {id: string;data: BodyType<ReassignPortfolioRelationshipInput>},
+        TContext
+      > => {
+      return useMutation(getReassignPortfolioRelationshipMutationOptions(options));
+    }
+
+export const getAddPortfolioActivityUrl = (id: string,) => {
+
+
+
+
+  return `/api/portfolio/${id}/activities`
+}
+
+/**
+ * @summary Log a dated activity (meeting, call, review, ...) against a relationship
+ */
+export const addPortfolioActivity = async (id: string,
+    addPartnerActivityInput: AddPartnerActivityInput, options?: Parameters<typeof customFetch>[1]): Promise<PartnerActivityItem> => {
+
+  return customFetch<PartnerActivityItem>(getAddPortfolioActivityUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addPartnerActivityInput)
+  }
+);}
+
+
+
+
+
+export const getAddPortfolioActivityMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addPortfolioActivity>>, TError,{id: string;data: BodyType<AddPartnerActivityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addPortfolioActivity>>, TError,{id: string;data: BodyType<AddPartnerActivityInput>}, TContext> => {
+
+const mutationKey = ['addPortfolioActivity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addPortfolioActivity>>, {id: string;data: BodyType<AddPartnerActivityInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  addPortfolioActivity(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddPortfolioActivityMutationResult = NonNullable<Awaited<ReturnType<typeof addPortfolioActivity>>>
+    export type AddPortfolioActivityMutationBody = BodyType<AddPartnerActivityInput>
+    export type AddPortfolioActivityMutationError = ErrorType<void>
+
+    /**
+ * @summary Log a dated activity (meeting, call, review, ...) against a relationship
+ */
+export const useAddPortfolioActivity = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addPortfolioActivity>>, TError,{id: string;data: BodyType<AddPartnerActivityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addPortfolioActivity>>,
+        TError,
+        {id: string;data: BodyType<AddPartnerActivityInput>},
+        TContext
+      > => {
+      return useMutation(getAddPortfolioActivityMutationOptions(options));
+    }
+
+export const getListPortfolioImportsUrl = (params?: ListPortfolioImportsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/portfolio/imports?${stringifiedParams}` : `/api/portfolio/imports`
+}
+
+/**
+ * @summary List PAM Portfolio import batches (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+export const listPortfolioImports = async (params?: ListPortfolioImportsParams, options?: Parameters<typeof customFetch>[1]): Promise<PortfolioImportBatch[]> => {
+
+  return customFetch<PortfolioImportBatch[]>(getListPortfolioImportsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPortfolioImportsQueryKey = (params?: ListPortfolioImportsParams,) => {
+    return [
+    `/api/portfolio/imports`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPortfolioImportsQueryOptions = <TData = Awaited<ReturnType<typeof listPortfolioImports>>, TError = ErrorType<unknown>>(params?: ListPortfolioImportsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPortfolioImports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPortfolioImportsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPortfolioImports>>> = ({ signal }) => listPortfolioImports(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPortfolioImports>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPortfolioImportsQueryResult = NonNullable<Awaited<ReturnType<typeof listPortfolioImports>>>
+export type ListPortfolioImportsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List PAM Portfolio import batches (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+
+export function useListPortfolioImports<TData = Awaited<ReturnType<typeof listPortfolioImports>>, TError = ErrorType<unknown>>(
+ params?: ListPortfolioImportsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPortfolioImports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPortfolioImportsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePortfolioImportUrl = () => {
+
+
+
+
+  return `/api/portfolio/imports`
+}
+
+/**
+ * @summary Create an import batch from client-parsed rows (Excel/CSV) or a single pasted-text description, and run deterministic + DeepSeek normalization synchronously
+ */
+export const createPortfolioImport = async (createPortfolioImportInput: CreatePortfolioImportInput, options?: Parameters<typeof customFetch>[1]): Promise<PortfolioImportBatchDetail> => {
+
+  return customFetch<PortfolioImportBatchDetail>(getCreatePortfolioImportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createPortfolioImportInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePortfolioImportMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPortfolioImport>>, TError,{data: BodyType<CreatePortfolioImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPortfolioImport>>, TError,{data: BodyType<CreatePortfolioImportInput>}, TContext> => {
+
+const mutationKey = ['createPortfolioImport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPortfolioImport>>, {data: BodyType<CreatePortfolioImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPortfolioImport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePortfolioImportMutationResult = NonNullable<Awaited<ReturnType<typeof createPortfolioImport>>>
+    export type CreatePortfolioImportMutationBody = BodyType<CreatePortfolioImportInput>
+    export type CreatePortfolioImportMutationError = ErrorType<void>
+
+    /**
+ * @summary Create an import batch from client-parsed rows (Excel/CSV) or a single pasted-text description, and run deterministic + DeepSeek normalization synchronously
+ */
+export const useCreatePortfolioImport = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPortfolioImport>>, TError,{data: BodyType<CreatePortfolioImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPortfolioImport>>,
+        TError,
+        {data: BodyType<CreatePortfolioImportInput>},
+        TContext
+      > => {
+      return useMutation(getCreatePortfolioImportMutationOptions(options));
+    }
+
+export const getGetPortfolioImportUrl = (id: string,) => {
+
+
+
+
+  return `/api/portfolio/imports/${id}`
+}
+
+/**
+ * @summary Get one import batch, including every row and its current review status
+ */
+export const getPortfolioImport = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PortfolioImportBatchDetail> => {
+
+  return customFetch<PortfolioImportBatchDetail>(getGetPortfolioImportUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortfolioImportQueryKey = (id: string,) => {
+    return [
+    `/api/portfolio/imports/${id}`
+    ] as const;
+    }
+
+
+export const getGetPortfolioImportQueryOptions = <TData = Awaited<ReturnType<typeof getPortfolioImport>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortfolioImport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortfolioImportQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortfolioImport>>> = ({ signal }) => getPortfolioImport(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortfolioImport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortfolioImportQueryResult = NonNullable<Awaited<ReturnType<typeof getPortfolioImport>>>
+export type GetPortfolioImportQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get one import batch, including every row and its current review status
+ */
+
+export function useGetPortfolioImport<TData = Awaited<ReturnType<typeof getPortfolioImport>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortfolioImport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortfolioImportQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdatePortfolioImportRowUrl = (id: string,
+    rowId: string,) => {
+
+
+
+
+  return `/api/portfolio/imports/${id}/rows/${rowId}`
+}
+
+/**
+ * @summary Resolve ambiguity on one row before confirming -- pick/clear the matched company, edit the normalized proposal, or leave a review note
+ */
+export const updatePortfolioImportRow = async (id: string,
+    rowId: string,
+    updatePortfolioImportRowInput: UpdatePortfolioImportRowInput, options?: Parameters<typeof customFetch>[1]): Promise<PortfolioImportRow> => {
+
+  return customFetch<PortfolioImportRow>(getUpdatePortfolioImportRowUrl(id,rowId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updatePortfolioImportRowInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePortfolioImportRowMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortfolioImportRow>>, TError,{id: string;rowId: string;data: BodyType<UpdatePortfolioImportRowInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePortfolioImportRow>>, TError,{id: string;rowId: string;data: BodyType<UpdatePortfolioImportRowInput>}, TContext> => {
+
+const mutationKey = ['updatePortfolioImportRow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePortfolioImportRow>>, {id: string;rowId: string;data: BodyType<UpdatePortfolioImportRowInput>}> = (props) => {
+          const {id,rowId,data} = props ?? {};
+
+          return  updatePortfolioImportRow(id,rowId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePortfolioImportRowMutationResult = NonNullable<Awaited<ReturnType<typeof updatePortfolioImportRow>>>
+    export type UpdatePortfolioImportRowMutationBody = BodyType<UpdatePortfolioImportRowInput>
+    export type UpdatePortfolioImportRowMutationError = ErrorType<void>
+
+    /**
+ * @summary Resolve ambiguity on one row before confirming -- pick/clear the matched company, edit the normalized proposal, or leave a review note
+ */
+export const useUpdatePortfolioImportRow = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortfolioImportRow>>, TError,{id: string;rowId: string;data: BodyType<UpdatePortfolioImportRowInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePortfolioImportRow>>,
+        TError,
+        {id: string;rowId: string;data: BodyType<UpdatePortfolioImportRowInput>},
+        TContext
+      > => {
+      return useMutation(getUpdatePortfolioImportRowMutationOptions(options));
+    }
+
+export const getConfirmPortfolioImportRowUrl = (id: string,
+    rowId: string,) => {
+
+
+
+
+  return `/api/portfolio/imports/${id}/rows/${rowId}/confirm`
+}
+
+/**
+ * @summary Confirm one row into the canonical Partner Portfolio (creates or, if a relationship already exists for the resolved company+territory, links to it without duplicating)
+ */
+export const confirmPortfolioImportRow = async (id: string,
+    rowId: string, options?: Parameters<typeof customFetch>[1]): Promise<PortfolioImportRow> => {
+
+  return customFetch<PortfolioImportRow>(getConfirmPortfolioImportRowUrl(id,rowId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getConfirmPortfolioImportRowMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmPortfolioImportRow>>, TError,{id: string;rowId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmPortfolioImportRow>>, TError,{id: string;rowId: string}, TContext> => {
+
+const mutationKey = ['confirmPortfolioImportRow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmPortfolioImportRow>>, {id: string;rowId: string}> = (props) => {
+          const {id,rowId} = props ?? {};
+
+          return  confirmPortfolioImportRow(id,rowId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmPortfolioImportRowMutationResult = NonNullable<Awaited<ReturnType<typeof confirmPortfolioImportRow>>>
+
+    export type ConfirmPortfolioImportRowMutationError = ErrorType<void>
+
+    /**
+ * @summary Confirm one row into the canonical Partner Portfolio (creates or, if a relationship already exists for the resolved company+territory, links to it without duplicating)
+ */
+export const useConfirmPortfolioImportRow = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmPortfolioImportRow>>, TError,{id: string;rowId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmPortfolioImportRow>>,
+        TError,
+        {id: string;rowId: string},
+        TContext
+      > => {
+      return useMutation(getConfirmPortfolioImportRowMutationOptions(options));
+    }
+
+export const getConfirmPortfolioImportReadyUrl = (id: string,) => {
+
+
+
+
+  return `/api/portfolio/imports/${id}/confirm-ready`
+}
+
+/**
+ * @summary Bulk-confirm every row currently in ready/matched_existing_company status
+ */
+export const confirmPortfolioImportReady = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ConfirmPortfolioImportReadyResult> => {
+
+  return customFetch<ConfirmPortfolioImportReadyResult>(getConfirmPortfolioImportReadyUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getConfirmPortfolioImportReadyMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmPortfolioImportReady>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmPortfolioImportReady>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['confirmPortfolioImportReady'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmPortfolioImportReady>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  confirmPortfolioImportReady(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmPortfolioImportReadyMutationResult = NonNullable<Awaited<ReturnType<typeof confirmPortfolioImportReady>>>
+
+    export type ConfirmPortfolioImportReadyMutationError = ErrorType<void>
+
+    /**
+ * @summary Bulk-confirm every row currently in ready/matched_existing_company status
+ */
+export const useConfirmPortfolioImportReady = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmPortfolioImportReady>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmPortfolioImportReady>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getConfirmPortfolioImportReadyMutationOptions(options));
     }
 
 export const getListScanConfigsUrl = () => {

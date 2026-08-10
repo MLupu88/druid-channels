@@ -117,7 +117,7 @@ function PamFormDrawer({
   onClose,
 }: {
   user: User | null; // null => create mode
-  territories: { id: string; name: string }[] | undefined;
+  territories: { id: string; name: string; owner_user_id?: string | null }[] | undefined;
   onClose: () => void;
 }) {
   const { toast } = useToast();
@@ -126,7 +126,14 @@ function PamFormDrawer({
 
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState('');
-  const [territory, setTerritory] = useState(user?.territory ?? '');
+  // Canonical territory assignment (territories.owner_user_id), not the
+  // free-text users.territory display field -- the UI and the
+  // authorization model must not be able to disagree. '__none__' = no
+  // change (create: PAM has no territory yet; edit: leave as-is).
+  // '__new__' reveals a name field to create a brand-new territory.
+  const ownedTerritory = territories?.find((t) => t.owner_user_id === user?.id);
+  const [territorySelection, setTerritorySelection] = useState<string>(ownedTerritory?.id ?? '__none__');
+  const [newTerritoryName, setNewTerritoryName] = useState('');
   const [password, setPassword] = useState('');
   const [locationLabel, setLocationLabel] = useState(user?.location_label ?? '');
   const [timezone, setTimezone] = useState(user?.timezone ?? '');
@@ -177,7 +184,16 @@ function PamFormDrawer({
   const canSubmit = (isEdit
     ? name.trim().length > 0
     : name.trim().length > 0 && email.trim().length > 0 && password.length >= 16
-  ) && timezoneError === null;
+  ) && timezoneError === null && (territorySelection !== '__new__' || newTerritoryName.trim().length > 0);
+
+  // Never both -- resolveTerritoryAssignment server-side rejects that
+  // combination anyway, but the UI can't even construct it.
+  const territoryFields =
+    territorySelection === '__new__'
+      ? { new_territory_name: newTerritoryName.trim() || null }
+      : territorySelection !== '__none__'
+      ? { territory_id: territorySelection }
+      : {};
 
   const handleSubmit = () => {
     if (isEdit && user) {
@@ -185,9 +201,9 @@ function PamFormDrawer({
         id: user.id,
         data: {
           name: name.trim(),
-          territory: territory || null,
           location_label: locationLabel.trim() || null,
           timezone: timezone.trim() || null,
+          ...territoryFields,
         },
       });
     } else {
@@ -195,10 +211,10 @@ function PamFormDrawer({
         data: {
           name: name.trim(),
           email: email.trim(),
-          territory: territory || null,
           location_label: locationLabel.trim() || null,
           timezone: timezone.trim() || null,
           password,
+          ...territoryFields,
         },
       });
     }
@@ -231,14 +247,24 @@ function PamFormDrawer({
 
           <div className="space-y-2">
             <Label>Territory</Label>
-            <Select value={territory} onValueChange={setTerritory}>
+            <Select value={territorySelection} onValueChange={setTerritorySelection}>
               <SelectTrigger><SelectValue placeholder="No territory" /></SelectTrigger>
               <SelectContent>
-                {territories?.map((t) => (
-                  <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
-                ))}
+                <SelectItem value="__none__">{isEdit ? 'No change' : 'No territory yet'}</SelectItem>
+                {territories
+                  ?.filter((t) => !t.owner_user_id || t.owner_user_id === user?.id)
+                  .map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                <SelectItem value="__new__">+ Create new territory...</SelectItem>
               </SelectContent>
             </Select>
+            {territorySelection === '__new__' && (
+              <Input value={newTerritoryName} onChange={(e) => setNewTerritoryName(e.target.value)} placeholder="New territory name" className="mt-2" />
+            )}
+            <p className="text-xs text-muted-foreground">
+              One PAM owns one territory -- this is the canonical assignment (territories.owner_user_id), not a display label. Only unowned territories are offered.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -1074,7 +1100,6 @@ function MetricMappingDrawer({ mapping, onClose }: { mapping: MetricMapping; onC
   const [jsonError, setJsonError] = useState<string | null>(null);
 
   const [manualCurrent, setManualCurrent] = useState('');
-  const [manualTarget, setManualTarget] = useState('');
   const [manualNote, setManualNote] = useState('');
 
   const parseMappingJson = (): { ok: boolean; value: any } => {
@@ -1221,15 +1246,12 @@ function MetricMappingDrawer({ mapping, onClose }: { mapping: MetricMapping; onC
           {sourceType === 'MANUAL' && (
             <div className="space-y-3 rounded-md border border-border/60 p-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Enter value (Global, current period)</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Current value</Label>
-                  <Input value={manualCurrent} onChange={(e) => setManualCurrent(e.target.value)} placeholder="0" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Target (optional)</Label>
-                  <Input value={manualTarget} onChange={(e) => setManualTarget(e.target.value)} placeholder="0" />
-                </div>
+              <p className="text-xs text-muted-foreground">
+                Sets the current/actual value only. Targets are configured separately from the Overview KPI card ("Set target") -- there is one canonical target mechanism, not two.
+              </p>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Current value</Label>
+                <Input value={manualCurrent} onChange={(e) => setManualCurrent(e.target.value)} placeholder="0" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Note (optional)</Label>
@@ -1245,7 +1267,6 @@ function MetricMappingDrawer({ mapping, onClose }: { mapping: MetricMapping; onC
                     period: 'q3',
                     territory_id: null,
                     current_value: Number(manualCurrent),
-                    target_value: manualTarget ? Number(manualTarget) : null,
                     note: manualNote || null,
                   },
                 })}

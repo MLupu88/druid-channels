@@ -57,6 +57,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { type Currency, formatMetricValue, formatTrendLabel, formatStatusLabel } from '@/lib/kpi-format';
+import { findExistingTarget } from '@/lib/metric-target-selection';
 import type { KpiPeriod } from '@workspace/api-client-react';
 
 function StatusBadge({ status }: { status: string | null }) {
@@ -424,7 +425,7 @@ export default function Overview() {
   const { data: targetRows } = useListMetricTargets(targetsParams, {
     query: { enabled: canEditTargets && Boolean(selectedKpi), queryKey: getListMetricTargetsQueryKey(targetsParams) },
   });
-  const existingTarget = targetRows?.find((t) => t.territory_id === scopedTerritory);
+  const existingTarget = findExistingTarget(targetRows, scopedTerritory, period);
 
   const invalidateKpiQueries = () => {
     queryClient.invalidateQueries({ queryKey: getGetHeadOfChannelsKpisQueryKey() });

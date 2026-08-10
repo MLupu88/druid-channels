@@ -21,3 +21,8 @@ export * from "./partner_recruitments";
 export * from "./partner_recruitment_history";
 export * from "./channel_radar_configs";
 export * from "./channel_radar_signals";
+export * from "./partner_relationships";
+export * from "./partner_relationship_history";
+export * from "./partner_activities";
+export * from "./portfolio_import_batches";
+export * from "./portfolio_import_rows";

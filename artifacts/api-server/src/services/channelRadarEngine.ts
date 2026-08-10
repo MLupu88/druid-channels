@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import * as searchProvider from "./discoveryProviders/search";
 import * as radarAiProvider from "./channelRadarProviders/ai";
+import { resolveSafeCompanyIdForEntityName } from "./radarCompanyBridge";
 import { logger } from "../lib/logger";
 
 // Stage 5 Channel Radar engine. Deliberately no demo/fallback data path --
@@ -156,12 +157,17 @@ export async function runRadarForConfig(configId: string): Promise<ChannelRadarR
 
         const primaryUrl = qualification.evidenceUrls[0] ?? result.url;
         const dedupeKey = computeDedupeKey(qualification.entityName, qualification.signalType, primaryUrl);
+        // Stage 6: deterministic, exact-name-only bridge to the canonical
+        // companies table -- see radarCompanyBridge.ts. Stays null on any
+        // ambiguity; never an LLM call, never fuzzy.
+        const companyId = await resolveSafeCompanyIdForEntityName(qualification.entityName);
 
         const [inserted] = await db
           .insert(channelRadarSignalsTable)
           .values({
             territoryId: territory.id,
             assignedUserId: territory.ownerUserId,
+            companyId,
             entityName: qualification.entityName,
             entityType: qualification.entityType,
             signalType: qualification.signalType,

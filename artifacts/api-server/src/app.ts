@@ -31,6 +31,16 @@ app.use(
 // exactly as before.
 const corsAllowedOrigin = process.env.CORS_ALLOWED_ORIGIN;
 app.use(cors(corsAllowedOrigin ? { origin: corsAllowedOrigin } : undefined));
+// Stage 6 Portfolio import batches are client-parsed Excel/CSV rows sent as
+// one JSON body (no multipart/multer in this app) -- a book of a few
+// hundred rows comfortably exceeds express.json()'s default 100kb limit.
+// This MUST be mounted before the global express.json() below: once the
+// global (small-limit) parser has already rejected an oversized body with
+// 413, a later route-scoped parser never gets a chance to run. Once this
+// one successfully parses the body, body-parser's own req._body flag makes
+// the global parser below a no-op for this path -- every other route keeps
+// the default small limit unchanged.
+app.use("/api/portfolio/imports", express.json({ limit: "5mb" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

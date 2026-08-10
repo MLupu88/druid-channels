@@ -1,10 +1,13 @@
 import React from 'react';
-import { useListProspects, useListPartners, useListCampaigns, useListTerritories } from '@workspace/api-client-react';
+import { Link } from 'wouter';
+import { useListProspects, useListCampaigns, useListTerritories } from '@workspace/api-client-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Building2 } from 'lucide-react';
 
 /**
  * Shared workspace view scoped to a single PAM's territory. Used both as the
@@ -20,7 +23,6 @@ export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; p
   const scopeParam = territoryId ? { territory: territoryId } : {};
 
   const { data: prospects, isLoading: prospectsLoading } = useListProspects(scopeParam);
-  const { data: partners, isLoading: partnersLoading } = useListPartners(scopeParam);
   const { data: campaigns, isLoading: campaignsLoading } = useListCampaigns();
 
   return (
@@ -77,42 +79,15 @@ export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; p
 
         <TabsContent value="partners">
           <Card className="shadow-none border-border/60">
-            <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
-              <CardTitle className="text-base font-medium">Partners</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Company</TableHead>
-                    <TableHead>Last researched</TableHead>
-                    <TableHead>Help needed</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {partnersLoading ? (
-                    <TableRow><TableCell colSpan={3}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
-                  ) : partners?.length ? (
-                    partners.map((p) => (
-                      <TableRow key={p.id}>
-                        <TableCell className="font-medium">{p.company.name}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {p.last_researched_at ? new Date(p.last_researched_at).toLocaleDateString() : 'Never'}
-                        </TableCell>
-                        <TableCell>
-                          {p.help_needed_type === 'none' ? '—' : (
-                            <Badge variant="outline" className="font-normal text-amber-700 bg-amber-50 border-amber-200">
-                              {p.help_needed_type.replace(/_/g, ' ')}
-                            </Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow><TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No partners yet.</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
+            <CardContent className="p-8 flex flex-col items-center text-center gap-3">
+              <Building2 className="h-8 w-8 text-muted-foreground" />
+              <div>
+                <p className="font-medium">Partners has moved to Portfolio</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Relationship status, activity history, and next actions for your partners now live in the Portfolio workspace.
+                </p>
+              </div>
+              <Link href="/portfolio"><Button size="sm">Open Portfolio</Button></Link>
             </CardContent>
           </Card>
         </TabsContent>

@@ -90,7 +90,9 @@ export const createUserBodyPasswordMin = 16;
 export const CreateUserBody = zod.object({
   "name": zod.string().min(1),
   "email": zod.string().email(),
-  "territory": zod.string().nullish(),
+  "territory": zod.string().nullish().describe('Deprecated display-only override. Prefer territory_id\/new_territory_name, which also set the canonical territories.owner_user_id and recompute this field server-side.'),
+  "territory_id": zod.string().nullish().describe('Assign this new PAM as the canonical owner of an existing, currently-unowned territory. 409 if it is already owned by someone else.'),
+  "new_territory_name": zod.string().nullish().describe('Create a brand-new canonical territory with this name and assign this new PAM as its owner. Mutually exclusive with territory_id.'),
   "location_label": zod.string().nullish(),
   "timezone": zod.string().nullish().describe('Must be a valid IANA zone name if provided; validated server-side.'),
   "password": zod.string().min(createUserBodyPasswordMin).describe('Initial access credential for the new PAM. Hashed server-side; never stored or returned in plaintext.')
@@ -119,6 +121,27 @@ export const ListTerritoriesResponseItem = zod.object({
   "languages": zod.array(zod.string())
 })
 export const ListTerritoriesResponse = zod.array(ListTerritoriesResponseItem)
+
+
+/**
+ * @summary Create a new canonical territory. Head of Channels/admin only. Immediately available everywhere GET /territories is read (Discovery, Recruitment, Channel Radar, Portfolio, Settings).
+ */
+
+
+
+export const CreateTerritoryBody = zod.object({
+  "name": zod.string().min(1),
+  "owner_user_id": zod.string().nullish().describe('Optionally assign an owning PAM immediately (their previous territory, if any, is released automatically -- one PAM owns one territory).'),
+  "countries": zod.array(zod.string()).optional()
+})
+
+export const CreateTerritoryResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "owner_user_id": zod.string().nullish(),
+  "countries": zod.array(zod.string()),
+  "languages": zod.array(zod.string())
+})
 
 
 /**
@@ -564,7 +587,15 @@ export const GetRecruitmentResponse = zod.object({
   "note": zod.string().nullish(),
   "actor_name": zod.string().nullish(),
   "created_at": zod.string()
-}))
+})),
+  "existing_partner_context": zod.object({
+  "relationship": zod.union([zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user_name": zod.string().nullish()
+}),zod.null()]).optional()
+}).optional().describe('Read-only Stage 6 Portfolio context surfaced on Recruitment\/Radar detail views when the underlying company is known. Never used to auto-create or auto-reopen anything.')
 }))
 
 
@@ -795,7 +826,15 @@ export const ListChannelRadarSignalsResponseItem = zod.object({
   "discovered_at": zod.string(),
   "status": zod.enum(['new', 'reviewed', 'dismissed']),
   "created_at": zod.string(),
-  "updated_at": zod.string()
+  "updated_at": zod.string(),
+  "existing_partner_context": zod.object({
+  "relationship": zod.union([zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user_name": zod.string().nullish()
+}),zod.null()]).optional()
+}).optional().describe('Read-only Stage 6 Portfolio context surfaced on Recruitment\/Radar detail views when the underlying company is known. Never used to auto-create or auto-reopen anything.')
 })
 export const ListChannelRadarSignalsResponse = zod.array(ListChannelRadarSignalsResponseItem)
 
@@ -838,7 +877,15 @@ export const GetChannelRadarSignalResponse = zod.object({
   "discovered_at": zod.string(),
   "status": zod.enum(['new', 'reviewed', 'dismissed']),
   "created_at": zod.string(),
-  "updated_at": zod.string()
+  "updated_at": zod.string(),
+  "existing_partner_context": zod.object({
+  "relationship": zod.union([zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user_name": zod.string().nullish()
+}),zod.null()]).optional()
+}).optional().describe('Read-only Stage 6 Portfolio context surfaced on Recruitment\/Radar detail views when the underlying company is known. Never used to auto-create or auto-reopen anything.')
 })
 
 
@@ -884,7 +931,15 @@ export const UpdateChannelRadarSignalResponse = zod.object({
   "discovered_at": zod.string(),
   "status": zod.enum(['new', 'reviewed', 'dismissed']),
   "created_at": zod.string(),
-  "updated_at": zod.string()
+  "updated_at": zod.string(),
+  "existing_partner_context": zod.object({
+  "relationship": zod.union([zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user_name": zod.string().nullish()
+}),zod.null()]).optional()
+}).optional().describe('Read-only Stage 6 Portfolio context surfaced on Recruitment\/Radar detail views when the underlying company is known. Never used to auto-create or auto-reopen anything.')
 })
 
 
@@ -899,6 +954,618 @@ export const RunChannelRadarResponse = zod.object({
   "results_found": zod.number(),
   "results_qualified": zod.number(),
   "message": zod.string()
+})
+
+
+/**
+ * @summary Lightweight canonical-company lookup by name/domain, for the Portfolio manual-add and import-review company picker
+ */
+export const SearchCompaniesQueryParams = zod.object({
+  "q": zod.coerce.string()
+})
+
+export const SearchCompaniesResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+})
+export const SearchCompaniesResponse = zod.array(SearchCompaniesResponseItem)
+
+
+/**
+ * @summary Aggregate Portfolio cards (Active Partners, New Partners in period, In Recruitment, Needs Attention) for the Irina/global view. PAM sees only their own territory.
+ */
+export const GetPortfolioSummaryQueryParams = zod.object({
+  "territory": zod.coerce.string().nullish(),
+  "period": zod.coerce.string().nullish()
+})
+
+export const GetPortfolioSummaryResponse = zod.object({
+  "period": zod.string(),
+  "active_partners": zod.number(),
+  "new_partners_in_period": zod.number(),
+  "in_recruitment": zod.number(),
+  "needs_attention": zod.number().describe('Active relationships with no logged activity in 30+ days and no next_action set.')
+})
+
+
+/**
+ * @summary List Partner Relationships with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+export const ListPortfolioQueryParams = zod.object({
+  "territory": zod.coerce.string().nullish(),
+  "pam_user_id": zod.coerce.string().nullish(),
+  "status": zod.coerce.string().nullish(),
+  "search": zod.coerce.string().nullish()
+})
+
+export const ListPortfolioResponseItem = zod.object({
+  "id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "status": zod.enum(['active', 'dormant', 'closed']),
+  "partner_type": zod.string().nullish(),
+  "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
+  "relationship_summary": zod.string().nullish(),
+  "relationship_started_at": zod.string().nullish(),
+  "started_at_precision": zod.enum(['exact_date', 'month', 'quarter', 'year', 'unknown']),
+  "started_at_provenance": zod.union([zod.enum(['explicit', 'inferred', 'user_confirmed', 'system_generated']),zod.null()]).optional(),
+  "relationship_ended_at": zod.string().nullish(),
+  "last_interaction_at": zod.string().nullish(),
+  "next_action": zod.string().nullish(),
+  "next_action_due_at": zod.string().nullish(),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_recruitment_id": zod.string().nullish(),
+  "source_as_of_date": zod.string().nullish(),
+  "imported_at": zod.string().nullish(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+export const ListPortfolioResponse = zod.array(ListPortfolioResponseItem)
+
+
+/**
+ * @summary Manual Add -- create a Partner Relationship directly, resolving/creating its canonical company deterministically
+ */
+export const CreatePortfolioRelationshipBody = zod.object({
+  "territory_id": zod.string(),
+  "company_id": zod.string().nullish().describe('Use an existing canonical company. Exactly one of company_id\/new_company must be provided.'),
+  "new_company": zod.union([zod.object({
+  "name": zod.string(),
+  "domain": zod.string().nullish(),
+  "country": zod.string()
+}),zod.null()]).optional(),
+  "assigned_user_id": zod.string().nullish(),
+  "status": zod.union([zod.enum(['active', 'dormant', 'closed']),zod.null()]).optional(),
+  "partner_type": zod.string().nullish(),
+  "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
+  "relationship_summary": zod.string().nullish(),
+  "relationship_started_at": zod.string().nullish(),
+  "started_at_precision": zod.union([zod.enum(['exact_date', 'month', 'quarter', 'year', 'unknown']),zod.null()]).optional(),
+  "started_at_provenance": zod.union([zod.enum(['explicit', 'inferred', 'user_confirmed', 'system_generated']),zod.null()]).optional(),
+  "next_action": zod.string().nullish(),
+  "next_action_due_at": zod.string().nullish()
+})
+
+export const CreatePortfolioRelationshipResponse = zod.object({
+  "id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "status": zod.enum(['active', 'dormant', 'closed']),
+  "partner_type": zod.string().nullish(),
+  "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
+  "relationship_summary": zod.string().nullish(),
+  "relationship_started_at": zod.string().nullish(),
+  "started_at_precision": zod.enum(['exact_date', 'month', 'quarter', 'year', 'unknown']),
+  "started_at_provenance": zod.union([zod.enum(['explicit', 'inferred', 'user_confirmed', 'system_generated']),zod.null()]).optional(),
+  "relationship_ended_at": zod.string().nullish(),
+  "last_interaction_at": zod.string().nullish(),
+  "next_action": zod.string().nullish(),
+  "next_action_due_at": zod.string().nullish(),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_recruitment_id": zod.string().nullish(),
+  "source_as_of_date": zod.string().nullish(),
+  "imported_at": zod.string().nullish(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Get a Partner Relationship's full detail, including history, activities, and related Discovery/Recruitment/Radar context
+ */
+export const GetPortfolioRelationshipParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetPortfolioRelationshipResponse = zod.object({
+  "id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "status": zod.enum(['active', 'dormant', 'closed']),
+  "partner_type": zod.string().nullish(),
+  "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
+  "relationship_summary": zod.string().nullish(),
+  "relationship_started_at": zod.string().nullish(),
+  "started_at_precision": zod.enum(['exact_date', 'month', 'quarter', 'year', 'unknown']),
+  "started_at_provenance": zod.union([zod.enum(['explicit', 'inferred', 'user_confirmed', 'system_generated']),zod.null()]).optional(),
+  "relationship_ended_at": zod.string().nullish(),
+  "last_interaction_at": zod.string().nullish(),
+  "next_action": zod.string().nullish(),
+  "next_action_due_at": zod.string().nullish(),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_recruitment_id": zod.string().nullish(),
+  "source_as_of_date": zod.string().nullish(),
+  "imported_at": zod.string().nullish(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+}).and(zod.object({
+  "history": zod.array(zod.object({
+  "id": zod.string(),
+  "event_type": zod.enum(['created', 'status_changed', 'owner_changed', 'reactivated', 'closed', 'recruitment_signed']),
+  "from_status": zod.union([zod.enum(['active', 'dormant', 'closed']),zod.null()]).optional(),
+  "to_status": zod.union([zod.enum(['active', 'dormant', 'closed']),zod.null()]).optional(),
+  "from_user_name": zod.string().nullish(),
+  "to_user_name": zod.string().nullish(),
+  "source_recruitment_id": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "changed_by_name": zod.string().nullish(),
+  "occurred_at": zod.string(),
+  "created_at": zod.string()
+})),
+  "activities": zod.array(zod.object({
+  "id": zod.string(),
+  "activity_type": zod.enum(['meeting', 'call', 'review', 'partner_update', 'opportunity_discussion', 'next_action', 'other']),
+  "note": zod.string(),
+  "actor_name": zod.string().nullish(),
+  "occurred_at": zod.string(),
+  "created_at": zod.string()
+})),
+  "context": zod.object({
+  "related_recruitment": zod.union([zod.object({
+  "id": zod.string(),
+  "stage": zod.string(),
+  "not_pursuing_reason": zod.string().nullish(),
+  "updated_at": zod.string().optional()
+}),zod.null()]).optional(),
+  "related_radar_signals": zod.array(zod.object({
+  "id": zod.string(),
+  "headline": zod.string(),
+  "signal_type": zod.string(),
+  "discovered_at": zod.string()
+})).optional()
+}).optional().describe('Read-only cross-domain context surfaced on the relationship detail view. Never used to auto-create\/reopen a recruitment.')
+}))
+
+
+/**
+ * @summary Edit relationship summary/type/tier/next action (does not change status or owner)
+ */
+export const UpdatePortfolioRelationshipParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdatePortfolioRelationshipBody = zod.object({
+  "partner_type": zod.string().nullish(),
+  "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
+  "relationship_summary": zod.string().nullish(),
+  "next_action": zod.string().nullish(),
+  "next_action_due_at": zod.string().nullish()
+})
+
+export const UpdatePortfolioRelationshipResponse = zod.object({
+  "id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "status": zod.enum(['active', 'dormant', 'closed']),
+  "partner_type": zod.string().nullish(),
+  "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
+  "relationship_summary": zod.string().nullish(),
+  "relationship_started_at": zod.string().nullish(),
+  "started_at_precision": zod.enum(['exact_date', 'month', 'quarter', 'year', 'unknown']),
+  "started_at_provenance": zod.union([zod.enum(['explicit', 'inferred', 'user_confirmed', 'system_generated']),zod.null()]).optional(),
+  "relationship_ended_at": zod.string().nullish(),
+  "last_interaction_at": zod.string().nullish(),
+  "next_action": zod.string().nullish(),
+  "next_action_due_at": zod.string().nullish(),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_recruitment_id": zod.string().nullish(),
+  "source_as_of_date": zod.string().nullish(),
+  "imported_at": zod.string().nullish(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Move a relationship to a new status (active/dormant/closed). Transition validity is enforced server-side.
+ */
+export const TransitionPortfolioStatusParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const TransitionPortfolioStatusBody = zod.object({
+  "status": zod.enum(['active', 'dormant', 'closed']),
+  "occurred_at": zod.string().nullish().describe('When the transition actually happened, if backdated. Defaults to now.'),
+  "note": zod.string().nullish()
+})
+
+export const TransitionPortfolioStatusResponse = zod.object({
+  "id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "status": zod.enum(['active', 'dormant', 'closed']),
+  "partner_type": zod.string().nullish(),
+  "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
+  "relationship_summary": zod.string().nullish(),
+  "relationship_started_at": zod.string().nullish(),
+  "started_at_precision": zod.enum(['exact_date', 'month', 'quarter', 'year', 'unknown']),
+  "started_at_provenance": zod.union([zod.enum(['explicit', 'inferred', 'user_confirmed', 'system_generated']),zod.null()]).optional(),
+  "relationship_ended_at": zod.string().nullish(),
+  "last_interaction_at": zod.string().nullish(),
+  "next_action": zod.string().nullish(),
+  "next_action_due_at": zod.string().nullish(),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_recruitment_id": zod.string().nullish(),
+  "source_as_of_date": zod.string().nullish(),
+  "imported_at": zod.string().nullish(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Reassign ownership to a different PAM. Head of Channels/admin only -- a PAM cannot reassign their own or any other relationship.
+ */
+export const ReassignPortfolioRelationshipParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ReassignPortfolioRelationshipBody = zod.object({
+  "assigned_user_id": zod.string().nullable()
+})
+
+export const ReassignPortfolioRelationshipResponse = zod.object({
+  "id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "status": zod.enum(['active', 'dormant', 'closed']),
+  "partner_type": zod.string().nullish(),
+  "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
+  "relationship_summary": zod.string().nullish(),
+  "relationship_started_at": zod.string().nullish(),
+  "started_at_precision": zod.enum(['exact_date', 'month', 'quarter', 'year', 'unknown']),
+  "started_at_provenance": zod.union([zod.enum(['explicit', 'inferred', 'user_confirmed', 'system_generated']),zod.null()]).optional(),
+  "relationship_ended_at": zod.string().nullish(),
+  "last_interaction_at": zod.string().nullish(),
+  "next_action": zod.string().nullish(),
+  "next_action_due_at": zod.string().nullish(),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_recruitment_id": zod.string().nullish(),
+  "source_as_of_date": zod.string().nullish(),
+  "imported_at": zod.string().nullish(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Log a dated activity (meeting, call, review, ...) against a relationship
+ */
+export const AddPortfolioActivityParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const AddPortfolioActivityBody = zod.object({
+  "activity_type": zod.enum(['meeting', 'call', 'review', 'partner_update', 'opportunity_discussion', 'next_action', 'other']),
+  "note": zod.string(),
+  "occurred_at": zod.string()
+})
+
+export const AddPortfolioActivityResponse = zod.object({
+  "id": zod.string(),
+  "activity_type": zod.enum(['meeting', 'call', 'review', 'partner_update', 'opportunity_discussion', 'next_action', 'other']),
+  "note": zod.string(),
+  "actor_name": zod.string().nullish(),
+  "occurred_at": zod.string(),
+  "created_at": zod.string()
+})
+
+
+/**
+ * @summary List PAM Portfolio import batches (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+export const ListPortfolioImportsQueryParams = zod.object({
+  "territory": zod.coerce.string().nullish()
+})
+
+export const ListPortfolioImportsResponseItem = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "source_format": zod.enum(['excel', 'csv', 'pasted_text']),
+  "original_filename": zod.string().nullish(),
+  "row_count": zod.number(),
+  "status": zod.enum(['processing', 'ready_for_review', 'completed', 'failed']),
+  "error_message": zod.string().nullish(),
+  "counts": zod.object({
+  "ready": zod.number(),
+  "matched_existing_company": zod.number(),
+  "possible_duplicate": zod.number(),
+  "existing_relationship": zod.number(),
+  "needs_review": zod.number(),
+  "invalid": zod.number()
+}),
+  "created_at": zod.string(),
+  "completed_at": zod.string().nullish()
+})
+export const ListPortfolioImportsResponse = zod.array(ListPortfolioImportsResponseItem)
+
+
+/**
+ * @summary Create an import batch from client-parsed rows (Excel/CSV) or a single pasted-text description, and run deterministic + DeepSeek normalization synchronously
+ */
+export const CreatePortfolioImportBody = zod.object({
+  "territory_id": zod.string(),
+  "source_format": zod.enum(['excel', 'csv', 'pasted_text']),
+  "original_filename": zod.string().nullish(),
+  "rows": zod.array(zod.record(zod.string(), zod.string()).describe('One source row -- a header\/value map for Excel\/CSV, or a single {\"text} entry for pasted_text.'))
+})
+
+export const CreatePortfolioImportResponse = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "source_format": zod.enum(['excel', 'csv', 'pasted_text']),
+  "original_filename": zod.string().nullish(),
+  "row_count": zod.number(),
+  "status": zod.enum(['processing', 'ready_for_review', 'completed', 'failed']),
+  "error_message": zod.string().nullish(),
+  "counts": zod.object({
+  "ready": zod.number(),
+  "matched_existing_company": zod.number(),
+  "possible_duplicate": zod.number(),
+  "existing_relationship": zod.number(),
+  "needs_review": zod.number(),
+  "invalid": zod.number()
+}),
+  "created_at": zod.string(),
+  "completed_at": zod.string().nullish()
+}).and(zod.object({
+  "rows": zod.array(zod.object({
+  "id": zod.string(),
+  "row_index": zod.number(),
+  "source_raw": zod.record(zod.string(), zod.string()).describe('One source row -- a header\/value map for Excel\/CSV, or a single {\"text} entry for pasted_text.'),
+  "normalized_proposal": zod.record(zod.string(), zod.unknown()).nullish(),
+  "match_status": zod.enum(['ready', 'matched_existing_company', 'possible_duplicate', 'existing_relationship', 'needs_review', 'invalid']),
+  "matched_company": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+}),zod.null()]).optional(),
+  "review_note": zod.string().nullish(),
+  "resulting_relationship_id": zod.string().nullish(),
+  "created_at": zod.string(),
+  "resolved_at": zod.string().nullish()
+}))
+}))
+
+
+/**
+ * @summary Get one import batch, including every row and its current review status
+ */
+export const GetPortfolioImportParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetPortfolioImportResponse = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "source_format": zod.enum(['excel', 'csv', 'pasted_text']),
+  "original_filename": zod.string().nullish(),
+  "row_count": zod.number(),
+  "status": zod.enum(['processing', 'ready_for_review', 'completed', 'failed']),
+  "error_message": zod.string().nullish(),
+  "counts": zod.object({
+  "ready": zod.number(),
+  "matched_existing_company": zod.number(),
+  "possible_duplicate": zod.number(),
+  "existing_relationship": zod.number(),
+  "needs_review": zod.number(),
+  "invalid": zod.number()
+}),
+  "created_at": zod.string(),
+  "completed_at": zod.string().nullish()
+}).and(zod.object({
+  "rows": zod.array(zod.object({
+  "id": zod.string(),
+  "row_index": zod.number(),
+  "source_raw": zod.record(zod.string(), zod.string()).describe('One source row -- a header\/value map for Excel\/CSV, or a single {\"text} entry for pasted_text.'),
+  "normalized_proposal": zod.record(zod.string(), zod.unknown()).nullish(),
+  "match_status": zod.enum(['ready', 'matched_existing_company', 'possible_duplicate', 'existing_relationship', 'needs_review', 'invalid']),
+  "matched_company": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+}),zod.null()]).optional(),
+  "review_note": zod.string().nullish(),
+  "resulting_relationship_id": zod.string().nullish(),
+  "created_at": zod.string(),
+  "resolved_at": zod.string().nullish()
+}))
+}))
+
+
+/**
+ * @summary Resolve ambiguity on one row before confirming -- pick/clear the matched company, edit the normalized proposal, or leave a review note
+ */
+export const UpdatePortfolioImportRowParams = zod.object({
+  "id": zod.coerce.string(),
+  "rowId": zod.coerce.string()
+})
+
+export const UpdatePortfolioImportRowBody = zod.object({
+  "matched_company_id": zod.string().nullish(),
+  "review_note": zod.string().nullish(),
+  "normalized_proposal": zod.record(zod.string(), zod.unknown()).nullish()
+})
+
+export const UpdatePortfolioImportRowResponse = zod.object({
+  "id": zod.string(),
+  "row_index": zod.number(),
+  "source_raw": zod.record(zod.string(), zod.string()).describe('One source row -- a header\/value map for Excel\/CSV, or a single {\"text} entry for pasted_text.'),
+  "normalized_proposal": zod.record(zod.string(), zod.unknown()).nullish(),
+  "match_status": zod.enum(['ready', 'matched_existing_company', 'possible_duplicate', 'existing_relationship', 'needs_review', 'invalid']),
+  "matched_company": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+}),zod.null()]).optional(),
+  "review_note": zod.string().nullish(),
+  "resulting_relationship_id": zod.string().nullish(),
+  "created_at": zod.string(),
+  "resolved_at": zod.string().nullish()
+})
+
+
+/**
+ * @summary Confirm one row into the canonical Partner Portfolio (creates or, if a relationship already exists for the resolved company+territory, links to it without duplicating)
+ */
+export const ConfirmPortfolioImportRowParams = zod.object({
+  "id": zod.coerce.string(),
+  "rowId": zod.coerce.string()
+})
+
+export const ConfirmPortfolioImportRowResponse = zod.object({
+  "id": zod.string(),
+  "row_index": zod.number(),
+  "source_raw": zod.record(zod.string(), zod.string()).describe('One source row -- a header\/value map for Excel\/CSV, or a single {\"text} entry for pasted_text.'),
+  "normalized_proposal": zod.record(zod.string(), zod.unknown()).nullish(),
+  "match_status": zod.enum(['ready', 'matched_existing_company', 'possible_duplicate', 'existing_relationship', 'needs_review', 'invalid']),
+  "matched_company": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullable().describe('Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.'),
+  "country": zod.string()
+}),zod.null()]).optional(),
+  "review_note": zod.string().nullish(),
+  "resulting_relationship_id": zod.string().nullish(),
+  "created_at": zod.string(),
+  "resolved_at": zod.string().nullish()
+})
+
+
+/**
+ * @summary Bulk-confirm every row currently in ready/matched_existing_company status
+ */
+export const ConfirmPortfolioImportReadyParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ConfirmPortfolioImportReadyResponse = zod.object({
+  "confirmed_count": zod.number(),
+  "skipped_count": zod.number()
 })
 
 
@@ -1775,7 +2442,9 @@ export const UpdateUserParams = zod.object({
 
 export const UpdateUserBody = zod.object({
   "name": zod.string().min(1).optional(),
-  "territory": zod.string().nullish(),
+  "territory": zod.string().nullish().describe('Deprecated display-only override. Prefer territory_id\/new_territory_name, which also update the canonical territories.owner_user_id and recompute this field server-side.'),
+  "territory_id": zod.string().nullish().describe('Assign this PAM as the canonical owner of an existing, currently-unowned territory. 409 if it is already owned by someone else. If this PAM currently owns a different territory, that ownership is released automatically (one PAM owns one territory).'),
+  "new_territory_name": zod.string().nullish().describe('Create a brand-new canonical territory with this name and assign this PAM as its owner. Mutually exclusive with territory_id.'),
   "location_label": zod.string().nullish(),
   "timezone": zod.string().nullish().describe('Must be a valid IANA zone name if provided; validated server-side.'),
   "active": zod.boolean().optional()
@@ -1824,7 +2493,7 @@ export const UpdateTerritoryParams = zod.object({
 
 export const UpdateTerritoryBody = zod.object({
   "name": zod.string().optional(),
-  "owner_user_id": zod.string().nullish(),
+  "owner_user_id": zod.string().nullish().describe('Reassigning ownership auto-releases this PAM\'s previous territory (one PAM owns one territory). 409 if the target territory is already owned by a different PAM -- unassign it there first.'),
   "countries": zod.array(zod.string()).optional().describe('The territory\'s geography. This is the single canonical source of geography across the app -- never duplicated on a scan config.')
 })
 

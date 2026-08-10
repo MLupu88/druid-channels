@@ -362,6 +362,22 @@ export interface RecruitmentHistoryItem {
   created_at: string;
 }
 
+export type ExistingPartnerContextRelationship = {
+  id: string;
+  status: string;
+  /** @nullable */
+  territory_name?: string | null;
+  /** @nullable */
+  assigned_user_name?: string | null;
+} | null;
+
+/**
+ * Read-only Stage 6 Portfolio context surfaced on Recruitment/Radar detail views when the underlying company is known. Never used to auto-create or auto-reopen anything.
+ */
+export interface ExistingPartnerContext {
+  relationship?: ExistingPartnerContextRelationship;
+}
+
 export type RecruitmentDetail = Recruitment & ({
   why_it_fits: string;
   why_now: string;
@@ -378,6 +394,7 @@ export type RecruitmentDetail = Recruitment & ({
   recent_trigger: boolean;
   signals: Signal[];
   history: RecruitmentHistoryItem[];
+  existing_partner_context?: ExistingPartnerContext;
 });
 
 export interface TransitionRecruitmentInput {
@@ -513,6 +530,7 @@ export interface ChannelRadarSignal {
   status: ChannelRadarSignalStatus;
   created_at: string;
   updated_at: string;
+  existing_partner_context?: ExistingPartnerContext;
 }
 
 export interface UpdateChannelRadarSignalInput {
@@ -527,6 +545,376 @@ export interface RunChannelRadarResult {
   results_found: number;
   results_qualified: number;
   message: string;
+}
+
+export interface CompanyRef {
+  id: string;
+  name: string;
+  /**
+     * Nullable -- never fabricated. A company created without a known domain (Manual Add or PAM import) stays null rather than getting a placeholder value.
+     * @nullable
+     */
+  domain: string | null;
+  country: string;
+}
+
+export type PartnerRelationshipStatus = typeof PartnerRelationshipStatus[keyof typeof PartnerRelationshipStatus];
+
+
+export const PartnerRelationshipStatus = {
+  active: 'active',
+  dormant: 'dormant',
+  closed: 'closed',
+} as const;
+
+export type RelationshipStrategicImportance = typeof RelationshipStrategicImportance[keyof typeof RelationshipStrategicImportance];
+
+
+export const RelationshipStrategicImportance = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type StartedAtPrecision = typeof StartedAtPrecision[keyof typeof StartedAtPrecision];
+
+
+export const StartedAtPrecision = {
+  exact_date: 'exact_date',
+  month: 'month',
+  quarter: 'quarter',
+  year: 'year',
+  unknown: 'unknown',
+} as const;
+
+export type StartedAtProvenance = typeof StartedAtProvenance[keyof typeof StartedAtProvenance];
+
+
+export const StartedAtProvenance = {
+  explicit: 'explicit',
+  inferred: 'inferred',
+  user_confirmed: 'user_confirmed',
+  system_generated: 'system_generated',
+} as const;
+
+export type RelationshipOriginType = typeof RelationshipOriginType[keyof typeof RelationshipOriginType];
+
+
+export const RelationshipOriginType = {
+  recruitment: 'recruitment',
+  pam_import: 'pam_import',
+  manual: 'manual',
+} as const;
+
+export type RelationshipHistoryEventType = typeof RelationshipHistoryEventType[keyof typeof RelationshipHistoryEventType];
+
+
+export const RelationshipHistoryEventType = {
+  created: 'created',
+  status_changed: 'status_changed',
+  owner_changed: 'owner_changed',
+  reactivated: 'reactivated',
+  closed: 'closed',
+  recruitment_signed: 'recruitment_signed',
+} as const;
+
+export type PartnerActivityType = typeof PartnerActivityType[keyof typeof PartnerActivityType];
+
+
+export const PartnerActivityType = {
+  meeting: 'meeting',
+  call: 'call',
+  review: 'review',
+  partner_update: 'partner_update',
+  opportunity_discussion: 'opportunity_discussion',
+  next_action: 'next_action',
+  other: 'other',
+} as const;
+
+export type PortfolioImportSourceFormat = typeof PortfolioImportSourceFormat[keyof typeof PortfolioImportSourceFormat];
+
+
+export const PortfolioImportSourceFormat = {
+  excel: 'excel',
+  csv: 'csv',
+  pasted_text: 'pasted_text',
+} as const;
+
+export type PortfolioImportBatchStatus = typeof PortfolioImportBatchStatus[keyof typeof PortfolioImportBatchStatus];
+
+
+export const PortfolioImportBatchStatus = {
+  processing: 'processing',
+  ready_for_review: 'ready_for_review',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export type PortfolioImportMatchStatus = typeof PortfolioImportMatchStatus[keyof typeof PortfolioImportMatchStatus];
+
+
+export const PortfolioImportMatchStatus = {
+  ready: 'ready',
+  matched_existing_company: 'matched_existing_company',
+  possible_duplicate: 'possible_duplicate',
+  existing_relationship: 'existing_relationship',
+  needs_review: 'needs_review',
+  invalid: 'invalid',
+} as const;
+
+export type PartnerRelationshipContextRelatedRecruitment = {
+  id: string;
+  stage: string;
+  /** @nullable */
+  not_pursuing_reason?: string | null;
+  updated_at?: string;
+} | null;
+
+export type PartnerRelationshipContextRelatedRadarSignalsItem = {
+  id: string;
+  headline: string;
+  signal_type: string;
+  discovered_at: string;
+};
+
+/**
+ * Read-only cross-domain context surfaced on the relationship detail view. Never used to auto-create/reopen a recruitment.
+ */
+export interface PartnerRelationshipContext {
+  related_recruitment?: PartnerRelationshipContextRelatedRecruitment;
+  related_radar_signals?: PartnerRelationshipContextRelatedRadarSignalsItem[];
+}
+
+export interface PartnerRelationship {
+  id: string;
+  company: CompanyRef;
+  territory_id: string;
+  /** @nullable */
+  territory_name?: string | null;
+  assigned_user?: User | null;
+  status: PartnerRelationshipStatus;
+  /** @nullable */
+  partner_type?: string | null;
+  strategic_importance?: RelationshipStrategicImportance | null;
+  /** @nullable */
+  relationship_summary?: string | null;
+  /** @nullable */
+  relationship_started_at?: string | null;
+  started_at_precision: StartedAtPrecision;
+  started_at_provenance?: StartedAtProvenance | null;
+  /** @nullable */
+  relationship_ended_at?: string | null;
+  /** @nullable */
+  last_interaction_at?: string | null;
+  /** @nullable */
+  next_action?: string | null;
+  /** @nullable */
+  next_action_due_at?: string | null;
+  origin_type: RelationshipOriginType;
+  /** @nullable */
+  origin_recruitment_id?: string | null;
+  /** @nullable */
+  source_as_of_date?: string | null;
+  /** @nullable */
+  imported_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PartnerRelationshipHistoryItem {
+  id: string;
+  event_type: RelationshipHistoryEventType;
+  from_status?: PartnerRelationshipStatus | null;
+  to_status?: PartnerRelationshipStatus | null;
+  /** @nullable */
+  from_user_name?: string | null;
+  /** @nullable */
+  to_user_name?: string | null;
+  /** @nullable */
+  source_recruitment_id?: string | null;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  changed_by_name?: string | null;
+  occurred_at: string;
+  created_at: string;
+}
+
+export interface PartnerActivityItem {
+  id: string;
+  activity_type: PartnerActivityType;
+  note: string;
+  /** @nullable */
+  actor_name?: string | null;
+  occurred_at: string;
+  created_at: string;
+}
+
+export type PartnerRelationshipDetail = PartnerRelationship & {
+  history: PartnerRelationshipHistoryItem[];
+  activities: PartnerActivityItem[];
+  context?: PartnerRelationshipContext;
+};
+
+export type CreatePortfolioRelationshipInputNewCompany = {
+  name: string;
+  /** @nullable */
+  domain?: string | null;
+  country: string;
+} | null;
+
+export interface CreatePortfolioRelationshipInput {
+  territory_id: string;
+  /**
+     * Use an existing canonical company. Exactly one of company_id/new_company must be provided.
+     * @nullable
+     */
+  company_id?: string | null;
+  new_company?: CreatePortfolioRelationshipInputNewCompany;
+  /** @nullable */
+  assigned_user_id?: string | null;
+  status?: PartnerRelationshipStatus | null;
+  /** @nullable */
+  partner_type?: string | null;
+  strategic_importance?: RelationshipStrategicImportance | null;
+  /** @nullable */
+  relationship_summary?: string | null;
+  /** @nullable */
+  relationship_started_at?: string | null;
+  started_at_precision?: StartedAtPrecision | null;
+  started_at_provenance?: StartedAtProvenance | null;
+  /** @nullable */
+  next_action?: string | null;
+  /** @nullable */
+  next_action_due_at?: string | null;
+}
+
+export interface UpdatePortfolioRelationshipInput {
+  /** @nullable */
+  partner_type?: string | null;
+  strategic_importance?: RelationshipStrategicImportance | null;
+  /** @nullable */
+  relationship_summary?: string | null;
+  /** @nullable */
+  next_action?: string | null;
+  /** @nullable */
+  next_action_due_at?: string | null;
+}
+
+export interface TransitionPortfolioStatusInput {
+  status: PartnerRelationshipStatus;
+  /**
+     * When the transition actually happened, if backdated. Defaults to now.
+     * @nullable
+     */
+  occurred_at?: string | null;
+  /** @nullable */
+  note?: string | null;
+}
+
+export interface ReassignPortfolioRelationshipInput {
+  /** @nullable */
+  assigned_user_id: string | null;
+}
+
+export interface AddPartnerActivityInput {
+  activity_type: PartnerActivityType;
+  note: string;
+  occurred_at: string;
+}
+
+export interface PortfolioSummary {
+  period: string;
+  active_partners: number;
+  new_partners_in_period: number;
+  in_recruitment: number;
+  /** Active relationships with no logged activity in 30+ days and no next_action set. */
+  needs_attention: number;
+}
+
+/**
+ * One source row -- a header/value map for Excel/CSV, or a single {"text} entry for pasted_text.
+ */
+export interface PortfolioImportRowPayload {[key: string]: string}
+
+export interface CreatePortfolioImportInput {
+  territory_id: string;
+  source_format: PortfolioImportSourceFormat;
+  /** @nullable */
+  original_filename?: string | null;
+  rows: PortfolioImportRowPayload[];
+}
+
+/**
+ * @nullable
+ */
+export type PortfolioImportRowNormalizedProposal = { [key: string]: unknown } | null;
+
+export interface PortfolioImportRow {
+  id: string;
+  row_index: number;
+  source_raw: PortfolioImportRowPayload;
+  /** @nullable */
+  normalized_proposal?: PortfolioImportRowNormalizedProposal;
+  match_status: PortfolioImportMatchStatus;
+  matched_company?: CompanyRef | null;
+  /** @nullable */
+  review_note?: string | null;
+  /** @nullable */
+  resulting_relationship_id?: string | null;
+  created_at: string;
+  /** @nullable */
+  resolved_at?: string | null;
+}
+
+export type PortfolioImportBatchCounts = {
+  ready: number;
+  matched_existing_company: number;
+  possible_duplicate: number;
+  existing_relationship: number;
+  needs_review: number;
+  invalid: number;
+};
+
+export interface PortfolioImportBatch {
+  id: string;
+  territory_id: string;
+  /** @nullable */
+  territory_name?: string | null;
+  source_format: PortfolioImportSourceFormat;
+  /** @nullable */
+  original_filename?: string | null;
+  row_count: number;
+  status: PortfolioImportBatchStatus;
+  /** @nullable */
+  error_message?: string | null;
+  counts: PortfolioImportBatchCounts;
+  created_at: string;
+  /** @nullable */
+  completed_at?: string | null;
+}
+
+export type PortfolioImportBatchDetail = PortfolioImportBatch & {
+  rows: PortfolioImportRow[];
+};
+
+/**
+ * @nullable
+ */
+export type UpdatePortfolioImportRowInputNormalizedProposal = { [key: string]: unknown } | null;
+
+export interface UpdatePortfolioImportRowInput {
+  /** @nullable */
+  matched_company_id?: string | null;
+  /** @nullable */
+  review_note?: string | null;
+  /** @nullable */
+  normalized_proposal?: UpdatePortfolioImportRowInputNormalizedProposal;
+}
+
+export interface ConfirmPortfolioImportReadyResult {
+  confirmed_count: number;
+  skipped_count: number;
 }
 
 export type ProspectDecisionInputDecision = typeof ProspectDecisionInputDecision[keyof typeof ProspectDecisionInputDecision];
@@ -679,8 +1067,21 @@ export interface DeleteResult {
 export interface UserEditInput {
   /** @minLength 1 */
   name?: string;
-  /** @nullable */
+  /**
+     * Deprecated display-only override. Prefer territory_id/new_territory_name, which also update the canonical territories.owner_user_id and recompute this field server-side.
+     * @nullable
+     */
   territory?: string | null;
+  /**
+     * Assign this PAM as the canonical owner of an existing, currently-unowned territory. 409 if it is already owned by someone else. If this PAM currently owns a different territory, that ownership is released automatically (one PAM owns one territory).
+     * @nullable
+     */
+  territory_id?: string | null;
+  /**
+     * Create a brand-new canonical territory with this name and assign this PAM as its owner. Mutually exclusive with territory_id.
+     * @nullable
+     */
+  new_territory_name?: string | null;
   /** @nullable */
   location_label?: string | null;
   /**
@@ -695,8 +1096,21 @@ export interface CreateUserInput {
   /** @minLength 1 */
   name: string;
   email: string;
-  /** @nullable */
+  /**
+     * Deprecated display-only override. Prefer territory_id/new_territory_name, which also set the canonical territories.owner_user_id and recompute this field server-side.
+     * @nullable
+     */
   territory?: string | null;
+  /**
+     * Assign this new PAM as the canonical owner of an existing, currently-unowned territory. 409 if it is already owned by someone else.
+     * @nullable
+     */
+  territory_id?: string | null;
+  /**
+     * Create a brand-new canonical territory with this name and assign this new PAM as its owner. Mutually exclusive with territory_id.
+     * @nullable
+     */
+  new_territory_name?: string | null;
   /** @nullable */
   location_label?: string | null;
   /**
@@ -717,9 +1131,23 @@ export interface UserResetPasswordResponse {
   temporary_password: string;
 }
 
+export interface CreateTerritoryInput {
+  /** @minLength 1 */
+  name: string;
+  /**
+     * Optionally assign an owning PAM immediately (their previous territory, if any, is released automatically -- one PAM owns one territory).
+     * @nullable
+     */
+  owner_user_id?: string | null;
+  countries?: string[];
+}
+
 export interface TerritoryEditInput {
   name?: string;
-  /** @nullable */
+  /**
+     * Reassigning ownership auto-releases this PAM's previous territory (one PAM owns one territory). 409 if the target territory is already owned by a different PAM -- unassign it there first.
+     * @nullable
+     */
   owner_user_id?: string | null;
   /** The territory's geography. This is the single canonical source of geography across the app -- never duplicated on a scan config. */
   countries?: string[];
@@ -1692,6 +2120,47 @@ status?: string | null;
  * @nullable
  */
 search?: string | null;
+};
+
+export type SearchCompaniesParams = {
+q: string;
+};
+
+export type GetPortfolioSummaryParams = {
+/**
+ * @nullable
+ */
+territory?: string | null;
+/**
+ * @nullable
+ */
+period?: string | null;
+};
+
+export type ListPortfolioParams = {
+/**
+ * @nullable
+ */
+territory?: string | null;
+/**
+ * @nullable
+ */
+pam_user_id?: string | null;
+/**
+ * @nullable
+ */
+status?: string | null;
+/**
+ * @nullable
+ */
+search?: string | null;
+};
+
+export type ListPortfolioImportsParams = {
+/**
+ * @nullable
+ */
+territory?: string | null;
 };
 
 export type ListScanRunsParams = {

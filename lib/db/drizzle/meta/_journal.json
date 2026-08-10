@@ -64,6 +64,20 @@
       "when": 1786345510502,
       "tag": "0008_woozy_champions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786349448435,
+      "tag": "0009_busy_black_panther",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786357768911,
+      "tag": "0010_mean_magma",
+      "breakpoints": true
     }
   ]
 }

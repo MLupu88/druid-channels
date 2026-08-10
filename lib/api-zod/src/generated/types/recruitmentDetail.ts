@@ -5,6 +5,7 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { ExistingPartnerContext } from './existingPartnerContext';
 import type { Recruitment } from './recruitment';
 import type { RecruitmentHistoryItem } from './recruitmentHistoryItem';
 import type { Signal } from './signal';
@@ -25,4 +26,5 @@ export type RecruitmentDetail = Recruitment & ({
   recent_trigger: boolean;
   signals: Signal[];
   history: RecruitmentHistoryItem[];
+  existing_partner_context?: ExistingPartnerContext;
 });

@@ -29,6 +29,7 @@ import {
   InvalidTransitionError,
   type RecruitmentStage,
 } from "../services/partnerRecruitmentService";
+import { getExistingPartnerContext } from "../services/partnerRelationshipService";
 
 const router: IRouter = Router();
 
@@ -128,7 +129,7 @@ router.get("/recruitment", requireAuth, async (req, res): Promise<void> => {
   }
   if (search) {
     const q = search.toLowerCase();
-    filtered = filtered.filter((r) => r.company.name.toLowerCase().includes(q) || r.company.domain.toLowerCase().includes(q));
+    filtered = filtered.filter((r) => r.company.name.toLowerCase().includes(q) || (r.company.domain ?? "").toLowerCase().includes(q));
   }
 
   const shaped = filtered.map((r) => shapeRecruitmentSummary(r.recruitment, r.company, r.territory, r.assignedUser, r.prospect));
@@ -179,9 +180,11 @@ router.get("/recruitment/:id", requireAuth, async (req, res): Promise<void> => {
   ]);
 
   const base = shapeRecruitmentSummary(row.recruitment, row.company, row.territory, row.assignedUser, row.prospect);
+  const existingPartnerContext = await getExistingPartnerContext(row.recruitment.companyId, row.recruitment.territoryId);
 
   res.json(GetRecruitmentResponse.parse({
     ...base,
+    existing_partner_context: existingPartnerContext,
     why_it_fits: row.prospect.whyItFits,
     why_now: row.prospect.whyNow,
     suggested_angle: row.prospect.suggestedAngle,
