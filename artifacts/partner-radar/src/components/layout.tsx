@@ -23,6 +23,7 @@ import {
   HelpCircle,
   ChevronDown,
   Radio,
+  Handshake,
   LogOut,
   UserCircle
 } from 'lucide-react';
@@ -55,12 +56,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     ? [
         { href: '/', label: 'Overview', icon: LayoutDashboard },
         { href: '/new-partners', label: 'Discovery', icon: Radio },
+        { href: '/recruitment', label: 'Recruitment', icon: Handshake },
         { href: '/pams', label: 'PAMs', icon: Users },
         { href: '/activities', label: 'Activities', icon: ListOrdered },
       ]
     : [
         { href: '/', label: 'Overview', icon: LayoutDashboard },
         { href: '/new-partners', label: 'Discovery', icon: Radio },
+        { href: '/recruitment', label: 'Recruitment', icon: Handshake },
         { href: '/my-workspace', label: 'My workspace', icon: Briefcase },
         { href: '/activities', label: 'Activities', icon: ListOrdered },
       ];

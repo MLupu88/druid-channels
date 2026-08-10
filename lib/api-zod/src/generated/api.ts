@@ -439,6 +439,241 @@ export const PushProspectToHubspotResponse = zod.object({
 
 
 /**
+ * @summary List partner recruitments with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+export const ListRecruitmentsQueryParams = zod.object({
+  "territory": zod.coerce.string().nullish(),
+  "pam_user_id": zod.coerce.string().nullish(),
+  "stage": zod.coerce.string().nullish(),
+  "search": zod.coerce.string().nullish()
+})
+
+export const ListRecruitmentsResponseItem = zod.object({
+  "id": zod.string(),
+  "prospect_id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "priority": zod.enum(['A', 'B']),
+  "partner_type": zod.string(),
+  "stage": zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),
+  "previous_stage": zod.union([zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),zod.null()]).optional(),
+  "not_pursuing_reason": zod.union([zod.enum(['no_strategic_fit', 'no_capacity', 'competitor_conflict', 'no_response', 'geography_mismatch', 'other']),zod.null()]).optional(),
+  "next_step": zod.string().nullish(),
+  "follow_up_date": zod.string().nullish(),
+  "days_in_stage": zod.number(),
+  "is_stalled": zod.boolean().describe('True when stage is one of accepted\/contacting\/engaged\/agreement and days_in_stage > 14.'),
+  "next_stage_action": zod.union([zod.object({
+  "stage": zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),
+  "label": zod.string()
+}).describe('Server-derived stage-appropriate action (e.g. accepted -> \"Start outreach\"). Null when the recruitment is in a terminal or exception state with no single forward action.'),zod.null()]).optional(),
+  "stage_entered_at": zod.string(),
+  "signed_at": zod.string().nullish(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+export const ListRecruitmentsResponse = zod.array(ListRecruitmentsResponseItem)
+
+
+/**
+ * @summary Get a recruitment's full detail, including Discovery context, evidence, and stage history
+ */
+export const GetRecruitmentParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetRecruitmentResponse = zod.object({
+  "id": zod.string(),
+  "prospect_id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "priority": zod.enum(['A', 'B']),
+  "partner_type": zod.string(),
+  "stage": zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),
+  "previous_stage": zod.union([zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),zod.null()]).optional(),
+  "not_pursuing_reason": zod.union([zod.enum(['no_strategic_fit', 'no_capacity', 'competitor_conflict', 'no_response', 'geography_mismatch', 'other']),zod.null()]).optional(),
+  "next_step": zod.string().nullish(),
+  "follow_up_date": zod.string().nullish(),
+  "days_in_stage": zod.number(),
+  "is_stalled": zod.boolean().describe('True when stage is one of accepted\/contacting\/engaged\/agreement and days_in_stage > 14.'),
+  "next_stage_action": zod.union([zod.object({
+  "stage": zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),
+  "label": zod.string()
+}).describe('Server-derived stage-appropriate action (e.g. accepted -> \"Start outreach\"). Null when the recruitment is in a terminal or exception state with no single forward action.'),zod.null()]).optional(),
+  "stage_entered_at": zod.string(),
+  "signed_at": zod.string().nullish(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+}).and(zod.object({
+  "why_it_fits": zod.string(),
+  "why_now": zod.string(),
+  "suggested_angle": zod.string().nullish(),
+  "suggested_target_role": zod.string().nullish(),
+  "priority_rationale": zod.string().nullish(),
+  "enterprise_access": zod.boolean(),
+  "relevant_capability": zod.boolean(),
+  "technology_adjacency": zod.boolean(),
+  "partnership_openness": zod.boolean(),
+  "recent_trigger": zod.boolean(),
+  "signals": zod.array(zod.object({
+  "id": zod.string(),
+  "company_id": zod.string(),
+  "signal_type": zod.enum(['partnership', 'ai_investment', 'enterprise_access', 'technology', 'hiring', 'event', 'tender']),
+  "title": zod.string(),
+  "summary": zod.string(),
+  "source_url": zod.string(),
+  "source_domain": zod.string().nullish(),
+  "published_at": zod.string().nullish(),
+  "discovered_at": zod.string(),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "raw_excerpt": zod.string().nullish()
+})),
+  "history": zod.array(zod.object({
+  "id": zod.string(),
+  "from_stage": zod.union([zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),zod.null()]).optional(),
+  "to_stage": zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),
+  "note": zod.string().nullish(),
+  "actor_name": zod.string().nullish(),
+  "created_at": zod.string()
+}))
+}))
+
+
+/**
+ * @summary Lightweight edit of next_step / follow_up_date (does not change stage)
+ */
+export const UpdateRecruitmentParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateRecruitmentBody = zod.object({
+  "next_step": zod.string().nullish(),
+  "follow_up_date": zod.string().nullish()
+})
+
+export const UpdateRecruitmentResponse = zod.object({
+  "id": zod.string(),
+  "prospect_id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "priority": zod.enum(['A', 'B']),
+  "partner_type": zod.string(),
+  "stage": zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),
+  "previous_stage": zod.union([zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),zod.null()]).optional(),
+  "not_pursuing_reason": zod.union([zod.enum(['no_strategic_fit', 'no_capacity', 'competitor_conflict', 'no_response', 'geography_mismatch', 'other']),zod.null()]).optional(),
+  "next_step": zod.string().nullish(),
+  "follow_up_date": zod.string().nullish(),
+  "days_in_stage": zod.number(),
+  "is_stalled": zod.boolean().describe('True when stage is one of accepted\/contacting\/engaged\/agreement and days_in_stage > 14.'),
+  "next_stage_action": zod.union([zod.object({
+  "stage": zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),
+  "label": zod.string()
+}).describe('Server-derived stage-appropriate action (e.g. accepted -> \"Start outreach\"). Null when the recruitment is in a terminal or exception state with no single forward action.'),zod.null()]).optional(),
+  "stage_entered_at": zod.string(),
+  "signed_at": zod.string().nullish(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Move a recruitment to a new stage. Transition validity is enforced server-side -- the frontend cannot set an arbitrary stage.
+ */
+export const TransitionRecruitmentParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const TransitionRecruitmentBody = zod.object({
+  "to_stage": zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),
+  "note": zod.string().nullish().describe('Optional short note explaining the transition. Recorded on the history row.'),
+  "not_pursuing_reason": zod.union([zod.enum(['no_strategic_fit', 'no_capacity', 'competitor_conflict', 'no_response', 'geography_mismatch', 'other']),zod.null()]).optional().describe('Required when to_stage is not_pursuing.')
+})
+
+export const TransitionRecruitmentResponse = zod.object({
+  "id": zod.string(),
+  "prospect_id": zod.string(),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string()
+}),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['head_of_channels', 'pam', 'admin']),
+  "territory": zod.string().nullable(),
+  "location_label": zod.string().nullable(),
+  "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
+  "active": zod.boolean()
+}),zod.null()]).optional(),
+  "priority": zod.enum(['A', 'B']),
+  "partner_type": zod.string(),
+  "stage": zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),
+  "previous_stage": zod.union([zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),zod.null()]).optional(),
+  "not_pursuing_reason": zod.union([zod.enum(['no_strategic_fit', 'no_capacity', 'competitor_conflict', 'no_response', 'geography_mismatch', 'other']),zod.null()]).optional(),
+  "next_step": zod.string().nullish(),
+  "follow_up_date": zod.string().nullish(),
+  "days_in_stage": zod.number(),
+  "is_stalled": zod.boolean().describe('True when stage is one of accepted\/contacting\/engaged\/agreement and days_in_stage > 14.'),
+  "next_stage_action": zod.union([zod.object({
+  "stage": zod.enum(['accepted', 'contacting', 'engaged', 'agreement', 'signed', 'on_hold', 'not_pursuing']),
+  "label": zod.string()
+}).describe('Server-derived stage-appropriate action (e.g. accepted -> \"Start outreach\"). Null when the recruitment is in a terminal or exception state with no single forward action.'),zod.null()]).optional(),
+  "stage_entered_at": zod.string(),
+  "signed_at": zod.string().nullish(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
  * @summary List all scan configurations
  */
 export const ListScanConfigsResponseItem = zod.object({

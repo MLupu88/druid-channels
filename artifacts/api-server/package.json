@@ -13,6 +13,7 @@
     "test:discovery-providers": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryProviders.test.ts",
     "test:discovery-identity": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryIdentity.test.ts",
     "test:discovery-target-signals": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryTargetSignals.test.ts",
+    "test:recruitment-transitions": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/partnerRecruitmentTransitions.test.ts",
     "seed": "tsx ./src/scripts/seed.ts"
   },
   "dependencies": {

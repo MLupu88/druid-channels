@@ -50,6 +50,13 @@
       "when": 1786286947925,
       "tag": "0006_purple_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786335369629,
+      "tag": "0007_condemned_kulan_gath",
+      "breakpoints": true
     }
   ]
 }

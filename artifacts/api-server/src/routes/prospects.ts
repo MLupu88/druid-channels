@@ -24,6 +24,7 @@ import {
 import { eq, and, sql, count, max, inArray, desc, asc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
+import { acceptForRecruitment } from "../services/partnerRecruitmentService";
 
 const router: IRouter = Router();
 
@@ -32,8 +33,11 @@ const DEFAULT_RECENCY_WINDOW_DAYS = 90;
 type NextAction = "review" | "refresh_evidence" | "send_to_hubspot" | "none";
 
 function computeNextAction(status: string, isStale: boolean): NextAction {
-  if (status === "accepted") return "send_to_hubspot";
-  if (status === "pushed_to_hubspot" || status === "rejected") return "none";
+  // Discovery's job ends at acceptance -- what happens next lives in
+  // Recruitment (see partnerRecruitmentService.ts's getNextStageAction),
+  // not here. "send_to_hubspot" is kept in the NextAction type only for the
+  // legacy pushed_to_hubspot display path; nothing maps to it anymore.
+  if (status === "accepted" || status === "pushed_to_hubspot" || status === "rejected") return "none";
   // "new" or "deferred"
   return isStale ? "refresh_evidence" : "review";
 }
@@ -485,6 +489,18 @@ router.post("/prospects/:id/decision", requireAuth, async (req, res): Promise<vo
     note: note ?? null,
     timestamp: new Date(),
   });
+
+  // Discovery -> Recruitment handoff: "Accept for Recruitment". Uses
+  // updated.assignedUserId (the final, already-preserved PAM -- never the
+  // acting user) so the handoff can never silently reassign ownership.
+  // Idempotent: a repeated accept on an already-handed-off prospect is a
+  // no-op here, never a duplicate or a reset back to "accepted".
+  if (decision === "accepted") {
+    await acceptForRecruitment(
+      { id: updated.id, companyId: updated.companyId, territoryId: updated.territoryId, assignedUserId: updated.assignedUserId },
+      req.actingUser!.id,
+    );
+  }
 
   // Fetch company and territory for response
   const [row] = await db

@@ -276,6 +276,128 @@ export interface ProspectDetail {
   updated_at?: string | null;
 }
 
+export type RecruitmentStage = typeof RecruitmentStage[keyof typeof RecruitmentStage];
+
+
+export const RecruitmentStage = {
+  accepted: 'accepted',
+  contacting: 'contacting',
+  engaged: 'engaged',
+  agreement: 'agreement',
+  signed: 'signed',
+  on_hold: 'on_hold',
+  not_pursuing: 'not_pursuing',
+} as const;
+
+export type NotPursuingReason = typeof NotPursuingReason[keyof typeof NotPursuingReason];
+
+
+export const NotPursuingReason = {
+  no_strategic_fit: 'no_strategic_fit',
+  no_capacity: 'no_capacity',
+  competitor_conflict: 'competitor_conflict',
+  no_response: 'no_response',
+  geography_mismatch: 'geography_mismatch',
+  other: 'other',
+} as const;
+
+/**
+ * Server-derived stage-appropriate action (e.g. accepted -> "Start outreach"). Null when the recruitment is in a terminal or exception state with no single forward action.
+ */
+export interface RecruitmentNextStageAction {
+  stage: RecruitmentStage;
+  label: string;
+}
+
+export type RecruitmentCompany = {
+  id: string;
+  name: string;
+  domain: string;
+};
+
+export type RecruitmentPriority = typeof RecruitmentPriority[keyof typeof RecruitmentPriority];
+
+
+export const RecruitmentPriority = {
+  A: 'A',
+  B: 'B',
+} as const;
+
+export interface Recruitment {
+  id: string;
+  prospect_id: string;
+  company: RecruitmentCompany;
+  territory_id: string;
+  /** @nullable */
+  territory_name?: string | null;
+  assigned_user?: User | null;
+  priority: RecruitmentPriority;
+  partner_type: string;
+  stage: RecruitmentStage;
+  previous_stage?: RecruitmentStage | null;
+  not_pursuing_reason?: NotPursuingReason | null;
+  /** @nullable */
+  next_step?: string | null;
+  /** @nullable */
+  follow_up_date?: string | null;
+  days_in_stage: number;
+  /** True when stage is one of accepted/contacting/engaged/agreement and days_in_stage > 14. */
+  is_stalled: boolean;
+  next_stage_action?: RecruitmentNextStageAction | null;
+  stage_entered_at: string;
+  /** @nullable */
+  signed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecruitmentHistoryItem {
+  id: string;
+  from_stage?: RecruitmentStage | null;
+  to_stage: RecruitmentStage;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actor_name?: string | null;
+  created_at: string;
+}
+
+export type RecruitmentDetail = Recruitment & ({
+  why_it_fits: string;
+  why_now: string;
+  /** @nullable */
+  suggested_angle?: string | null;
+  /** @nullable */
+  suggested_target_role?: string | null;
+  /** @nullable */
+  priority_rationale?: string | null;
+  enterprise_access: boolean;
+  relevant_capability: boolean;
+  technology_adjacency: boolean;
+  partnership_openness: boolean;
+  recent_trigger: boolean;
+  signals: Signal[];
+  history: RecruitmentHistoryItem[];
+});
+
+export interface TransitionRecruitmentInput {
+  to_stage: RecruitmentStage;
+  /**
+     * Optional short note explaining the transition. Recorded on the history row.
+     * @nullable
+     */
+  note?: string | null;
+  /** Required when to_stage is not_pursuing. */
+  not_pursuing_reason?: NotPursuingReason | null;
+}
+
+export interface UpdateRecruitmentInput {
+  /** @nullable */
+  next_step?: string | null;
+  /** @nullable */
+  follow_up_date?: string | null;
+}
+
 export type ProspectDecisionInputDecision = typeof ProspectDecisionInputDecision[keyof typeof ProspectDecisionInputDecision];
 
 
@@ -1394,6 +1516,25 @@ export const ListProspectsFreshness = {
   fresh: 'fresh',
   stale: 'stale',
 } as const;
+
+export type ListRecruitmentsParams = {
+/**
+ * @nullable
+ */
+territory?: string | null;
+/**
+ * @nullable
+ */
+pam_user_id?: string | null;
+/**
+ * @nullable
+ */
+stage?: string | null;
+/**
+ * @nullable
+ */
+search?: string | null;
+};
 
 export type ListScanRunsParams = {
 /**

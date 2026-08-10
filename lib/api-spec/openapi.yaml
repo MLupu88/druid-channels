@@ -38,6 +38,8 @@ tags:
     description: Quarterly report export
   - name: ai-channel-brief
     description: AI-generated executive brief for the Overview page, built from a controlled snapshot of trusted KPI data
+  - name: recruitment
+    description: Stage 4 native partner recruitment -- the operational process from an accepted Discovery prospect to Signed
 
 paths:
   /auth/login:
@@ -319,6 +321,119 @@ paths:
                 $ref: "#/components/schemas/HubspotPushResult"
         "400":
           description: Prospect not accepted
+        "404":
+          description: Not found
+
+  /recruitment:
+    get:
+      operationId: listRecruitments
+      tags: [recruitment]
+      summary: List partner recruitments with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: pam_user_id
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: stage
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of recruitments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Recruitment"
+
+  /recruitment/{id}:
+    get:
+      operationId: getRecruitment
+      tags: [recruitment]
+      summary: Get a recruitment's full detail, including Discovery context, evidence, and stage history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Recruitment detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecruitmentDetail"
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+    patch:
+      operationId: updateRecruitment
+      tags: [recruitment]
+      summary: Lightweight edit of next_step / follow_up_date (does not change stage)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRecruitmentInput"
+      responses:
+        "200":
+          description: Updated recruitment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recruitment"
+        "403":
+          description: Outside caller's authorized scope
+        "404":
+          description: Not found
+
+  /recruitment/{id}/transition:
+    post:
+      operationId: transitionRecruitment
+      tags: [recruitment]
+      summary: Move a recruitment to a new stage. Transition validity is enforced server-side -- the frontend cannot set an arbitrary stage.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransitionRecruitmentInput"
+      responses:
+        "200":
+          description: Recruitment after the transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recruitment"
+        "400":
+          description: Invalid transition for the recruitment's current stage, or a required field (e.g. not_pursuing_reason) is missing
+        "403":
+          description: Outside caller's authorized scope
         "404":
           description: Not found
 
@@ -1327,6 +1442,164 @@ components:
         actor_name:
           type: ["string", "null"]
         note:
+          type: ["string", "null"]
+
+    RecruitmentStage:
+      type: string
+      enum: [accepted, contacting, engaged, agreement, signed, on_hold, not_pursuing]
+
+    NotPursuingReason:
+      type: string
+      enum: [no_strategic_fit, no_capacity, competitor_conflict, no_response, geography_mismatch, other]
+
+    RecruitmentNextStageAction:
+      type: object
+      required: [stage, label]
+      description: Server-derived stage-appropriate action (e.g. accepted -> "Start outreach"). Null when the recruitment is in a terminal or exception state with no single forward action.
+      properties:
+        stage:
+          $ref: "#/components/schemas/RecruitmentStage"
+        label:
+          type: string
+
+    Recruitment:
+      type: object
+      required: [id, prospect_id, company, territory_id, priority, partner_type, stage, days_in_stage, is_stalled, stage_entered_at, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        prospect_id:
+          type: string
+        company:
+          type: object
+          required: [id, name, domain]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            domain:
+              type: string
+        territory_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        assigned_user:
+          oneOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
+        priority:
+          type: string
+          enum: [A, B]
+        partner_type:
+          type: string
+        stage:
+          $ref: "#/components/schemas/RecruitmentStage"
+        previous_stage:
+          oneOf:
+            - $ref: "#/components/schemas/RecruitmentStage"
+            - type: "null"
+        not_pursuing_reason:
+          oneOf:
+            - $ref: "#/components/schemas/NotPursuingReason"
+            - type: "null"
+        next_step:
+          type: ["string", "null"]
+        follow_up_date:
+          type: ["string", "null"]
+        days_in_stage:
+          type: number
+        is_stalled:
+          type: boolean
+          description: True when stage is one of accepted/contacting/engaged/agreement and days_in_stage > 14.
+        next_stage_action:
+          oneOf:
+            - $ref: "#/components/schemas/RecruitmentNextStageAction"
+            - type: "null"
+        stage_entered_at:
+          type: string
+        signed_at:
+          type: ["string", "null"]
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    RecruitmentDetail:
+      allOf:
+        - $ref: "#/components/schemas/Recruitment"
+        - type: object
+          required: [why_it_fits, why_now, enterprise_access, relevant_capability, technology_adjacency, partnership_openness, recent_trigger, signals, history]
+          properties:
+            why_it_fits:
+              type: string
+            why_now:
+              type: string
+            suggested_angle:
+              type: ["string", "null"]
+            suggested_target_role:
+              type: ["string", "null"]
+            priority_rationale:
+              type: ["string", "null"]
+            enterprise_access:
+              type: boolean
+            relevant_capability:
+              type: boolean
+            technology_adjacency:
+              type: boolean
+            partnership_openness:
+              type: boolean
+            recent_trigger:
+              type: boolean
+            signals:
+              type: array
+              items:
+                $ref: "#/components/schemas/Signal"
+            history:
+              type: array
+              items:
+                $ref: "#/components/schemas/RecruitmentHistoryItem"
+
+    RecruitmentHistoryItem:
+      type: object
+      required: [id, to_stage, created_at]
+      properties:
+        id:
+          type: string
+        from_stage:
+          oneOf:
+            - $ref: "#/components/schemas/RecruitmentStage"
+            - type: "null"
+        to_stage:
+          $ref: "#/components/schemas/RecruitmentStage"
+        note:
+          type: ["string", "null"]
+        actor_name:
+          type: ["string", "null"]
+        created_at:
+          type: string
+
+    TransitionRecruitmentInput:
+      type: object
+      required: [to_stage]
+      properties:
+        to_stage:
+          $ref: "#/components/schemas/RecruitmentStage"
+        note:
+          type: ["string", "null"]
+          description: Optional short note explaining the transition. Recorded on the history row.
+        not_pursuing_reason:
+          oneOf:
+            - $ref: "#/components/schemas/NotPursuingReason"
+            - type: "null"
+          description: Required when to_stage is not_pursuing.
+
+    UpdateRecruitmentInput:
+      type: object
+      properties:
+        next_step:
+          type: ["string", "null"]
+        follow_up_date:
           type: ["string", "null"]
 
     ProspectDecisionInput:

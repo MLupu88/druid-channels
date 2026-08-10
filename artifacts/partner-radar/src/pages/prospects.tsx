@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Link } from 'wouter';
 import { 
   useListProspects, 
   useListTerritories, 
@@ -271,8 +272,8 @@ export default function Prospects() {
         setNote('');
         setRejectionReason('');
         toast({
-          title: variables.data.decision === 'accepted' ? 'Prospect accepted' : `Prospect ${variables.data.decision}`,
-          description: variables.data.decision === 'accepted' ? 'Ready to send to HubSpot.' : '',
+          title: variables.data.decision === 'accepted' ? 'Accepted for Recruitment' : `Prospect ${variables.data.decision}`,
+          description: variables.data.decision === 'accepted' ? 'Now in the Recruitment workspace, owned by the territory PAM.' : '',
         });
       }
     }
@@ -712,12 +713,14 @@ export default function Prospects() {
               <div className="flex items-center gap-2">
                 {detail.status === 'new' && (
                   <Button className="flex-1" onClick={() => setAcceptDialogOpen(true)}>
-                    Accept prospect
+                    Accept for Recruitment
                   </Button>
                 )}
                 {detail.status === 'accepted' && (
-                  <Button className="flex-1 bg-[#ff7a59] hover:bg-[#e0694b] text-white" onClick={() => setHubspotDialogOpen(true)}>
-                    Send to HubSpot
+                  <Button className="flex-1" variant="outline" asChild>
+                    <Link href="/recruitment">
+                      View in Recruitment
+                    </Link>
                   </Button>
                 )}
                 {detail.status === 'pushed_to_hubspot' && (
@@ -935,14 +938,14 @@ export default function Prospects() {
       <Dialog open={acceptDialogOpen} onOpenChange={setAcceptDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Accept {detail?.company.name}?</DialogTitle>
+            <DialogTitle>Accept {detail?.company.name} for Recruitment?</DialogTitle>
             <DialogDescription>
-              This prospect will be assigned to you in the {detail?.territory_name} territory.
+              This starts a Recruitment record in the {detail?.territory_name} territory, owned by {detail?.assigned_user?.name ?? 'the territory PAM'}.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <label className="text-sm font-medium mb-2 block">Add a note (optional)</label>
-            <Textarea 
+            <Textarea
               value={note}
               onChange={e => setNote(e.target.value)}
               placeholder="Why are you accepting this?"
@@ -951,7 +954,7 @@ export default function Prospects() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setAcceptDialogOpen(false)}>Cancel</Button>
             <Button onClick={() => handleDecision('accepted')} disabled={decisionMutation.isPending}>
-              Accept prospect
+              Accept for Recruitment
             </Button>
           </DialogFooter>
         </DialogContent>

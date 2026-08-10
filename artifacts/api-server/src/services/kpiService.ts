@@ -9,6 +9,7 @@ import {
   metricTargetsTable,
   connectionsTable,
   usersTable,
+  partnerRecruitmentsTable,
 } from "@workspace/db";
 import { eq, and, isNull, gte, lte, inArray, desc } from "drizzle-orm";
 import { METRIC_BY_KEY, METRIC_REGISTRY, PERIODS, resolvePeriodKey, isMoneyMetric, type SourceType } from "./kpiRegistry";
@@ -182,47 +183,55 @@ async function computeNewPartnerProspects(periodKey: string, target: ResolvedTer
 // last_updated reflects the underlying prospect rows' own updated_at, not
 // request time. Last Week is the same cumulative count through the end of
 // the previous calendar week, clamped to the period's own end.
+// Stage 4 correction: eligibility is partner_recruitments.stage = "signed"
+// (never prospects.status accepted/pushed_to_hubspot -- Accepted,
+// Contacting, Engaged, and Agreement are all real, ongoing recruitment work,
+// not a signed partner). The date field is signed_at, set only the moment a
+// recruitment enters "signed" (see partnerRecruitmentService.ts) and never
+// substituted with accepted_at/created_at. No historical backfill: existing
+// demo/legacy accepted or pushed_to_hubspot prospects were never given a
+// partner_recruitments row retroactively, so they honestly do not count here.
 async function computeSignedPartners(periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
   const periodInfo = PERIODS[periodKey];
   const allTerritories = await db.select().from(territoriesTable);
-  const allProspects = await db.select().from(prospectsTable);
+  const allRecruitments = await db.select().from(partnerRecruitmentsTable);
 
   const periodStartMs = new Date(periodInfo.start).getTime();
   const periodEndMs = new Date(periodInfo.end + "T23:59:59.999Z").getTime();
 
-  const isEligibleThrough = (p: (typeof allProspects)[number], endMs: number) => {
-    if (p.status !== "accepted" && p.status !== "pushed_to_hubspot") return false;
-    if (p.acceptedAt === null) return false;
-    const acceptedMs = new Date(p.acceptedAt as unknown as string).getTime();
-    return acceptedMs >= periodStartMs && acceptedMs <= endMs;
+  const isEligibleThrough = (r: (typeof allRecruitments)[number], endMs: number) => {
+    if (r.stage !== "signed") return false;
+    if (r.signedAt === null) return false;
+    const signedMs = new Date(r.signedAt as unknown as string).getTime();
+    return signedMs >= periodStartMs && signedMs <= endMs;
   };
 
-  const eligible = allProspects.filter((p) => isEligibleThrough(p, effectiveAsOfMs(periodKey)));
+  const eligible = allRecruitments.filter((r) => isEligibleThrough(r, effectiveAsOfMs(periodKey)));
 
   const byTerritory: TerritoryContribution[] = allTerritories.map((t) => ({
     territory_id: t.id,
     territory_name: t.name,
-    value: eligible.filter((p) => p.territoryId === t.id).length,
+    value: eligible.filter((r) => r.territoryId === t.id).length,
   }));
 
-  const scoped = target.territoryId ? eligible.filter((p) => p.territoryId === target.territoryId) : eligible;
-  const mostRecentUpdated = scoped.reduce<Date | null>((latest, p) => {
-    const updated = new Date(p.updatedAt as unknown as string);
+  const scoped = target.territoryId ? eligible.filter((r) => r.territoryId === target.territoryId) : eligible;
+  const mostRecentUpdated = scoped.reduce<Date | null>((latest, r) => {
+    const updated = new Date(r.updatedAt as unknown as string);
     return !latest || updated > latest ? updated : latest;
   }, null);
 
   const records: KpiDetailRecord[] = scoped
     .slice(0, 100)
-    .map((p) => ({
-      label: `Prospect ${p.id.slice(0, 8)} (${p.status})`,
+    .map((r) => ({
+      label: `Recruitment ${r.id.slice(0, 8)} (signed)`,
       value: 1,
-      date: new Date(p.acceptedAt as unknown as string).toISOString(),
+      date: new Date(r.signedAt as unknown as string).toISOString(),
     }));
 
   const lastWeekEndMs = Math.min(periodEndMs, endOfPreviousCalendarWeek(new Date()).getTime());
-  const lastWeekEligible = allProspects.filter((p) => isEligibleThrough(p, lastWeekEndMs));
+  const lastWeekEligible = allRecruitments.filter((r) => isEligibleThrough(r, lastWeekEndMs));
   const lastWeekScoped = target.territoryId
-    ? lastWeekEligible.filter((p) => p.territoryId === target.territoryId)
+    ? lastWeekEligible.filter((r) => r.territoryId === target.territoryId)
     : lastWeekEligible;
 
   return {
@@ -232,11 +241,11 @@ async function computeSignedPartners(periodKey: string, target: ResolvedTerritor
     trend: trendOf(scoped.length, lastWeekScoped.length),
     status: null,
     data_status: "CONNECTED",
-    data_source: "Live: prospects table, accepted/pushed_to_hubspot prospects with accepted_at inside the selected period, through the effective as-of date",
+    data_source: "Live: partner_recruitments table, stage=signed with signed_at inside the selected period, through the effective as-of date",
     last_updated: (mostRecentUpdated ?? new Date()).toISOString(),
     last_updated_is_synthetic: mostRecentUpdated === null,
     what_changed: null,
-    explanation: `${scoped.length} partner${scoped.length === 1 ? "" : "s"} signed (accepted or pushed to HubSpot) in ${periodInfo.label} for ${target.territoryName}, based on accepted_at.`,
+    explanation: `${scoped.length} partner${scoped.length === 1 ? "" : "s"} signed in ${periodInfo.label} for ${target.territoryName}, based on signed_at.`,
     by_territory: byTerritory,
     records,
   };

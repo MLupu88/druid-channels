@@ -44,6 +44,7 @@ import type {
   ListMetricTargetsParams,
   ListPartnersParams,
   ListProspectsParams,
+  ListRecruitmentsParams,
   ListScanRunsParams,
   LoginInput,
   ManualMetricValue,
@@ -60,6 +61,8 @@ import type {
   ProspectDetail,
   ProspectEditInput,
   ProspectStats,
+  Recruitment,
+  RecruitmentDetail,
   RegenerateAiChannelBriefInput,
   ScanConfig,
   ScanConfigInput,
@@ -68,6 +71,8 @@ import type {
   ScanRunResult,
   Territory,
   TerritoryEditInput,
+  TransitionRecruitmentInput,
+  UpdateRecruitmentInput,
   User,
   UserEditInput,
   UserResetPasswordResponse
@@ -1066,6 +1071,311 @@ export const usePushProspectToHubspot = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getPushProspectToHubspotMutationOptions(options));
+    }
+
+export const getListRecruitmentsUrl = (params?: ListRecruitmentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/recruitment?${stringifiedParams}` : `/api/recruitment`
+}
+
+/**
+ * @summary List partner recruitments with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+export const listRecruitments = async (params?: ListRecruitmentsParams, options?: Parameters<typeof customFetch>[1]): Promise<Recruitment[]> => {
+
+  return customFetch<Recruitment[]>(getListRecruitmentsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRecruitmentsQueryKey = (params?: ListRecruitmentsParams,) => {
+    return [
+    `/api/recruitment`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListRecruitmentsQueryOptions = <TData = Awaited<ReturnType<typeof listRecruitments>>, TError = ErrorType<unknown>>(params?: ListRecruitmentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecruitments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRecruitmentsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRecruitments>>> = ({ signal }) => listRecruitments(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRecruitments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRecruitmentsQueryResult = NonNullable<Awaited<ReturnType<typeof listRecruitments>>>
+export type ListRecruitmentsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List partner recruitments with optional filters (PAM sees only their own territory; Head of Channels/admin sees all)
+ */
+
+export function useListRecruitments<TData = Awaited<ReturnType<typeof listRecruitments>>, TError = ErrorType<unknown>>(
+ params?: ListRecruitmentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecruitments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRecruitmentsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetRecruitmentUrl = (id: string,) => {
+
+
+
+
+  return `/api/recruitment/${id}`
+}
+
+/**
+ * @summary Get a recruitment's full detail, including Discovery context, evidence, and stage history
+ */
+export const getRecruitment = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<RecruitmentDetail> => {
+
+  return customFetch<RecruitmentDetail>(getGetRecruitmentUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRecruitmentQueryKey = (id: string,) => {
+    return [
+    `/api/recruitment/${id}`
+    ] as const;
+    }
+
+
+export const getGetRecruitmentQueryOptions = <TData = Awaited<ReturnType<typeof getRecruitment>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecruitment>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRecruitmentQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecruitment>>> = ({ signal }) => getRecruitment(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRecruitment>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRecruitmentQueryResult = NonNullable<Awaited<ReturnType<typeof getRecruitment>>>
+export type GetRecruitmentQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a recruitment's full detail, including Discovery context, evidence, and stage history
+ */
+
+export function useGetRecruitment<TData = Awaited<ReturnType<typeof getRecruitment>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecruitment>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRecruitmentQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateRecruitmentUrl = (id: string,) => {
+
+
+
+
+  return `/api/recruitment/${id}`
+}
+
+/**
+ * @summary Lightweight edit of next_step / follow_up_date (does not change stage)
+ */
+export const updateRecruitment = async (id: string,
+    updateRecruitmentInput: UpdateRecruitmentInput, options?: Parameters<typeof customFetch>[1]): Promise<Recruitment> => {
+
+  return customFetch<Recruitment>(getUpdateRecruitmentUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateRecruitmentInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateRecruitmentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRecruitment>>, TError,{id: string;data: BodyType<UpdateRecruitmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRecruitment>>, TError,{id: string;data: BodyType<UpdateRecruitmentInput>}, TContext> => {
+
+const mutationKey = ['updateRecruitment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRecruitment>>, {id: string;data: BodyType<UpdateRecruitmentInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateRecruitment(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRecruitmentMutationResult = NonNullable<Awaited<ReturnType<typeof updateRecruitment>>>
+    export type UpdateRecruitmentMutationBody = BodyType<UpdateRecruitmentInput>
+    export type UpdateRecruitmentMutationError = ErrorType<void>
+
+    /**
+ * @summary Lightweight edit of next_step / follow_up_date (does not change stage)
+ */
+export const useUpdateRecruitment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRecruitment>>, TError,{id: string;data: BodyType<UpdateRecruitmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateRecruitment>>,
+        TError,
+        {id: string;data: BodyType<UpdateRecruitmentInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateRecruitmentMutationOptions(options));
+    }
+
+export const getTransitionRecruitmentUrl = (id: string,) => {
+
+
+
+
+  return `/api/recruitment/${id}/transition`
+}
+
+/**
+ * @summary Move a recruitment to a new stage. Transition validity is enforced server-side -- the frontend cannot set an arbitrary stage.
+ */
+export const transitionRecruitment = async (id: string,
+    transitionRecruitmentInput: TransitionRecruitmentInput, options?: Parameters<typeof customFetch>[1]): Promise<Recruitment> => {
+
+  return customFetch<Recruitment>(getTransitionRecruitmentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(transitionRecruitmentInput)
+  }
+);}
+
+
+
+
+
+export const getTransitionRecruitmentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transitionRecruitment>>, TError,{id: string;data: BodyType<TransitionRecruitmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof transitionRecruitment>>, TError,{id: string;data: BodyType<TransitionRecruitmentInput>}, TContext> => {
+
+const mutationKey = ['transitionRecruitment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof transitionRecruitment>>, {id: string;data: BodyType<TransitionRecruitmentInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  transitionRecruitment(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TransitionRecruitmentMutationResult = NonNullable<Awaited<ReturnType<typeof transitionRecruitment>>>
+    export type TransitionRecruitmentMutationBody = BodyType<TransitionRecruitmentInput>
+    export type TransitionRecruitmentMutationError = ErrorType<void>
+
+    /**
+ * @summary Move a recruitment to a new stage. Transition validity is enforced server-side -- the frontend cannot set an arbitrary stage.
+ */
+export const useTransitionRecruitment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transitionRecruitment>>, TError,{id: string;data: BodyType<TransitionRecruitmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof transitionRecruitment>>,
+        TError,
+        {id: string;data: BodyType<TransitionRecruitmentInput>},
+        TContext
+      > => {
+      return useMutation(getTransitionRecruitmentMutationOptions(options));
     }
 
 export const getListScanConfigsUrl = () => {
