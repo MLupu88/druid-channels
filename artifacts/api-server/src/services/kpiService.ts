@@ -12,7 +12,7 @@ import {
   partnerRecruitmentsTable,
 } from "@workspace/db";
 import { eq, and, isNull, gte, lte, inArray, desc } from "drizzle-orm";
-import { METRIC_BY_KEY, METRIC_REGISTRY, PERIODS, resolvePeriodKey, isMoneyMetric, type SourceType } from "./kpiRegistry";
+import { METRIC_BY_KEY, METRIC_REGISTRY, resolvePeriodRange, resolvePeriodKey, splitPeriodKey, isMoneyMetric, type SourceType } from "./kpiRegistry";
 import { hasCredential } from "./connections";
 import { resolveFx, type SupportedCurrency, type FxInfo } from "./fx";
 
@@ -114,6 +114,8 @@ function trendOf(current: number, previous: number): "up" | "down" | "flat" {
 // final report).
 export async function getTargetOverride(metricKey: string, periodKey: string, territoryId: string | null): Promise<number | null> {
   if (!territoryId) return null;
+  const split = splitPeriodKey(periodKey);
+  if (!split) return null;
   const [territory] = await db.select().from(territoriesTable).where(eq(territoriesTable.id, territoryId));
   const pamUserId = territory?.ownerUserId ?? null;
   if (!pamUserId) return null;
@@ -124,7 +126,8 @@ export async function getTargetOverride(metricKey: string, periodKey: string, te
     .where(
       and(
         eq(metricTargetsTable.metricKey, metricKey),
-        eq(metricTargetsTable.period, periodKey),
+        eq(metricTargetsTable.year, split.year),
+        eq(metricTargetsTable.period, split.quarterKey),
         eq(metricTargetsTable.territoryId, territoryId),
         eq(metricTargetsTable.pamUserId, pamUserId),
       ),
@@ -138,7 +141,7 @@ export async function getTargetOverride(metricKey: string, periodKey: string, te
 // threading the override in here (rather than only patching `target` after
 // the fact) keeps status and target consistent in one pass.
 async function computeNewPartnerProspects(periodKey: string, target: ResolvedTerritory, targetOverride?: number | null): Promise<KpiComputation> {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const allTerritories = await db.select().from(territoriesTable);
   const allProspects = await db.select().from(prospectsTable);
 
@@ -214,7 +217,7 @@ async function computeNewPartnerProspects(periodKey: string, target: ResolvedTer
 // demo/legacy accepted or pushed_to_hubspot prospects were never given a
 // partner_recruitments row retroactively, so they honestly do not count here.
 async function computeSignedPartners(periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const allTerritories = await db.select().from(territoriesTable);
   const allRecruitments = await db.select().from(partnerRecruitmentsTable);
 
@@ -280,7 +283,7 @@ async function computeSignedPartners(periodKey: string, target: ResolvedTerritor
 // the same cumulative count through the end of the previous calendar week,
 // clamped to the period's own end.
 async function computeRenewals(periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const allTerritories = await db.select().from(territoriesTable);
   const allProspects = await db.select().from(prospectsTable);
 
@@ -366,13 +369,13 @@ function minDateStr(a: string, b: string): string {
 // >= period.start lower bound in the caller -- yields an empty (and
 // therefore zero) window rather than needing a special case.
 function effectiveAsOfMs(periodKey: string): number {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const periodEndMs = new Date(periodInfo.end + "T23:59:59.999Z").getTime();
   return Math.min(periodEndMs, Date.now());
 }
 
 function effectiveAsOfDateStr(periodKey: string): string {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const todayStr = new Date().toISOString().slice(0, 10);
   return minDateStr(periodInfo.end, todayStr);
 }
@@ -382,7 +385,7 @@ function effectiveAsOfDateStr(periodKey: string): string {
 // live total; a "past" period reads a persisted snapshot; a "future"
 // period is honestly unavailable rather than either of those.
 function periodState(periodKey: string): "past" | "active" | "future" {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const todayStr = new Date().toISOString().slice(0, 10);
   if (todayStr < periodInfo.start) return "future";
   if (todayStr > periodInfo.end) return "past";
@@ -509,7 +512,7 @@ async function computeCurrentStateFromSnapshot(
   periodKey: string,
   target: ResolvedTerritory,
 ): Promise<KpiComputation> {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const label = METRIC_BY_KEY.get(metricKey)!.label;
   const allTerritories = await db.select().from(territoriesTable);
 
@@ -657,7 +660,7 @@ async function computeActivities(metricKey: string, target: ResolvedTerritory): 
 }
 
 async function computeDemo(metricKey: string, periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const label = METRIC_BY_KEY.get(metricKey)!.label;
   const allTerritories = await db.select().from(territoriesTable);
 
@@ -713,8 +716,9 @@ async function computeDemo(metricKey: string, periodKey: string, target: Resolve
 }
 
 async function computeManual(metricKey: string, periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
+  const split = splitPeriodKey(periodKey);
   const rows = await db.select().from(manualMetricValuesTable).where(eq(manualMetricValuesTable.metricKey, metricKey));
-  const periodRows = rows.filter((r) => r.period === periodKey);
+  const periodRows = split ? rows.filter((r) => r.period === split.quarterKey && r.year === split.year) : [];
   const allTerritories = await db.select().from(territoriesTable);
 
   const byTerritory: TerritoryContribution[] = allTerritories.map((t) => {
@@ -945,7 +949,7 @@ function targetToDate(periodKey: string, fullPeriodTarget: number | null): numbe
   if (state === "future") return 0;
   if (state === "past") return fullPeriodTarget;
 
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const startMs = new Date(periodInfo.start + "T00:00:00.000Z").getTime();
   const endMs = new Date(periodInfo.end + "T23:59:59.999Z").getTime();
   const todayEndMs = new Date(new Date().toISOString().slice(0, 10) + "T23:59:59.999Z").getTime();
@@ -956,7 +960,7 @@ function targetToDate(periodKey: string, fullPeriodTarget: number | null): numbe
 }
 
 function fullPeriodTargetLabelFor(periodKey: string): "Full-quarter target" | "Full-year target" {
-  return periodKey === "ytd" ? "Full-year target" : "Full-quarter target";
+  return splitPeriodKey(periodKey)?.quarterKey === "ytd" ? "Full-year target" : "Full-quarter target";
 }
 
 function computeVariance(current: number | null, targetToDateValue: number | null): number | null {
@@ -1010,7 +1014,7 @@ async function buildPamContribution(byTerritory: TerritoryContribution[]): Promi
 // passes it in, rather than each metric independently calling resolveFx.
 async function buildKpiDetailCore(metricKey: string, periodKey: string, target: ResolvedTerritory, fx: FxInfo) {
   const def = METRIC_BY_KEY.get(metricKey)!;
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const rate = fx.usd_to_currency_rate;
   const money = isMoneyMetric(metricKey);
 
@@ -1062,4 +1066,4 @@ export async function buildKpiDetailWithFx(metricKey: string, periodKey: string,
   return buildKpiDetailCore(metricKey, periodKey, target, fx);
 }
 
-export { resolvePeriodKey, PERIODS };
+export { resolvePeriodKey, resolvePeriodRange };

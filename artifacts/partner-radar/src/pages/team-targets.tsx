@@ -6,8 +6,9 @@ import {
 } from '@workspace/api-client-react';
 import type { TeamTargetRow } from '@workspace/api-client-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { PeriodSelector } from '@/components/period-selector';
+import { getDefaultPeriodKey } from '@/lib/period';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,7 +36,7 @@ function ProgressBadge({ row }: { row: TeamTargetRow }) {
 export default function TeamTargets() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [period, setPeriod] = useState('q3');
+  const [period, setPeriod] = useState(getDefaultPeriodKey());
   const [editingRow, setEditingRow] = useState<TeamTargetRow | null>(null);
 
   const { data: rows, isLoading } = useListTeamTargets({ period });
@@ -49,16 +50,7 @@ export default function TeamTargets() {
           <h1 className="text-2xl font-semibold tracking-tight">Team Targets</h1>
           <p className="text-sm text-muted-foreground mt-1">What each PAM has been asked to achieve this period, and how they're doing against it.</p>
         </div>
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-[150px] h-8 bg-background border-border/60"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="q1">Q1 2026</SelectItem>
-            <SelectItem value="q2">Q2 2026</SelectItem>
-            <SelectItem value="q3">Q3 2026</SelectItem>
-            <SelectItem value="q4">Q4 2026</SelectItem>
-            <SelectItem value="ytd">Year to date</SelectItem>
-          </SelectContent>
-        </Select>
+        <PeriodSelector value={period} onChange={setPeriod} />
       </div>
 
       <Card className="shadow-none border-border/70">

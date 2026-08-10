@@ -1522,6 +1522,9 @@ function ChannelRadarTab() {
                     value={localConfig.lookback_days ?? 30}
                     onChange={(e) => setLocalConfig((prev: any) => ({ ...prev, lookback_days: Number(e.target.value) || 30 }))}
                   />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Enforced as a real search-provider date filter -- Run Radar only searches from this many days ago onward.
+                  </p>
                 </CardContent>
               </Card>
 

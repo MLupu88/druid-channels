@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { GetHeadOfChannelsKpisResponse, GetKpiDetailsResponse } from "@workspace/api-zod";
 import { METRIC_BY_KEY } from "../services/kpiRegistry";
-import { resolvePeriodKey, PERIODS, buildHeadOfChannelsData, buildKpiDetail } from "../services/kpiService";
+import { resolvePeriodKey, resolvePeriodRange, buildHeadOfChannelsData, buildKpiDetail } from "../services/kpiService";
 import { requireAuth } from "../middleware/auth";
 import { resolveScopedTerritory, ForbiddenScopeError } from "../services/authz";
 import { FxUnavailableError, InvalidCurrencyError, parseCurrencyParam } from "../services/fx";
@@ -11,7 +11,7 @@ const router: IRouter = Router();
 router.get("/kpis/head-of-channels", requireAuth, async (req, res): Promise<void> => {
   const { territory, period, currency } = req.query as { territory?: string; period?: string; currency?: string };
   const periodKey = resolvePeriodKey(period);
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   let target;
   try {
     target = await resolveScopedTerritory(req.actingUser!, territory);

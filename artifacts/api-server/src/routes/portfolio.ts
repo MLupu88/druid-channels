@@ -42,7 +42,7 @@ import {
 import { resolveCompanyMatch, normalizeCompanyName } from "../services/companyMatchingService";
 import { backfillRadarSignalsForCompany } from "../services/radarCompanyBridge";
 import { isActiveStage, type RecruitmentStage } from "../services/partnerRecruitmentService";
-import { PERIODS, resolvePeriodKey } from "../services/kpiRegistry";
+import { resolvePeriodRange, resolvePeriodKey, splitPeriodKey } from "../services/kpiRegistry";
 
 const router: IRouter = Router();
 
@@ -118,8 +118,8 @@ router.get("/portfolio/summary", requireAuth, async (req, res): Promise<void> =>
   }
 
   const periodKey = resolvePeriodKey(parsedQuery.data.period);
-  const periodInfo = PERIODS[periodKey]!;
-  const periodGranularity: "quarter" | "year" = periodKey === "ytd" ? "year" : "quarter";
+  const periodInfo = resolvePeriodRange(periodKey);
+  const periodGranularity: "quarter" | "year" = splitPeriodKey(periodKey)?.quarterKey === "ytd" ? "year" : "quarter";
   const periodStartMs = new Date(periodInfo.start).getTime();
   const periodEndMs = new Date(periodInfo.end + "T23:59:59.999Z").getTime();
 

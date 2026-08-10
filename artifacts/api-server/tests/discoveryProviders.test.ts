@@ -47,6 +47,36 @@ test("searchViaTavily throws SearchProviderError on a non-2xx response", async (
   await assert.rejects(() => searchViaTavily("query", { maxResults: 5 }), SearchProviderError);
 });
 
+// Stage 6.3: lookback_days real enforcement -- start_date is Tavily's own
+// documented hard recency parameter (confirmed against Tavily's API
+// reference), so passing it through the actual request body is real
+// enforcement, not a query-text trick.
+test("searchViaTavily includes start_date in the request body when provided (real lookback enforcement, not query-text stuffing)", async () => {
+  process.env.SEARCH_API_KEY = "test-key";
+  let capturedBody: any = null;
+  globalThis.fetch = (async (_url: any, init: any) => {
+    capturedBody = JSON.parse(init.body);
+    return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+
+  await searchViaTavily("Microsoft partnership Romania", { maxResults: 3, startDate: "2026-07-11" });
+
+  assert.equal(capturedBody.start_date, "2026-07-11");
+});
+
+test("searchViaTavily omits start_date entirely when not provided -- never a fabricated default window", async () => {
+  process.env.SEARCH_API_KEY = "test-key";
+  let capturedBody: any = null;
+  globalThis.fetch = (async (_url: any, init: any) => {
+    capturedBody = JSON.parse(init.body);
+    return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+
+  await searchViaTavily("AI systems integrator", { maxResults: 5 });
+
+  assert.equal("start_date" in capturedBody, false);
+});
+
 test("qualifyViaDeepSeek parses a valid qualification and filters invalid evidence URLs", async () => {
   process.env.AI_API_KEY = "test-key";
   const validQualification = {

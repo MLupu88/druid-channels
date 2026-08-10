@@ -7,15 +7,7 @@
  */
 
 /**
- * The same canonical reporting-period keys used throughout the KPI/reporting/PPTX stack.
+ * Stage 6.3 -- composite "<year>-<quarterKey>" period identity used throughout the KPI/reporting/PPTX/targets stack (never a bare "q3", which would collide across years). Invalid/missing values resolve server-side to the current year + current quarter.
+ * @pattern ^\d{4}-(q1|q2|q3|q4|ytd)$
  */
-export type KpiPeriod = typeof KpiPeriod[keyof typeof KpiPeriod];
-
-
-export const KpiPeriod = {
-  q1: 'q1',
-  q2: 'q2',
-  q3: 'q3',
-  q4: 'q4',
-  ytd: 'ytd',
-} as const;
+export type KpiPeriod = string;

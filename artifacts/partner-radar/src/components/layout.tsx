@@ -11,7 +11,8 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarProvider,
-  SidebarSeparator
+  SidebarSeparator,
+  SidebarTrigger
 } from '@/components/ui/sidebar';
 import {
   LayoutDashboard,
@@ -19,8 +20,6 @@ import {
   Briefcase,
   ListOrdered,
   Settings,
-  Search,
-  HelpCircle,
   ChevronDown,
   Radio,
   Handshake,
@@ -39,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { SearchTrigger } from '@/components/search-trigger';
 import druidLogo from '@/assets/druid-logo.png';
 
 interface NavItem {
@@ -64,7 +64,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
         { href: '/team-targets', label: 'Team Targets', icon: Target },
         { href: '/pams', label: 'PAMs', icon: Users },
-        { href: '/activities', label: 'Activities', icon: ListOrdered },
+        { href: '/activities', label: 'Marketing Activities', icon: ListOrdered },
       ]
     : [
         { href: '/', label: 'Overview', icon: LayoutDashboard },
@@ -73,24 +73,39 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/portfolio', label: 'Portfolio', icon: Building2 },
         { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
         { href: '/my-workspace', label: 'My workspace', icon: Briefcase },
-        { href: '/activities', label: 'Activities', icon: ListOrdered },
+        { href: '/activities', label: 'Marketing Activities', icon: ListOrdered },
       ];
 
   return (
     <SidebarProvider>
       <div className="flex min-h-[100dvh] w-full bg-background">
-        <Sidebar className="border-r border-border/50">
+        {/*
+          collapsible="icon": at any desktop width the sidebar can be
+          toggled to a narrow icon-only rail (via the SidebarTrigger in the
+          header below) instead of ever needing to hide items outright.
+          On an actual mobile viewport (see useIsMobile, <768px) the same
+          Sidebar component automatically renders as a slide-over Sheet
+          drawer instead -- this is shadcn's sidebar primitive's own
+          built-in behavior, already imported, just never wired to a
+          trigger before now. Every nav item stays reachable at every
+          width; only its presentation (label vs. icon+tooltip vs. drawer)
+          changes.
+        */}
+        <Sidebar collapsible="icon" className="border-r border-border/50">
           <SidebarHeader className="px-4 py-4 flex items-center justify-start gap-2 h-14 border-b border-border/50">
             <img src={druidLogo} alt="DRUID" className="h-5 w-auto shrink-0" />
-            <span className="font-semibold text-foreground truncate text-sm">Channels &amp; alliances</span>
+            <span className="font-semibold text-foreground truncate text-sm group-data-[collapsible=icon]:hidden">Channels &amp; alliances</span>
           </SidebarHeader>
+          {/* SidebarContent is scrollable by default (overflow-auto in the
+              primitive) -- a long, role-filtered nav list never gets
+              clipped by the viewport height. */}
           <SidebarContent>
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {navItems.map((item) => (
                     <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton asChild isActive={location === item.href}>
+                      <SidebarMenuButton asChild isActive={location === item.href} tooltip={item.label}>
                         <Link href={item.href}>
                           <item.icon />
                           <span>{item.label}</span>
@@ -110,7 +125,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <SidebarGroupContent>
                   <SidebarMenu>
                     <SidebarMenuItem>
-                      <SidebarMenuButton asChild isActive={location === '/settings'} className="text-muted-foreground data-[active=true]:text-foreground">
+                      <SidebarMenuButton asChild isActive={location === '/settings'} tooltip="Admin" className="text-muted-foreground data-[active=true]:text-foreground">
                         <Link href="/settings">
                           <Settings />
                           <span>Admin</span>
@@ -125,23 +140,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </Sidebar>
 
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="h-14 flex items-center justify-between border-b border-border/50 bg-card px-6 shrink-0">
-            <div className="flex-1 flex items-center max-w-md">
-              <div className="relative w-full">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="search"
-                  placeholder="Search..."
-                  className="h-9 w-full rounded-md border border-input bg-transparent pl-9 pr-4 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-              </div>
+          <header className="h-14 flex items-center gap-3 border-b border-border/50 bg-card px-3 sm:px-6 shrink-0 min-w-0">
+            {/* Always visible at every width -- toggles icon-mode on
+                desktop, opens the drawer on mobile. This is the one
+                control that guarantees the nav is never truly gone, only
+                ever collapsed. */}
+            <SidebarTrigger />
+
+            <div className="flex-1 min-w-0 flex items-center max-w-md">
+              <SearchTrigger />
             </div>
 
-            <div className="flex items-center gap-4 ml-auto">
-              <button className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md hover:bg-muted" aria-label="Help">
-                <HelpCircle className="h-5 w-5" />
-              </button>
-
+            <div className="flex items-center gap-2 sm:gap-4 shrink-0">
               {user && (
                 <DropdownMenu>
                   <DropdownMenuTrigger className="flex items-center gap-2 hover:bg-muted py-1.5 px-2 rounded-md transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="button-user-menu">

@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { db } from "@workspace/db";
 import { aiChannelBriefsTable, type AiChannelBriefContent } from "@workspace/db";
 import { eq, and, isNull, sql } from "drizzle-orm";
-import { buildHeadOfChannelsData, PERIODS, type ResolvedTerritory } from "./kpiService";
+import { buildHeadOfChannelsData, type ResolvedTerritory } from "./kpiService";
+import { resolvePeriodRange, splitPeriodKey } from "./kpiRegistry";
 import type { SupportedCurrency } from "./fx";
 import * as aiBriefProvider from "./aiBriefProvider";
 import { logger } from "../lib/logger";
@@ -99,11 +100,20 @@ function deriveDataAsOf(eligible: aiBriefProvider.AiBriefMetricSnapshot[]): stri
 }
 
 async function fetchCachedRow(periodKey: string, territoryId: string | null, currency: string) {
+  const split = splitPeriodKey(periodKey);
+  if (!split) return undefined;
   const scopeFilter = territoryId ? eq(aiChannelBriefsTable.territoryId, territoryId) : isNull(aiChannelBriefsTable.territoryId);
   const [row] = await db
     .select()
     .from(aiChannelBriefsTable)
-    .where(and(eq(aiChannelBriefsTable.period, periodKey), eq(aiChannelBriefsTable.currency, currency), scopeFilter));
+    .where(
+      and(
+        eq(aiChannelBriefsTable.year, split.year),
+        eq(aiChannelBriefsTable.period, split.quarterKey),
+        eq(aiChannelBriefsTable.currency, currency),
+        scopeFilter,
+      ),
+    );
   return row;
 }
 
@@ -116,9 +126,12 @@ async function upsertBrief(input: {
   dataAsOf: string | null;
   requestedByUserId: string;
 }) {
+  const split = splitPeriodKey(input.periodKey);
+  if (!split) throw new Error(`Invalid periodKey: ${input.periodKey}`);
   const now = new Date();
   const values = {
-    period: input.periodKey,
+    year: split.year,
+    period: split.quarterKey,
     territoryId: input.territoryId,
     currency: input.currency,
     content: input.content,
@@ -144,7 +157,7 @@ async function upsertBrief(input: {
         .insert(aiChannelBriefsTable)
         .values(values)
         .onConflictDoUpdate({
-          target: [aiChannelBriefsTable.period, aiChannelBriefsTable.territoryId, aiChannelBriefsTable.currency],
+          target: [aiChannelBriefsTable.year, aiChannelBriefsTable.period, aiChannelBriefsTable.territoryId, aiChannelBriefsTable.currency],
           set: updateSet,
         })
         .returning()
@@ -152,7 +165,7 @@ async function upsertBrief(input: {
         .insert(aiChannelBriefsTable)
         .values(values)
         .onConflictDoUpdate({
-          target: [aiChannelBriefsTable.period, aiChannelBriefsTable.currency],
+          target: [aiChannelBriefsTable.year, aiChannelBriefsTable.period, aiChannelBriefsTable.currency],
           targetWhere: sql`${aiChannelBriefsTable.territoryId} is null`,
           set: updateSet,
         })
@@ -188,7 +201,7 @@ export interface BriefStateResult {
 // availability (providerStatus): a previously generated brief remains
 // readable even if AI_PROVIDER/AI_API_KEY are later removed.
 export async function getBriefState(periodKey: string, target: ResolvedTerritory, currency: SupportedCurrency): Promise<BriefStateResult> {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const allMetrics = await buildFullMetrics(periodKey, target, currency);
   const eligible = filterEligible(allMetrics);
   const currentHash = computeGenerationInputHash(periodKey, target.territoryId, currency, eligible);
@@ -228,7 +241,7 @@ export async function regenerateBrief(
   currency: SupportedCurrency,
   requestedByUserId: string,
 ): Promise<RegenerateOutcome> {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
   const providerConfigured = await aiBriefProvider.isConfigured();
   if (!providerConfigured) {
     return { ok: false, status: 400, error: "AI provider is not connected." };

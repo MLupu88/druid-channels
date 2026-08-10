@@ -214,7 +214,7 @@ export default function Campaigns() {
     <div className="flex flex-col h-full w-full bg-background relative">
       <div className="flex-none p-6 pb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Activities</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Marketing Activities</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Joint campaigns, events, and webinars run with or for partners.
           </p>

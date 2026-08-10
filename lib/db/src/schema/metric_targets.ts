@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp, numeric, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, timestamp, numeric, integer, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { territoriesTable } from "./territories";
@@ -13,13 +13,14 @@ import { usersTable } from "./users";
 // so editing a target never touches how "current" is computed. Absence of
 // a row means "no target configured" -- never a fabricated default.
 //
-// period uses the same canonical period key as everywhere else in the KPI
-// stack (kpiRegistry.PERIODS / resolvePeriodKey / manual_metric_values.period)
-// -- q1/q2/q3/q4/ytd -- kept as unconstrained text, matching
-// manual_metric_values.period exactly rather than introducing a new enum.
-// Never assumes a specific year: PERIODS (kpiRegistry.ts) maps these keys
-// to concrete dates for one year at a time -- that mapping, not this
-// column, is what 6.3 will make dynamic.
+// Stage 6.3: period identity is year + quarterKey (q1/q2/q3/q4/ytd) as two
+// separate columns -- the "year + period_key" model
+// (kpiRegistry.splitPeriodKey/joinPeriodKey bridges this to the single
+// composite "<year>-<quarterKey>" string used everywhere in memory/the
+// API). Without `year`, "Q1 2026" and "Q1 2027" would collide on the same
+// `period` value -- see drizzle/0012_*.sql for the year backfill (every
+// pre-6.3 row is unambiguously 2026, the only year this app has ever run
+// under).
 //
 // Stage 6.2: targets became explicitly PAM-scoped ("PAM is the person
 // accountable, territory is reporting/context scope"). pam_user_id is
@@ -36,6 +37,7 @@ export const metricTargetsTable = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     metricKey: text("metric_key").notNull(),
+    year: integer("year").notNull(),
     period: text("period").notNull(),
     territoryId: uuid("territory_id").references(() => territoriesTable.id, { onDelete: "cascade" }),
     pamUserId: uuid("pam_user_id").references(() => usersTable.id),
@@ -53,7 +55,7 @@ export const metricTargetsTable = pgTable(
     // fine, since those rows are legacy/read-only, not something new writes
     // can ever produce (both columns are always populated together from
     // 6.2 onward).
-    uniqueIndex("metric_targets_pam_territory_unique").on(table.metricKey, table.period, table.pamUserId, table.territoryId),
+    uniqueIndex("metric_targets_pam_territory_unique").on(table.metricKey, table.year, table.period, table.pamUserId, table.territoryId),
   ],
 );
 

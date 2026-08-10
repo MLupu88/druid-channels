@@ -94,6 +94,8 @@ import type {
   ScanRunInput,
   ScanRunResult,
   SearchCompaniesParams,
+  SearchParams,
+  SearchResult,
   TeamTargetRow,
   Territory,
   TerritoryEditInput,
@@ -2080,6 +2082,90 @@ export const useRunChannelRadar = <TError = ErrorType<void>,
       > => {
       return useMutation(getRunChannelRadarMutationOptions(options));
     }
+
+export const getSearchUrl = (params: SearchParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/search?${stringifiedParams}` : `/api/search`
+}
+
+/**
+ * @summary Stage 6.3 internal application search across Companies/Portfolio/Recruitment/Discovery/Channel Radar. Deterministic case-insensitive name/domain/entity matching -- no external search provider, no fuzzy AI matching. A PAM's results are hard-scoped server-side to their own canonical territory (never client-filtered).
+ */
+export const search = async (params: SearchParams, options?: Parameters<typeof customFetch>[1]): Promise<SearchResult[]> => {
+
+  return customFetch<SearchResult[]>(getSearchUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchQueryKey = (params?: SearchParams,) => {
+    return [
+    `/api/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchQueryOptions = <TData = Awaited<ReturnType<typeof search>>, TError = ErrorType<void>>(params: SearchParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof search>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof search>>> = ({ signal }) => search(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof search>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchQueryResult = NonNullable<Awaited<ReturnType<typeof search>>>
+export type SearchQueryError = ErrorType<void>
+
+
+/**
+ * @summary Stage 6.3 internal application search across Companies/Portfolio/Recruitment/Discovery/Channel Radar. Deterministic case-insensitive name/domain/entity matching -- no external search provider, no fuzzy AI matching. A PAM's results are hard-scoped server-side to their own canonical territory (never client-filtered).
+ */
+
+export function useSearch<TData = Awaited<ReturnType<typeof search>>, TError = ErrorType<void>>(
+ params: SearchParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof search>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getSearchCompaniesUrl = (params: SearchCompaniesParams,) => {
   const normalizedParams = new URLSearchParams();

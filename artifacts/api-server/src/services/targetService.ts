@@ -5,11 +5,12 @@
 // already use).
 import { db } from "@workspace/db";
 import { metricTargetsTable, territoriesTable, usersTable, type MetricTarget } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { METRIC_BY_KEY, TARGETABLE_METRIC_KEYS, isTargetableMetric } from "./kpiRegistry";
+import { eq, and } from "drizzle-orm";
+import { METRIC_BY_KEY, TARGETABLE_METRIC_KEYS, isTargetableMetric, splitPeriodKey } from "./kpiRegistry";
 import { computeMetric } from "./kpiService";
 
 export class TargetNotTargetableError extends Error {}
+export class TargetInvalidPeriodError extends Error {}
 export class TargetTerritoryNotFoundError extends Error {}
 export class TargetPamNotFoundError extends Error {}
 export class TargetPamTerritoryMismatchError extends Error {}
@@ -52,12 +53,15 @@ export async function upsertTarget(input: UpsertTargetInput): Promise<MetricTarg
   if (!isTargetableMetric(input.metricKey)) {
     throw new TargetNotTargetableError(`"${input.metricKey}" is not a targetable metric.`);
   }
+  const split = splitPeriodKey(input.periodKey);
+  if (!split) throw new TargetInvalidPeriodError(`Invalid period: ${input.periodKey}`);
   await assertPamOwnsTerritory(input.territoryId, input.pamUserId);
 
   const now = new Date();
   const values = {
     metricKey: input.metricKey,
-    period: input.periodKey,
+    year: split.year,
+    period: split.quarterKey,
     territoryId: input.territoryId,
     pamUserId: input.pamUserId,
     targetValue: String(input.targetValue),
@@ -71,7 +75,13 @@ export async function upsertTarget(input: UpsertTargetInput): Promise<MetricTarg
     .insert(metricTargetsTable)
     .values(values)
     .onConflictDoUpdate({
-      target: [metricTargetsTable.metricKey, metricTargetsTable.period, metricTargetsTable.pamUserId, metricTargetsTable.territoryId],
+      target: [
+        metricTargetsTable.metricKey,
+        metricTargetsTable.year,
+        metricTargetsTable.period,
+        metricTargetsTable.pamUserId,
+        metricTargetsTable.territoryId,
+      ],
       set: { targetValue: values.targetValue, note: values.note, updatedByUserId: values.updatedByUserId, updatedAt: values.updatedAt },
     })
     .returning();
@@ -132,10 +142,16 @@ export interface TeamTargetsScope {
 // values always come from kpiService.computeMetric -- never recomputed
 // here.
 export async function getTeamTargets(periodKey: string, scope: TeamTargetsScope = {}): Promise<TeamTargetRow[]> {
+  const split = splitPeriodKey(periodKey);
+  if (!split) throw new TargetInvalidPeriodError(`Invalid period: ${periodKey}`);
+
   const [allTerritories, allUsers, allTargets] = await Promise.all([
     db.select().from(territoriesTable),
     db.select().from(usersTable),
-    db.select().from(metricTargetsTable).where(eq(metricTargetsTable.period, periodKey)),
+    db
+      .select()
+      .from(metricTargetsTable)
+      .where(and(eq(metricTargetsTable.year, split.year), eq(metricTargetsTable.period, split.quarterKey))),
   ]);
   const userById = new Map(allUsers.map((u) => [u.id, u]));
 

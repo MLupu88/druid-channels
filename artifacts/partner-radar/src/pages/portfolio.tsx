@@ -19,6 +19,8 @@ import {
 } from '@workspace/api-client-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PeriodSelector } from '@/components/period-selector';
+import { getDefaultPeriodKey } from '@/lib/period';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -87,7 +89,7 @@ export function PortfolioView({ territoryId, pamUserId }: { territoryId?: string
   const [territory, setTerritory] = useState<string>(territoryId ?? 'all');
   const [pamFilter, setPamFilter] = useState<string>(pamUserId ?? 'all');
   const [status, setStatus] = useState<string>('all');
-  const [period, setPeriod] = useState<string>('q3');
+  const [period, setPeriod] = useState<string>(getDefaultPeriodKey());
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualAddOpen, setManualAddOpen] = useState(false);
@@ -195,16 +197,7 @@ export function PortfolioView({ territoryId, pamUserId }: { territoryId?: string
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[150px] h-8 bg-background border-border/60"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="q1">Q1 2026</SelectItem>
-                <SelectItem value="q2">Q2 2026</SelectItem>
-                <SelectItem value="q3">Q3 2026</SelectItem>
-                <SelectItem value="q4">Q4 2026</SelectItem>
-                <SelectItem value="ytd">Year to date</SelectItem>
-              </SelectContent>
-            </Select>
+            <PeriodSelector value={period} onChange={setPeriod} />
             <Link href="/portfolio/import">
               <Button variant="outline" size="sm" className="gap-1.5"><Upload className="h-4 w-4" /> Import my book</Button>
             </Link>

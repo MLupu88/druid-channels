@@ -6,9 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Building2 } from 'lucide-react';
+import { PeriodSelector } from '@/components/period-selector';
+import { getDefaultPeriodKey } from '@/lib/period';
 
 /**
  * Shared workspace view scoped to a single PAM's territory. Used both as the
@@ -26,7 +27,7 @@ export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; p
   const { data: prospects, isLoading: prospectsLoading } = useListProspects(scopeParam);
   const { data: campaigns, isLoading: campaignsLoading } = useListCampaigns();
 
-  const [targetsPeriod, setTargetsPeriod] = useState('q3');
+  const [targetsPeriod, setTargetsPeriod] = useState(getDefaultPeriodKey());
   // No explicit pam_user_id here -- for the PAM's own workspace the server
   // forces this to their own (territory, pam) scope regardless of params
   // (see GET /team-targets); for a Head/Admin drill-down (territoryId
@@ -50,7 +51,7 @@ export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; p
           <TabsTrigger value="prospects" data-testid="tab-workspace-prospects">New partners</TabsTrigger>
           <TabsTrigger value="partners" data-testid="tab-workspace-partners">Partners</TabsTrigger>
           <TabsTrigger value="targets" data-testid="tab-workspace-targets">{pamName ? 'Targets' : 'My targets'}</TabsTrigger>
-          <TabsTrigger value="activities" data-testid="tab-workspace-activities">Activities</TabsTrigger>
+          <TabsTrigger value="activities" data-testid="tab-workspace-activities">Marketing activities</TabsTrigger>
         </TabsList>
 
         <TabsContent value="prospects">
@@ -106,16 +107,7 @@ export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; p
           <Card className="shadow-none border-border/60">
             <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base font-medium">{pamName ? `${pamName}'s targets` : 'My targets'}</CardTitle>
-              <Select value={targetsPeriod} onValueChange={setTargetsPeriod}>
-                <SelectTrigger className="w-[140px] h-8 bg-background border-border/60"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="q1">Q1 2026</SelectItem>
-                  <SelectItem value="q2">Q2 2026</SelectItem>
-                  <SelectItem value="q3">Q3 2026</SelectItem>
-                  <SelectItem value="q4">Q4 2026</SelectItem>
-                  <SelectItem value="ytd">Year to date</SelectItem>
-                </SelectContent>
-              </Select>
+              <PeriodSelector value={targetsPeriod} onChange={setTargetsPeriod} />
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -162,7 +154,7 @@ export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; p
         <TabsContent value="activities">
           <Card className="shadow-none border-border/60">
             <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20">
-              <CardTitle className="text-base font-medium">Activities</CardTitle>
+              <CardTitle className="text-base font-medium">Marketing Activities</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <Table>

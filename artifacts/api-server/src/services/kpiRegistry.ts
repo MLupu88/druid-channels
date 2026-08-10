@@ -61,14 +61,96 @@ export function isMoneyMetric(metricKey: string): boolean {
   return MONEY_METRIC_KEYS.has(metricKey);
 }
 
-export const PERIODS: Record<string, { start: string; end: string; label: string }> = {
-  q1: { start: "2026-01-01", end: "2026-03-31", label: "Q1 2026" },
-  q2: { start: "2026-04-01", end: "2026-06-30", label: "Q2 2026" },
-  q3: { start: "2026-07-01", end: "2026-09-30", label: "Q3 2026" },
-  q4: { start: "2026-10-01", end: "2026-12-31", label: "Q4 2026" },
-  ytd: { start: "2026-01-01", end: "2026-12-31", label: "Year to date" },
-};
+// Stage 6.3: periods are no longer hardcoded to one year. A periodKey
+// everywhere in this codebase (function params, API query/body params,
+// cache/target lookups) is the composite string "<year>-<quarterKey>",
+// e.g. "2026-q3" or "2027-ytd" -- never a bare "q3" -- so Q1 2026 and
+// Q1 2027 are always distinct identities, never silently collapsed.
+//
+// Persisted tables that need to look a row up or enforce uniqueness by
+// period (metric_targets, manual_metric_values, ai_channel_briefs) store
+// year and quarterKey as two separate columns (the "year + period_key"
+// model) -- splitPeriodKey/joinPeriodKey are the only bridge between that
+// storage shape and the composite string used everywhere else, so callers
+// never have to think about the split except at the DB boundary.
+export const QUARTER_KEYS = ["q1", "q2", "q3", "q4", "ytd"] as const;
+export type QuarterKey = (typeof QUARTER_KEYS)[number];
 
+const PERIOD_KEY_PATTERN = /^(\d{4})-(q1|q2|q3|q4|ytd)$/;
+
+export function getCurrentYear(): number {
+  return new Date().getFullYear();
+}
+
+// The quarter containing today's date -- replaces the old hardcoded "q3"
+// default, so the app's default view is never stale once the calendar
+// moves on.
+export function getCurrentQuarterKey(): QuarterKey {
+  const month = new Date().getMonth(); // 0-11
+  if (month <= 2) return "q1";
+  if (month <= 5) return "q2";
+  if (month <= 8) return "q3";
+  return "q4";
+}
+
+export function joinPeriodKey(year: number, quarterKey: QuarterKey): string {
+  return `${year}-${quarterKey}`;
+}
+
+export interface SplitPeriodKey {
+  year: number;
+  quarterKey: QuarterKey;
+}
+
+// Pure parser -- returns null on anything malformed rather than throwing,
+// so callers (mainly resolvePeriodKey below) can fall back to a sane
+// default instead of erroring on a bad/missing query param.
+export function splitPeriodKey(periodKey: string): SplitPeriodKey | null {
+  const match = PERIOD_KEY_PATTERN.exec(periodKey);
+  if (!match) return null;
+  return { year: Number(match[1]), quarterKey: match[2] as QuarterKey };
+}
+
+// Validates/defaults a caller-supplied period param to a well-formed
+// composite key. Never trusts an arbitrary string past the regex. Falls
+// back to the current year + current quarter (both computed from today,
+// never a hardcoded literal).
 export function resolvePeriodKey(period: string | undefined | null): string {
-  return period && PERIODS[period] ? period : "q3";
+  if (period && splitPeriodKey(period)) return period;
+  return joinPeriodKey(getCurrentYear(), getCurrentQuarterKey());
+}
+
+export interface PeriodRange {
+  start: string;
+  end: string;
+  label: string;
+}
+
+// Replaces the old static PERIODS[periodKey] lookup -- date ranges are
+// always computed arithmetically from year + quarterKey, never read from a
+// fixed table of literal dates for one specific year.
+export function resolvePeriodRange(periodKey: string): PeriodRange {
+  const split = splitPeriodKey(periodKey) ?? { year: getCurrentYear(), quarterKey: getCurrentQuarterKey() };
+  const { year, quarterKey } = split;
+
+  switch (quarterKey) {
+    case "q1":
+      return { start: `${year}-01-01`, end: `${year}-03-31`, label: `Q1 ${year}` };
+    case "q2":
+      return { start: `${year}-04-01`, end: `${year}-06-30`, label: `Q2 ${year}` };
+    case "q3":
+      return { start: `${year}-07-01`, end: `${year}-09-30`, label: `Q3 ${year}` };
+    case "q4":
+      return { start: `${year}-10-01`, end: `${year}-12-31`, label: `Q4 ${year}` };
+    case "ytd": {
+      // Current year: genuinely "to date" (through today). A prior year's
+      // "YTD" would be a confusing claim (there is no partial year left to
+      // total), so it's honestly reinterpreted as the full calendar year
+      // instead, with a label that says so rather than implying "to date".
+      if (year === getCurrentYear()) {
+        return { start: `${year}-01-01`, end: new Date().toISOString().slice(0, 10), label: "Year to date" };
+      }
+      return { start: `${year}-01-01`, end: `${year}-12-31`, label: `${year} (full year)` };
+    }
+  }
 }

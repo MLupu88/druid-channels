@@ -6,7 +6,7 @@ import pptxgenjsImport from "pptxgenjs";
 // way.
 const PptxGenJS = (pptxgenjsImport as unknown as { default?: typeof pptxgenjsImport }).default ?? pptxgenjsImport;
 import { buildHeadOfChannelsData, buildKpiDetailWithFx, type ResolvedTerritory } from "./kpiService";
-import { PERIODS, METRIC_REGISTRY, isMoneyMetric } from "./kpiRegistry";
+import { resolvePeriodRange, METRIC_REGISTRY, isMoneyMetric } from "./kpiRegistry";
 import type { SupportedCurrency, FxInfo } from "./fx";
 import { DRUID_LOGO_DATA_URI } from "../lib/druidLogo";
 
@@ -111,7 +111,7 @@ export interface QuarterlyReportOptions {
 // is internally FX-consistent and Frankfurter is never called more than once
 // per export.
 export async function buildQuarterlyReportPptx({ periodKey, target, currency }: QuarterlyReportOptions): Promise<Buffer> {
-  const periodInfo = PERIODS[periodKey];
+  const periodInfo = resolvePeriodRange(periodKey);
 
   const { partnerDevelopment, weeklyCommercial, weeklyMarketing, fx } = await buildHeadOfChannelsData(periodKey, target, currency);
 

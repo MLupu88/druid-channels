@@ -547,6 +547,31 @@ export interface RunChannelRadarResult {
   message: string;
 }
 
+export type SearchResultModule = typeof SearchResultModule[keyof typeof SearchResultModule];
+
+
+export const SearchResultModule = {
+  portfolio: 'portfolio',
+  recruitment: 'recruitment',
+  discovery: 'discovery',
+  radar: 'radar',
+} as const;
+
+export interface SearchResult {
+  /** The underlying record's id (relationship/recruitment/prospect/radar signal), not the company's. */
+  id: string;
+  module: SearchResultModule;
+  company_name: string;
+  /** @nullable */
+  domain: string | null;
+  /** e.g. "Portfolio Partner · Romania", "Recruitment · Engaged", "Discovery Prospect · Priority A", "Radar Signal · Acquisition" */
+  context_label: string;
+  /** @nullable */
+  territory_name: string | null;
+  /** The module's list page -- v1 navigates to the module, not a deep link to this specific record. */
+  href: string;
+}
+
 export interface CompanyRef {
   id: string;
   name: string;
@@ -1579,18 +1604,10 @@ export interface ManualMetricValueInput {
 }
 
 /**
- * The same canonical reporting-period keys used throughout the KPI/reporting/PPTX stack.
+ * Stage 6.3 -- composite "<year>-<quarterKey>" period identity used throughout the KPI/reporting/PPTX/targets stack (never a bare "q3", which would collide across years). Invalid/missing values resolve server-side to the current year + current quarter.
+ * @pattern ^\d{4}-(q1|q2|q3|q4|ytd)$
  */
-export type KpiPeriod = typeof KpiPeriod[keyof typeof KpiPeriod];
-
-
-export const KpiPeriod = {
-  q1: 'q1',
-  q2: 'q2',
-  q3: 'q3',
-  q4: 'q4',
-  ytd: 'ytd',
-} as const;
+export type KpiPeriod = string;
 
 export interface MetricTarget {
   id: string;
@@ -2167,6 +2184,10 @@ status?: string | null;
  * @nullable
  */
 search?: string | null;
+};
+
+export type SearchParams = {
+q: string;
 };
 
 export type SearchCompaniesParams = {

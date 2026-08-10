@@ -20,6 +20,7 @@ import channelRadarRouter from "./channel_radar";
 import companiesRouter from "./companies";
 import portfolioRouter from "./portfolio";
 import portfolioImportsRouter from "./portfolio_imports";
+import searchRouter from "./search";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(channelRadarRouter);
 router.use(companiesRouter);
 router.use(portfolioRouter);
 router.use(portfolioImportsRouter);
+router.use(searchRouter);
 
 export default router;

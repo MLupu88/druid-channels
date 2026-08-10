@@ -58,6 +58,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { type Currency, formatMetricValue, formatTrendLabel, formatStatusLabel } from '@/lib/kpi-format';
 import { findExistingTarget } from '@/lib/metric-target-selection';
+import { getDefaultPeriodKey } from '@/lib/period';
+import { PeriodSelector } from '@/components/period-selector';
 import type { KpiPeriod } from '@workspace/api-client-react';
 
 function StatusBadge({ status }: { status: string | null }) {
@@ -389,7 +391,7 @@ export default function Overview() {
     ? territories?.find((t) => t.name === activeUser?.territory)?.id
     : undefined;
   const [territory, setTerritory] = useState<string>('global');
-  const [period, setPeriod] = useState<string>('q3');
+  const [period, setPeriod] = useState<string>(getDefaultPeriodKey());
   const [currency, setCurrency] = useState<Currency>('USD');
   const [selectedKpi, setSelectedKpi] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -587,18 +589,7 @@ export default function Overview() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[140px] bg-card">
-                <SelectValue placeholder="Period" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="q1">Q1 2026</SelectItem>
-                <SelectItem value="q2">Q2 2026</SelectItem>
-                <SelectItem value="q3">Q3 2026</SelectItem>
-                <SelectItem value="q4">Q4 2026</SelectItem>
-                <SelectItem value="ytd">Year to date</SelectItem>
-              </SelectContent>
-            </Select>
+            <PeriodSelector value={period} onChange={setPeriod} />
 
             <Select value={territory} onValueChange={setTerritory}>
               <SelectTrigger className="w-[200px] bg-card">

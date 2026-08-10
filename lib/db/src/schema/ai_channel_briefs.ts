@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, timestamp, jsonb, integer, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -36,6 +36,10 @@ export const aiChannelBriefsTable = pgTable(
   "ai_channel_briefs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    // Stage 6.3: year + period (quarterKey) together are the period
+    // identity, same "year + period_key" model as metric_targets -- a
+    // cached Q3 2026 brief must never be served for Q3 2027.
+    year: integer("year").notNull(),
     period: text("period").notNull(), // canonical q1/q2/q3/q4/ytd key, same convention as metric_targets/kpiRegistry
     territoryId: uuid("territory_id").references(() => territoriesTable.id, { onDelete: "cascade" }),
     currency: text("currency").notNull(), // part of the cache scope -- a USD brief and an EUR brief are different generations
@@ -55,11 +59,11 @@ export const aiChannelBriefsTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // Territory-specific: at most one row per period/territory/currency.
-    uniqueIndex("ai_channel_briefs_territory_unique").on(table.period, table.territoryId, table.currency),
-    // Global: at most one row per period/currency where territory_id IS NULL.
+    // Territory-specific: at most one row per year/period/territory/currency.
+    uniqueIndex("ai_channel_briefs_territory_unique").on(table.year, table.period, table.territoryId, table.currency),
+    // Global: at most one row per year/period/currency where territory_id IS NULL.
     uniqueIndex("ai_channel_briefs_global_unique")
-      .on(table.period, table.currency)
+      .on(table.year, table.period, table.currency)
       .where(sql`${table.territoryId} is null`),
   ],
 );

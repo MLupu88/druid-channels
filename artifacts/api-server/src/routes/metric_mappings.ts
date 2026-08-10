@@ -11,7 +11,7 @@ import {
   UpsertManualMetricValueResponse,
 } from "@workspace/api-zod";
 import { eq, and } from "drizzle-orm";
-import { METRIC_BY_KEY } from "../services/kpiRegistry";
+import { METRIC_BY_KEY, joinPeriodKey, splitPeriodKey, type QuarterKey } from "../services/kpiRegistry";
 import { computeMetric, reconcile, resolvePeriodKey, resolveTerritory } from "../services/kpiService";
 import { hasCredential } from "../services/connections";
 import { requireAdmin } from "../middleware/auth";
@@ -172,7 +172,7 @@ router.get("/manual-metric-values", requireAdmin, async (req, res): Promise<void
   res.json(ListManualMetricValuesResponse.parse(rows.map((r) => ({
     id: r.id,
     metric_key: r.metricKey,
-    period: r.period,
+    period: joinPeriodKey(r.year, r.period as QuarterKey),
     territory_id: r.territoryId,
     territory_name: territoryName(r.territoryId),
     current_value: Number(r.currentValue),
@@ -189,9 +189,24 @@ router.put("/manual-metric-values", requireAdmin, async (req, res): Promise<void
     return;
   }
 
+  const split = splitPeriodKey(body.period);
+  if (!split) {
+    res.status(400).json({ error: `Invalid period: ${body.period}` });
+    return;
+  }
+
   const whereMatch = body.territory_id
-    ? and(eq(manualMetricValuesTable.metricKey, body.metric_key), eq(manualMetricValuesTable.period, body.period), eq(manualMetricValuesTable.territoryId, body.territory_id))
-    : and(eq(manualMetricValuesTable.metricKey, body.metric_key), eq(manualMetricValuesTable.period, body.period));
+    ? and(
+        eq(manualMetricValuesTable.metricKey, body.metric_key),
+        eq(manualMetricValuesTable.year, split.year),
+        eq(manualMetricValuesTable.period, split.quarterKey),
+        eq(manualMetricValuesTable.territoryId, body.territory_id),
+      )
+    : and(
+        eq(manualMetricValuesTable.metricKey, body.metric_key),
+        eq(manualMetricValuesTable.year, split.year),
+        eq(manualMetricValuesTable.period, split.quarterKey),
+      );
 
   const existingRows = await db.select().from(manualMetricValuesTable).where(whereMatch);
   const existing = existingRows.find((r) => (body.territory_id ? r.territoryId === body.territory_id : r.territoryId === null));
@@ -223,7 +238,8 @@ router.put("/manual-metric-values", requireAdmin, async (req, res): Promise<void
       .insert(manualMetricValuesTable)
       .values({
         metricKey: body.metric_key,
-        period: body.period,
+        year: split.year,
+        period: split.quarterKey,
         territoryId: body.territory_id ?? null,
         currentValue: String(body.current_value),
         targetValue: resolvedTargetValue,
@@ -238,7 +254,7 @@ router.put("/manual-metric-values", requireAdmin, async (req, res): Promise<void
   res.json(UpsertManualMetricValueResponse.parse({
     id: saved.id,
     metric_key: saved.metricKey,
-    period: saved.period,
+    period: joinPeriodKey(saved.year, saved.period as QuarterKey),
     territory_id: saved.territoryId,
     territory_name: territoryName,
     current_value: Number(saved.currentValue),

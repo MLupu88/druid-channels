@@ -11,7 +11,7 @@ import {
 } from "@workspace/api-zod";
 import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middleware/auth";
-import { resolvePeriodKey } from "../services/kpiRegistry";
+import { resolvePeriodKey, joinPeriodKey, type QuarterKey } from "../services/kpiRegistry";
 import { isGlobalUser, getOwnTerritory } from "../services/authz";
 import {
   upsertTarget,
@@ -42,7 +42,7 @@ async function shapeRows(rows: (typeof metricTargetsTable.$inferSelect)[]) {
   return rows.map((r) => ({
     id: r.id,
     metric_key: r.metricKey,
-    period: r.period,
+    period: joinPeriodKey(r.year, r.period as QuarterKey),
     territory_id: r.territoryId,
     territory_name: territoryName(r.territoryId),
     pam_user_id: r.pamUserId,

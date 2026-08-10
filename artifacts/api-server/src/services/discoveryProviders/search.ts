@@ -44,7 +44,7 @@ export async function isConfigured(): Promise<boolean> {
   return process.env.SEARCH_PROVIDER === "tavily" && hasCredential(conn?.credentialEnvVar ?? null);
 }
 
-export async function search(query: string, opts: { maxResults: number }): Promise<WebSearchResult[]> {
+export async function search(query: string, opts: { maxResults: number; startDate?: string }): Promise<WebSearchResult[]> {
   if (!(await isConfigured())) throw new SearchNotImplementedError();
 
   switch (process.env.SEARCH_PROVIDER) {
@@ -58,7 +58,15 @@ export async function search(query: string, opts: { maxResults: number }): Promi
 // Exported (not just called internally) so it can be unit-tested directly
 // against a mocked fetch, without needing a live DB-backed isConfigured()
 // check in the test.
-export async function searchViaTavily(query: string, opts: { maxResults: number }): Promise<WebSearchResult[]> {
+//
+// startDate (YYYY-MM-DD), when provided, is passed through as Tavily's own
+// documented `start_date` request parameter -- a real, provider-enforced
+// recency window (confirmed against Tavily's API reference: /search
+// accepts time_range/start_date/end_date). Not every caller needs one
+// (Discovery's own live search doesn't), so it stays optional -- only
+// Channel Radar's lookback_days currently derives it (see
+// channelRadarEngine.ts's computeLookbackStartDate).
+export async function searchViaTavily(query: string, opts: { maxResults: number; startDate?: string }): Promise<WebSearchResult[]> {
   const apiKey = process.env.SEARCH_API_KEY;
   if (!apiKey) throw new SearchNotImplementedError();
 
@@ -79,6 +87,7 @@ export async function searchViaTavily(query: string, opts: { maxResults: number 
         include_answer: false,
         include_raw_content: false,
         topic: "general",
+        ...(opts.startDate ? { start_date: opts.startDate } : {}),
       }),
     });
   } catch (err) {

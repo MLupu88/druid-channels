@@ -958,6 +958,25 @@ export const RunChannelRadarResponse = zod.object({
 
 
 /**
+ * @summary Stage 6.3 internal application search across Companies/Portfolio/Recruitment/Discovery/Channel Radar. Deterministic case-insensitive name/domain/entity matching -- no external search provider, no fuzzy AI matching. A PAM's results are hard-scoped server-side to their own canonical territory (never client-filtered).
+ */
+export const SearchQueryParams = zod.object({
+  "q": zod.coerce.string()
+})
+
+export const SearchResponseItem = zod.object({
+  "id": zod.string().describe('The underlying record\'s id (relationship\/recruitment\/prospect\/radar signal), not the company\'s.'),
+  "module": zod.enum(['portfolio', 'recruitment', 'discovery', 'radar']),
+  "company_name": zod.string(),
+  "domain": zod.string().nullable(),
+  "context_label": zod.string().describe('e.g. \"Portfolio Partner · Romania\", \"Recruitment · Engaged\", \"Discovery Prospect · Priority A\", \"Radar Signal · Acquisition\"'),
+  "territory_name": zod.string().nullable(),
+  "href": zod.string().describe('The module\'s list page -- v1 navigates to the module, not a deep link to this specific record.')
+})
+export const SearchResponse = zod.array(SearchResponseItem)
+
+
+/**
  * @summary Lightweight canonical-company lookup by name/domain, for the Portfolio manual-add and import-review company picker
  */
 export const SearchCompaniesQueryParams = zod.object({
@@ -2144,10 +2163,13 @@ export const ListMetricTargetsQueryParams = zod.object({
   "metric_key": zod.coerce.string().nullish()
 })
 
+export const listMetricTargetsResponsePeriodRegExp = new RegExp('^\\d{4}-(q1|q2|q3|q4|ytd)$');
+
+
 export const ListMetricTargetsResponseItem = zod.object({
   "id": zod.string(),
   "metric_key": zod.string(),
-  "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
+  "period": zod.string().regex(listMetricTargetsResponsePeriodRegExp).describe('Stage 6.3 -- composite \"<year>-<quarterKey>\" period identity used throughout the KPI\/reporting\/PPTX\/targets stack (never a bare \"q3\", which would collide across years). Invalid\/missing values resolve server-side to the current year + current quarter.'),
   "territory_id": zod.string().nullable(),
   "territory_name": zod.string(),
   "pam_user_id": zod.string().nullable().describe('Nullable only for legacy pre-6.2 rows that could not be safely assigned a canonical PAM (see the Stage 6.2 report). Every row created\/updated from 6.2 onward always has one.'),
@@ -2164,23 +2186,27 @@ export const ListMetricTargetsResponse = zod.array(ListMetricTargetsResponseItem
 /**
  * @summary Create or update the target for a metric/period/PAM/territory. Head of Channels/admin only -- never changes the metric's actual value. pam_user_id must be territory_id's canonical owner.
  */
+export const upsertMetricTargetBodyPeriodRegExp = new RegExp('^\\d{4}-(q1|q2|q3|q4|ytd)$');
 export const upsertMetricTargetBodyTargetValueMin = 0;
 
 
 
 export const UpsertMetricTargetBody = zod.object({
   "metric_key": zod.string().describe('Must be one of the curated targetable metrics (see TARGETABLE_METRIC_KEYS) -- 404 otherwise.'),
-  "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
+  "period": zod.string().regex(upsertMetricTargetBodyPeriodRegExp).describe('Stage 6.3 -- composite \"<year>-<quarterKey>\" period identity used throughout the KPI\/reporting\/PPTX\/targets stack (never a bare \"q3\", which would collide across years). Invalid\/missing values resolve server-side to the current year + current quarter.'),
   "territory_id": zod.string(),
   "pam_user_id": zod.string().describe('Must be the canonical owner of territory_id (territories.owner_user_id) -- 400 otherwise. Explicit and validated, never silently derived or swapped.'),
   "target_value": zod.number().min(upsertMetricTargetBodyTargetValueMin).describe('No KPI in this product has a meaningful negative target.'),
   "note": zod.string().nullish()
 })
 
+export const upsertMetricTargetResponsePeriodRegExp = new RegExp('^\\d{4}-(q1|q2|q3|q4|ytd)$');
+
+
 export const UpsertMetricTargetResponse = zod.object({
   "id": zod.string(),
   "metric_key": zod.string(),
-  "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
+  "period": zod.string().regex(upsertMetricTargetResponsePeriodRegExp).describe('Stage 6.3 -- composite \"<year>-<quarterKey>\" period identity used throughout the KPI\/reporting\/PPTX\/targets stack (never a bare \"q3\", which would collide across years). Invalid\/missing values resolve server-side to the current year + current quarter.'),
   "territory_id": zod.string().nullable(),
   "territory_name": zod.string(),
   "pam_user_id": zod.string().nullable().describe('Nullable only for legacy pre-6.2 rows that could not be safely assigned a canonical PAM (see the Stage 6.2 report). Every row created\/updated from 6.2 onward always has one.'),
@@ -2289,11 +2315,12 @@ export const GetAiChannelBriefResponse = zod.object({
 /**
  * @summary Regenerate the AI Channel Brief for a period/territory/currency scope, on demand
  */
+export const regenerateAiChannelBriefBodyPeriodRegExp = new RegExp('^\\d{4}-(q1|q2|q3|q4|ytd)$');
 export const regenerateAiChannelBriefBodyCurrencyDefault = `USD`;
 
 export const RegenerateAiChannelBriefBody = zod.object({
   "territory": zod.string().nullish(),
-  "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).optional().describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
+  "period": zod.string().regex(regenerateAiChannelBriefBodyPeriodRegExp).optional().describe('Stage 6.3 -- composite \"<year>-<quarterKey>\" period identity used throughout the KPI\/reporting\/PPTX\/targets stack (never a bare \"q3\", which would collide across years). Invalid\/missing values resolve server-side to the current year + current quarter.'),
   "currency": zod.enum(['USD', 'EUR', 'GBP']).default(regenerateAiChannelBriefBodyCurrencyDefault)
 })
 

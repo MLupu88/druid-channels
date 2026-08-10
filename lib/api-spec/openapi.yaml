@@ -48,6 +48,8 @@ tags:
     description: Stage 6 PAM Portfolio book import -- Excel/CSV/pasted-text ingestion, deterministic+DeepSeek normalization, and PAM review before canonical records are created
   - name: companies
     description: Lightweight canonical-company lookup, used by Portfolio manual add and import review to find/reuse an existing company
+  - name: search
+    description: Stage 6.3 internal application search across every module
 
 paths:
   /auth/login:
@@ -668,6 +670,29 @@ paths:
           description: No Channel Radar config exists yet for this territory
         "500":
           description: Scan failed after starting (provider call failed mid-run)
+
+  /search:
+    get:
+      operationId: search
+      tags: [search]
+      summary: Stage 6.3 internal application search across Companies/Portfolio/Recruitment/Discovery/Channel Radar. Deterministic case-insensitive name/domain/entity matching -- no external search provider, no fuzzy AI matching. A PAM's results are hard-scoped server-side to their own canonical territory (never client-filtered).
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching results across every searchable module, most relevant module groups first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SearchResult"
+        "400":
+          description: Query shorter than the minimum length
 
   /companies/search:
     get:
@@ -2431,6 +2456,32 @@ components:
         message:
           type: string
 
+    SearchResultModule:
+      type: string
+      enum: [portfolio, recruitment, discovery, radar]
+
+    SearchResult:
+      type: object
+      required: [id, module, company_name, domain, context_label, territory_name, href]
+      properties:
+        id:
+          type: string
+          description: The underlying record's id (relationship/recruitment/prospect/radar signal), not the company's.
+        module:
+          $ref: "#/components/schemas/SearchResultModule"
+        company_name:
+          type: string
+        domain:
+          type: ["string", "null"]
+        context_label:
+          type: string
+          description: e.g. "Portfolio Partner · Romania", "Recruitment · Engaged", "Discovery Prospect · Priority A", "Radar Signal · Acquisition"
+        territory_name:
+          type: ["string", "null"]
+        href:
+          type: string
+          description: The module's list page -- v1 navigates to the module, not a deep link to this specific record.
+
     CompanyRef:
       type: object
       required: [id, name, domain, country]
@@ -3575,8 +3626,9 @@ components:
 
     KpiPeriod:
       type: string
-      enum: [q1, q2, q3, q4, ytd]
-      description: The same canonical reporting-period keys used throughout the KPI/reporting/PPTX stack.
+      pattern: "^\\d{4}-(q1|q2|q3|q4|ytd)$"
+      example: "2026-q3"
+      description: Stage 6.3 -- composite "<year>-<quarterKey>" period identity used throughout the KPI/reporting/PPTX/targets stack (never a bare "q3", which would collide across years). Invalid/missing values resolve server-side to the current year + current quarter.
 
     MetricTarget:
       type: object

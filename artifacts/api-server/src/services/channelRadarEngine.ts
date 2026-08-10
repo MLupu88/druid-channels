@@ -34,12 +34,30 @@ export interface RadarQuery {
   entityHint: string;
 }
 
+// Stage 6.3: the small deterministic geo-term helper the query builder
+// appends to every query so a Romania scan is materially scoped to
+// Romania, not just labeled that way after the fact. Prefers the
+// territory's own canonical countries (e.g. DACH -> "Germany OR Austria OR
+// Switzerland"); falls back to the territory name only when no countries
+// are configured. Deliberately does not try to expand a country into a
+// long list of regions/cities -- readable and bounded, not "blindly
+// appending a giant country list."
+export function buildGeoTerm(countries: string[], territoryName: string): string {
+  const trimmed = countries.map((c) => c.trim()).filter(Boolean);
+  if (trimmed.length === 0) return territoryName;
+  if (trimmed.length === 1) return trimmed[0]!;
+  return trimmed.join(" OR ");
+}
+
 // Bounded round-robin, never a full entities x signal-types Cartesian
 // product: round 0 gives every entity its first (rotating) signal-type
 // phrase, round 1 gives every entity its second, etc. -- every monitored
 // entity is represented starting at query #1, capped at
-// MAX_RADAR_QUERIES, never padded when the config is narrow.
-export function buildRadarQueries(entities: string[], signalTypes: string[]): RadarQuery[] {
+// MAX_RADAR_QUERIES, never padded when the config is narrow. Every query
+// also carries the territory's geo term (see buildGeoTerm) -- Radar's
+// actual search request is geographically scoped, not just the signal
+// that later gets attributed to a territory after the fact.
+export function buildRadarQueries(entities: string[], signalTypes: string[], geoTerm: string): RadarQuery[] {
   const queries: RadarQuery[] = [];
   const seenQueryText = new Set<string>();
   const push = (query: string, entityHint: string) => {
@@ -54,18 +72,31 @@ export function buildRadarQueries(entities: string[], signalTypes: string[]): Ra
 
   const terms = signalTypes.map((s) => SIGNAL_TYPE_SEARCH_TERMS[s]).filter((t): t is string => !!t);
   if (terms.length === 0) {
-    for (const entity of entities) push(`"${entity}" news`, entity);
+    for (const entity of entities) push(`"${entity}" news ${geoTerm}`, entity);
     return queries;
   }
 
   for (let round = 0; round < terms.length && queries.length < MAX_RADAR_QUERIES; round++) {
     for (let i = 0; i < entities.length && queries.length < MAX_RADAR_QUERIES; i++) {
       const term = terms[(i + round) % terms.length];
-      push(`"${entities[i]}" ${term}`, entities[i]);
+      push(`"${entities[i]}" ${term} ${geoTerm}`, entities[i]);
     }
   }
 
   return queries;
+}
+
+// Stage 6.3: derives a real Tavily `start_date` (YYYY-MM-DD) from
+// lookback_days -- the only formally-documented hard recency constraint
+// Tavily's /search endpoint supports (confirmed against Tavily's own API
+// reference; there is no per-result publish-date field in the response, so
+// individual results can never be verified/rejected client-side -- see
+// discoveryProviders/search.ts). This is real enforcement at the request
+// level, not text stuffed into the query string.
+export function computeLookbackStartDate(lookbackDays: number, now: Date = new Date()): string {
+  const boundedDays = Math.max(1, Math.floor(lookbackDays));
+  const start = new Date(now.getTime() - boundedDays * 86_400_000);
+  return start.toISOString().slice(0, 10);
 }
 
 function normalizeUrl(url: string): string {
@@ -133,7 +164,9 @@ export async function runRadarForConfig(configId: string): Promise<ChannelRadarR
 
   const entities = (config.monitoredEntities as string[]) ?? [];
   const signalTypes = (config.enabledSignalTypes as string[]) ?? [];
-  const queries = buildRadarQueries(entities, signalTypes);
+  const geoTerm = buildGeoTerm((territory.countries as string[]) ?? [], territory.name);
+  const queries = buildRadarQueries(entities, signalTypes, geoTerm);
+  const startDate = computeLookbackStartDate(config.lookbackDays);
 
   let resultsFound = 0;
   let resultsQualified = 0;
@@ -141,7 +174,7 @@ export async function runRadarForConfig(configId: string): Promise<ChannelRadarR
   try {
     const seenUrls = new Set<string>();
     for (const { query, entityHint } of queries) {
-      const results = await searchProvider.search(query, { maxResults: MAX_RESULTS_PER_QUERY });
+      const results = await searchProvider.search(query, { maxResults: MAX_RESULTS_PER_QUERY, startDate });
       for (const result of results) {
         if (seenUrls.has(result.url)) continue;
         seenUrls.add(result.url);
