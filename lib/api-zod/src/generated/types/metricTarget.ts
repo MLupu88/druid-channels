@@ -14,9 +14,18 @@ export interface MetricTarget {
   /** @nullable */
   territory_id: string | null;
   territory_name: string;
+  /**
+     * Nullable only for legacy pre-6.2 rows that could not be safely assigned a canonical PAM (see the Stage 6.2 report). Every row created/updated from 6.2 onward always has one.
+     * @nullable
+     */
+  pam_user_id: string | null;
+  /** @nullable */
+  pam_name: string | null;
   target_value: number;
   /** @nullable */
   note: string | null;
+  /** @nullable */
+  created_by_name: string | null;
   /** @nullable */
   updated_by_name: string | null;
   updated_at: string;

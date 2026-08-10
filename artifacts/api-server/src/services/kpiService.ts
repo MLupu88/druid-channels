@@ -101,12 +101,34 @@ function trendOf(current: number, previous: number): "up" | "down" | "flat" {
 // metric_targets -- the single source of truth for an edited target,
 // independent of how source_type computes "current". null means no target
 // has been configured (never a fabricated default).
+//
+// Stage 6.2: targets are canonically keyed by (metric_key, period,
+// pam_user_id, territory_id). Every caller of computeMetric (Overview,
+// exports, the AI brief) only ever has a territory in hand, never a PAM
+// directly -- so the accountable PAM is derived here from the v1
+// one-PAM-owns-one-territory invariant (territories.owner_user_id) rather
+// than threading a new parameter through the entire KPI call chain. A
+// Global scope, or a territory with no canonical owner, has no single
+// accountable PAM in the new model and therefore no target -- this is a
+// deliberate behavior change from pre-6.2 "Global" targets (see the 6.2
+// final report).
 export async function getTargetOverride(metricKey: string, periodKey: string, territoryId: string | null): Promise<number | null> {
-  const scopeFilter = territoryId ? eq(metricTargetsTable.territoryId, territoryId) : isNull(metricTargetsTable.territoryId);
+  if (!territoryId) return null;
+  const [territory] = await db.select().from(territoriesTable).where(eq(territoriesTable.id, territoryId));
+  const pamUserId = territory?.ownerUserId ?? null;
+  if (!pamUserId) return null;
+
   const [row] = await db
     .select()
     .from(metricTargetsTable)
-    .where(and(eq(metricTargetsTable.metricKey, metricKey), eq(metricTargetsTable.period, periodKey), scopeFilter));
+    .where(
+      and(
+        eq(metricTargetsTable.metricKey, metricKey),
+        eq(metricTargetsTable.period, periodKey),
+        eq(metricTargetsTable.territoryId, territoryId),
+        eq(metricTargetsTable.pamUserId, pamUserId),
+      ),
+    );
   return row ? Number(row.targetValue) : null;
 }
 

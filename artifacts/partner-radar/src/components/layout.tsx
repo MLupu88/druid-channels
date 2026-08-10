@@ -27,7 +27,8 @@ import {
   Satellite,
   LogOut,
   UserCircle,
-  Building2
+  Building2,
+  Target
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -61,6 +62,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/recruitment', label: 'Recruitment', icon: Handshake },
         { href: '/portfolio', label: 'Portfolio', icon: Building2 },
         { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
+        { href: '/team-targets', label: 'Team Targets', icon: Target },
         { href: '/pams', label: 'PAMs', icon: Users },
         { href: '/activities', label: 'Activities', icon: ListOrdered },
       ]

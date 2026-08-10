@@ -5,9 +5,9 @@ import assert from "node:assert/strict";
 import { findExistingTarget } from "../src/lib/metric-target-selection";
 
 const targets = [
-  { id: "q1-ro", period: "q1", territory_id: "ro" },
-  { id: "q3-ro", period: "q3", territory_id: "ro" },
-  { id: "q3-global", period: "q3", territory_id: null },
+  { id: "q1-ro", period: "q1", territory_id: "ro", pam_user_id: "andrei" },
+  { id: "q3-ro", period: "q3", territory_id: "ro", pam_user_id: "andrei" },
+  { id: "q3-global", period: "q3", territory_id: null, pam_user_id: null },
 ];
 
 test("resolves the target matching both territory_id and period", () => {
@@ -30,4 +30,13 @@ test("no matching row at all returns undefined, not a wrong-period fallback", ()
 
 test("undefined targets list resolves to undefined without throwing", () => {
   assert.equal(findExistingTarget(undefined, "ro", "q3"), undefined);
+});
+
+test("Stage 6.2: pam_user_id, when supplied, must also match -- a mismatched PAM never preloads someone else's target", () => {
+  assert.equal(findExistingTarget(targets, "ro", "q3", "andrei")?.id, "q3-ro");
+  assert.equal(findExistingTarget(targets, "ro", "q3", "someone-else"), undefined);
+});
+
+test("Stage 6.2: pam_user_id is optional -- omitting it preserves the pre-6.2 territory+period-only match", () => {
+  assert.equal(findExistingTarget(targets, "ro", "q3")?.id, "q3-ro");
 });

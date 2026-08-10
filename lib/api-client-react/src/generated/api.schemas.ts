@@ -1599,19 +1599,30 @@ export interface MetricTarget {
   /** @nullable */
   territory_id: string | null;
   territory_name: string;
+  /**
+     * Nullable only for legacy pre-6.2 rows that could not be safely assigned a canonical PAM (see the Stage 6.2 report). Every row created/updated from 6.2 onward always has one.
+     * @nullable
+     */
+  pam_user_id: string | null;
+  /** @nullable */
+  pam_name: string | null;
   target_value: number;
   /** @nullable */
   note: string | null;
+  /** @nullable */
+  created_by_name: string | null;
   /** @nullable */
   updated_by_name: string | null;
   updated_at: string;
 }
 
 export interface MetricTargetInput {
+  /** Must be one of the curated targetable metrics (see TARGETABLE_METRIC_KEYS) -- 404 otherwise. */
   metric_key: string;
   period: KpiPeriod;
-  /** @nullable */
-  territory_id?: string | null;
+  territory_id: string;
+  /** Must be the canonical owner of territory_id (territories.owner_user_id) -- 400 otherwise. Explicit and validated, never silently derived or swapped. */
+  pam_user_id: string;
   /**
      * No KPI in this product has a meaningful negative target.
      * @minimum 0
@@ -1619,6 +1630,42 @@ export interface MetricTargetInput {
   target_value: number;
   /** @nullable */
   note?: string | null;
+}
+
+export type TeamTargetStatus = typeof TeamTargetStatus[keyof typeof TeamTargetStatus];
+
+
+export const TeamTargetStatus = {
+  ahead: 'ahead',
+  behind: 'behind',
+  no_target: 'no_target',
+} as const;
+
+export interface TeamTargetRow {
+  pam_user_id: string;
+  pam_name: string;
+  territory_id: string;
+  territory_name: string;
+  metric_key: string;
+  metric_label: string;
+  /** @nullable */
+  target_value: number | null;
+  /**
+     * Set when a target row already exists for this PAM/territory/metric/period -- null means "no target set", used by Team Targets to offer create-vs-edit.
+     * @nullable
+     */
+  target_id: string | null;
+  /**
+     * From the same canonical KPI computation Overview uses -- never recomputed separately.
+     * @nullable
+     */
+  actual_value: number | null;
+  /**
+     * Null when there is no target to measure progress against -- never computed as if target were 0.
+     * @nullable
+     */
+  progress_percent: number | null;
+  status: TeamTargetStatus;
 }
 
 /**
@@ -2218,6 +2265,23 @@ export type ListManualMetricValuesParams = {
  * @nullable
  */
 metric_key?: string | null;
+};
+
+export type ListTeamTargetsParams = {
+/**
+ * @nullable
+ */
+period?: string | null;
+/**
+ * Head/Admin only -- ignored for a PAM caller.
+ * @nullable
+ */
+pam_user_id?: string | null;
+/**
+ * Head/Admin only (id or name) -- ignored for a PAM caller.
+ * @nullable
+ */
+territory?: string | null;
 };
 
 export type ListMetricTargetsParams = {

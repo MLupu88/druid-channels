@@ -407,6 +407,12 @@ export default function Overview() {
   }, [ownTerritoryId]);
 
   const scopedTerritory = territory === 'global' ? null : territory;
+  // Stage 6.2: targets are canonically PAM-scoped. Global has no single
+  // accountable PAM, and neither does a territory with no canonical owner
+  // -- editing is only offered when one resolves, derived from the same
+  // territories.owner_user_id source of truth as everywhere else (never
+  // users.territory free text, never a second PAM picker in this dialog).
+  const targetPamUserId = scopedTerritory ? territories?.find((t) => t.id === scopedTerritory)?.owner_user_id ?? null : null;
 
   const { data: kpis, isLoading: isLoadingKpis } = useGetHeadOfChannelsKpis({
     territory: scopedTerritory,
@@ -425,7 +431,7 @@ export default function Overview() {
   const { data: targetRows } = useListMetricTargets(targetsParams, {
     query: { enabled: canEditTargets && Boolean(selectedKpi), queryKey: getListMetricTargetsQueryKey(targetsParams) },
   });
-  const existingTarget = findExistingTarget(targetRows, scopedTerritory, period);
+  const existingTarget = findExistingTarget(targetRows, scopedTerritory, period, targetPamUserId);
 
   const invalidateKpiQueries = () => {
     queryClient.invalidateQueries({ queryKey: getGetHeadOfChannelsKpisQueryKey() });
@@ -522,12 +528,13 @@ export default function Overview() {
   };
 
   const handleSaveTarget = () => {
-    if (!selectedKpi || !isTargetValueValid || parsedTargetValue === null) return;
+    if (!selectedKpi || !isTargetValueValid || parsedTargetValue === null || !scopedTerritory || !targetPamUserId) return;
     upsertTargetMutation.mutate({
       data: {
         metric_key: selectedKpi,
         period: period as KpiPeriod,
         territory_id: scopedTerritory,
+        pam_user_id: targetPamUserId,
         target_value: parsedTargetValue,
         note: targetNoteInput.trim() || null,
       },
@@ -819,7 +826,7 @@ export default function Overview() {
                     <div className="rounded-md border border-border/60 p-3">
                       <div className="flex items-center justify-between mb-1">
                         <p className="text-xs text-muted-foreground uppercase tracking-wider">{detail.full_period_target_label}</p>
-                        {canEditTargets && (
+                        {canEditTargets && targetPamUserId && (
                           <button
                             type="button"
                             onClick={openEditTarget}

@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'wouter';
-import { useListProspects, useListCampaigns, useListTerritories } from '@workspace/api-client-react';
+import { useListProspects, useListCampaigns, useListTerritories, useListTeamTargets } from '@workspace/api-client-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Building2 } from 'lucide-react';
 
@@ -25,6 +26,14 @@ export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; p
   const { data: prospects, isLoading: prospectsLoading } = useListProspects(scopeParam);
   const { data: campaigns, isLoading: campaignsLoading } = useListCampaigns();
 
+  const [targetsPeriod, setTargetsPeriod] = useState('q3');
+  // No explicit pam_user_id here -- for the PAM's own workspace the server
+  // forces this to their own (territory, pam) scope regardless of params
+  // (see GET /team-targets); for a Head/Admin drill-down (territoryId
+  // passed explicitly), the territory filter is honored since the caller
+  // is global. Same endpoint, same data, two views.
+  const { data: targetRows, isLoading: targetsLoading } = useListTeamTargets({ period: targetsPeriod, ...scopeParam });
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -40,6 +49,7 @@ export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; p
         <TabsList>
           <TabsTrigger value="prospects" data-testid="tab-workspace-prospects">New partners</TabsTrigger>
           <TabsTrigger value="partners" data-testid="tab-workspace-partners">Partners</TabsTrigger>
+          <TabsTrigger value="targets" data-testid="tab-workspace-targets">{pamName ? 'Targets' : 'My targets'}</TabsTrigger>
           <TabsTrigger value="activities" data-testid="tab-workspace-activities">Activities</TabsTrigger>
         </TabsList>
 
@@ -88,6 +98,63 @@ export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; p
                 </p>
               </div>
               <Link href="/portfolio"><Button size="sm">Open Portfolio</Button></Link>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="targets">
+          <Card className="shadow-none border-border/60">
+            <CardHeader className="py-4 px-5 border-b border-border/50 bg-muted/20 flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base font-medium">{pamName ? `${pamName}'s targets` : 'My targets'}</CardTitle>
+              <Select value={targetsPeriod} onValueChange={setTargetsPeriod}>
+                <SelectTrigger className="w-[140px] h-8 bg-background border-border/60"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="q1">Q1 2026</SelectItem>
+                  <SelectItem value="q2">Q2 2026</SelectItem>
+                  <SelectItem value="q3">Q3 2026</SelectItem>
+                  <SelectItem value="q4">Q4 2026</SelectItem>
+                  <SelectItem value="ytd">Year to date</SelectItem>
+                </SelectContent>
+              </Select>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Metric</TableHead>
+                    <TableHead className="text-right">Target / Actual</TableHead>
+                    <TableHead>Progress</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {targetsLoading ? (
+                    <TableRow><TableCell colSpan={3}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
+                  ) : targetRows?.length ? (
+                    targetRows.map((row) => (
+                      <TableRow key={row.metric_key}>
+                        <TableCell className="font-medium">{row.metric_label}</TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {row.actual_value ?? '—'} / {row.target_value ?? '—'}
+                        </TableCell>
+                        <TableCell>
+                          {row.status === 'no_target' ? (
+                            <Badge variant="outline" className="font-normal text-muted-foreground">No target set for this period</Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className={`font-normal ${row.status === 'ahead' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}
+                            >
+                              {row.progress_percent !== null ? `${row.progress_percent}%` : '—'} · {row.status === 'ahead' ? 'Ahead' : 'Behind'}
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow><TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No targetable metrics for this territory yet.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>

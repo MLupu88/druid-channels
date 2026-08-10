@@ -1410,11 +1410,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ManualMetricValue"
 
+  /team-targets:
+    get:
+      operationId: listTeamTargets
+      tags: [metric-targets]
+      summary: Stage 6.2 Team/My Targets grid -- one row per (canonically-owned territory, targetable metric) for the selected period, with target, actual (from the same canonical KPI computation as Overview), and progress. Rows with no target configured yet are included (target_value/target_id null) so Head/Admin can create one directly. A PAM is always forced to their own (territory, PAM) scope regardless of query params; Head/Admin may filter.
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: pam_user_id
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Head/Admin only -- ignored for a PAM caller.
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Head/Admin only (id or name) -- ignored for a PAM caller.
+      responses:
+        "200":
+          description: Team Targets grid
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamTargetRow"
+        "403":
+          description: Caller has no canonical territory assigned
+
   /metric-targets:
     get:
       operationId: listMetricTargets
       tags: [metric-targets]
-      summary: List management-configured KPI targets. A PAM sees only their own territory plus Global; a global/admin user sees all.
+      summary: List management-configured KPI targets. A PAM sees only their own territory; a global/admin user sees all.
       parameters:
         - name: metric_key
           in: query
@@ -1432,7 +1464,7 @@ paths:
     put:
       operationId: upsertMetricTarget
       tags: [metric-targets]
-      summary: Create or update the target for a metric/period/territory (or Global). Head of Channels/admin only -- never changes the metric's actual value.
+      summary: Create or update the target for a metric/period/PAM/territory. Head of Channels/admin only -- never changes the metric's actual value. pam_user_id must be territory_id's canonical owner.
       requestBody:
         required: true
         content:
@@ -1446,8 +1478,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MetricTarget"
+        "400":
+          description: pam_user_id does not canonically own territory_id, or metric_key is not a targetable metric
         "404":
-          description: Unknown metric_key or territory_id
+          description: Unknown territory_id or pam_user_id
 
   /metric-targets/{id}:
     delete:
@@ -3546,7 +3580,7 @@ components:
 
     MetricTarget:
       type: object
-      required: [id, metric_key, period, territory_id, territory_name, target_value, note, updated_by_name, updated_at]
+      required: [id, metric_key, period, territory_id, territory_name, pam_user_id, pam_name, target_value, note, created_by_name, updated_by_name, updated_at]
       properties:
         id:
           type: string
@@ -3558,9 +3592,16 @@ components:
           type: ["string", "null"]
         territory_name:
           type: string
+        pam_user_id:
+          type: ["string", "null"]
+          description: Nullable only for legacy pre-6.2 rows that could not be safely assigned a canonical PAM (see the Stage 6.2 report). Every row created/updated from 6.2 onward always has one.
+        pam_name:
+          type: ["string", "null"]
         target_value:
           type: number
         note:
+          type: ["string", "null"]
+        created_by_name:
           type: ["string", "null"]
         updated_by_name:
           type: ["string", "null"]
@@ -3569,20 +3610,58 @@ components:
 
     MetricTargetInput:
       type: object
-      required: [metric_key, period, target_value]
+      required: [metric_key, period, territory_id, pam_user_id, target_value]
       properties:
         metric_key:
           type: string
+          description: Must be one of the curated targetable metrics (see TARGETABLE_METRIC_KEYS) -- 404 otherwise.
         period:
           $ref: "#/components/schemas/KpiPeriod"
         territory_id:
-          type: ["string", "null"]
+          type: string
+        pam_user_id:
+          type: string
+          description: Must be the canonical owner of territory_id (territories.owner_user_id) -- 400 otherwise. Explicit and validated, never silently derived or swapped.
         target_value:
           type: number
           minimum: 0
           description: No KPI in this product has a meaningful negative target.
         note:
           type: ["string", "null"]
+
+    TeamTargetStatus:
+      type: string
+      enum: [ahead, behind, no_target]
+
+    TeamTargetRow:
+      type: object
+      required: [pam_user_id, pam_name, territory_id, territory_name, metric_key, metric_label, target_value, target_id, actual_value, progress_percent, status]
+      properties:
+        pam_user_id:
+          type: string
+        pam_name:
+          type: string
+        territory_id:
+          type: string
+        territory_name:
+          type: string
+        metric_key:
+          type: string
+        metric_label:
+          type: string
+        target_value:
+          type: ["number", "null"]
+        target_id:
+          type: ["string", "null"]
+          description: Set when a target row already exists for this PAM/territory/metric/period -- null means "no target set", used by Team Targets to offer create-vs-edit.
+        actual_value:
+          type: ["number", "null"]
+          description: From the same canonical KPI computation Overview uses -- never recomputed separately.
+        progress_percent:
+          type: ["number", "null"]
+          description: Null when there is no target to measure progress against -- never computed as if target were 0.
+        status:
+          $ref: "#/components/schemas/TeamTargetStatus"
 
     AiBriefState:
       type: string

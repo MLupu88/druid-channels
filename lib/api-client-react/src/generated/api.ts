@@ -59,6 +59,7 @@ import type {
   ListProspectsParams,
   ListRecruitmentsParams,
   ListScanRunsParams,
+  ListTeamTargetsParams,
   LoginInput,
   ManualMetricValue,
   ManualMetricValueInput,
@@ -93,6 +94,7 @@ import type {
   ScanRunInput,
   ScanRunResult,
   SearchCompaniesParams,
+  TeamTargetRow,
   Territory,
   TerritoryEditInput,
   TransitionPortfolioStatusInput,
@@ -2632,7 +2634,7 @@ export const getReassignPortfolioRelationshipUrl = (id: string,) => {
 }
 
 /**
- * @summary Reassign ownership to a different PAM. Head of Channels/admin only -- a PAM cannot reassign their own or any other relationship.
+ * @summary Reassign ownership to a different PAM. Head of Channels/admin only -- a PAM cannot reassign their own or any other relationship. The target PAM must already be the canonical owner (territories.owner_user_id) of this relationship's territory.
  */
 export const reassignPortfolioRelationship = async (id: string,
     reassignPortfolioRelationshipInput: ReassignPortfolioRelationshipInput, options?: Parameters<typeof customFetch>[1]): Promise<PartnerRelationship> => {
@@ -2682,7 +2684,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ReassignPortfolioRelationshipMutationError = ErrorType<void>
 
     /**
- * @summary Reassign ownership to a different PAM. Head of Channels/admin only -- a PAM cannot reassign their own or any other relationship.
+ * @summary Reassign ownership to a different PAM. Head of Channels/admin only -- a PAM cannot reassign their own or any other relationship. The target PAM must already be the canonical owner (territories.owner_user_id) of this relationship's territory.
  */
 export const useReassignPortfolioRelationship = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reassignPortfolioRelationship>>, TError,{id: string;data: BodyType<ReassignPortfolioRelationshipInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -4433,6 +4435,90 @@ export const useUpsertManualMetricValue = <TError = ErrorType<unknown>,
       return useMutation(getUpsertManualMetricValueMutationOptions(options));
     }
 
+export const getListTeamTargetsUrl = (params?: ListTeamTargetsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/team-targets?${stringifiedParams}` : `/api/team-targets`
+}
+
+/**
+ * @summary Stage 6.2 Team/My Targets grid -- one row per (canonically-owned territory, targetable metric) for the selected period, with target, actual (from the same canonical KPI computation as Overview), and progress. Rows with no target configured yet are included (target_value/target_id null) so Head/Admin can create one directly. A PAM is always forced to their own (territory, PAM) scope regardless of query params; Head/Admin may filter.
+ */
+export const listTeamTargets = async (params?: ListTeamTargetsParams, options?: Parameters<typeof customFetch>[1]): Promise<TeamTargetRow[]> => {
+
+  return customFetch<TeamTargetRow[]>(getListTeamTargetsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTeamTargetsQueryKey = (params?: ListTeamTargetsParams,) => {
+    return [
+    `/api/team-targets`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListTeamTargetsQueryOptions = <TData = Awaited<ReturnType<typeof listTeamTargets>>, TError = ErrorType<void>>(params?: ListTeamTargetsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTeamTargets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTeamTargetsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTeamTargets>>> = ({ signal }) => listTeamTargets(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTeamTargets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTeamTargetsQueryResult = NonNullable<Awaited<ReturnType<typeof listTeamTargets>>>
+export type ListTeamTargetsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Stage 6.2 Team/My Targets grid -- one row per (canonically-owned territory, targetable metric) for the selected period, with target, actual (from the same canonical KPI computation as Overview), and progress. Rows with no target configured yet are included (target_value/target_id null) so Head/Admin can create one directly. A PAM is always forced to their own (territory, PAM) scope regardless of query params; Head/Admin may filter.
+ */
+
+export function useListTeamTargets<TData = Awaited<ReturnType<typeof listTeamTargets>>, TError = ErrorType<void>>(
+ params?: ListTeamTargetsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTeamTargets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTeamTargetsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getListMetricTargetsUrl = (params?: ListMetricTargetsParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -4449,7 +4535,7 @@ export const getListMetricTargetsUrl = (params?: ListMetricTargetsParams,) => {
 }
 
 /**
- * @summary List management-configured KPI targets. A PAM sees only their own territory plus Global; a global/admin user sees all.
+ * @summary List management-configured KPI targets. A PAM sees only their own territory; a global/admin user sees all.
  */
 export const listMetricTargets = async (params?: ListMetricTargetsParams, options?: Parameters<typeof customFetch>[1]): Promise<MetricTarget[]> => {
 
@@ -4496,7 +4582,7 @@ export type ListMetricTargetsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List management-configured KPI targets. A PAM sees only their own territory plus Global; a global/admin user sees all.
+ * @summary List management-configured KPI targets. A PAM sees only their own territory; a global/admin user sees all.
  */
 
 export function useListMetricTargets<TData = Awaited<ReturnType<typeof listMetricTargets>>, TError = ErrorType<unknown>>(
@@ -4526,7 +4612,7 @@ export const getUpsertMetricTargetUrl = () => {
 }
 
 /**
- * @summary Create or update the target for a metric/period/territory (or Global). Head of Channels/admin only -- never changes the metric's actual value.
+ * @summary Create or update the target for a metric/period/PAM/territory. Head of Channels/admin only -- never changes the metric's actual value. pam_user_id must be territory_id's canonical owner.
  */
 export const upsertMetricTarget = async (metricTargetInput: MetricTargetInput, options?: Parameters<typeof customFetch>[1]): Promise<MetricTarget> => {
 
@@ -4575,7 +4661,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpsertMetricTargetMutationError = ErrorType<void>
 
     /**
- * @summary Create or update the target for a metric/period/territory (or Global). Head of Channels/admin only -- never changes the metric's actual value.
+ * @summary Create or update the target for a metric/period/PAM/territory. Head of Channels/admin only -- never changes the metric's actual value. pam_user_id must be territory_id's canonical owner.
  */
 export const useUpsertMetricTarget = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMetricTarget>>, TError,{data: BodyType<MetricTargetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

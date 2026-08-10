@@ -6,19 +6,34 @@ import {
   UpsertMetricTargetBody,
   UpsertMetricTargetResponse,
   DeleteMetricTargetResponse,
+  ListTeamTargetsQueryParams,
+  ListTeamTargetsResponse,
 } from "@workspace/api-zod";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middleware/auth";
-import { METRIC_BY_KEY } from "../services/kpiRegistry";
+import { resolvePeriodKey } from "../services/kpiRegistry";
 import { isGlobalUser, getOwnTerritory } from "../services/authz";
+import {
+  upsertTarget,
+  deleteTarget,
+  getTeamTargets,
+  TargetNotTargetableError,
+  TargetTerritoryNotFoundError,
+  TargetPamNotFoundError,
+  TargetPamTerritoryMismatchError,
+} from "../services/targetService";
 
 const router: IRouter = Router();
 
 // Batch-fetched territory/user name lookups -- same pattern as
-// GET /manual-metric-values (one query each, not per-row).
+// GET /manual-metric-values.
 async function shapeRows(rows: (typeof metricTargetsTable.$inferSelect)[]) {
   const territoryIds = [...new Set(rows.map((r) => r.territoryId).filter((id): id is string => id !== null))];
-  const userIds = [...new Set(rows.map((r) => r.updatedByUserId).filter((id): id is string => id !== null))];
+  const userIds = [
+    ...new Set([...rows.map((r) => r.pamUserId), ...rows.map((r) => r.createdByUserId), ...rows.map((r) => r.updatedByUserId)].filter(
+      (id): id is string => id !== null,
+    )),
+  ];
   const territories = territoryIds.length ? await db.select().from(territoriesTable).where(inArray(territoriesTable.id, territoryIds)) : [];
   const users = userIds.length ? await db.select().from(usersTable).where(inArray(usersTable.id, userIds)) : [];
   const territoryName = (id: string | null) => (id ? territories.find((t) => t.id === id)?.name ?? "Unknown" : "Global");
@@ -30,17 +45,52 @@ async function shapeRows(rows: (typeof metricTargetsTable.$inferSelect)[]) {
     period: r.period,
     territory_id: r.territoryId,
     territory_name: territoryName(r.territoryId),
+    pam_user_id: r.pamUserId,
+    pam_name: userName(r.pamUserId),
     target_value: Number(r.targetValue),
     note: r.note,
+    created_by_name: userName(r.createdByUserId),
     updated_by_name: userName(r.updatedByUserId),
     updated_at: r.updatedAt.toISOString(),
   }));
 }
 
-// Same territory authorization model as every other list route (e.g.
-// GET /scan-configs): a PAM is hard-scoped to their own territory, but
-// also sees Global (territory_id = null) targets, which legitimately
-// apply to them too. Never widened by an omitted/manipulated query param.
+// Stage 6.2 Team/My Targets grid. A PAM is always forced to their own
+// (territory, pam) scope -- pam_user_id/territory query params are only
+// honored for a global-role caller, exactly the same pattern as every
+// other list route in this app (e.g. GET /recruitment). This is also what
+// makes checks E/F (a PAM can never read another PAM's targets, even by
+// manipulating query params) hold structurally, not just by convention.
+router.get("/team-targets", requireAuth, async (req, res): Promise<void> => {
+  const parsedQuery = ListTeamTargetsQueryParams.safeParse(req.query);
+  if (!parsedQuery.success) {
+    res.status(400).json({ error: parsedQuery.error.message });
+    return;
+  }
+  const actingUser = req.actingUser!;
+  const periodKey = resolvePeriodKey(parsedQuery.data.period);
+
+  let scope: { pamUserId?: string | null; territoryId?: string | null } = {
+    pamUserId: parsedQuery.data.pam_user_id,
+    territoryId: parsedQuery.data.territory,
+  };
+  if (!isGlobalUser(actingUser)) {
+    const own = await getOwnTerritory(actingUser.id);
+    if (!own) {
+      res.status(403).json({ error: "Your account has no territory assigned. Contact an admin." });
+      return;
+    }
+    scope = { pamUserId: actingUser.id, territoryId: own.territoryId };
+  }
+
+  const rows = await getTeamTargets(periodKey, scope);
+  res.json(ListTeamTargetsResponse.parse(rows));
+});
+
+// Raw target list -- primarily used to prefill Overview's existing
+// edit-target dialog. A PAM sees only their own territory's rows (Global
+// legacy rows, if any, are visible to everyone since they belong to no one
+// PAM specifically).
 router.get("/metric-targets", requireAuth, async (req, res): Promise<void> => {
   const actingUser = req.actingUser!;
   const { metric_key } = req.query as { metric_key?: string };
@@ -59,86 +109,55 @@ router.get("/metric-targets", requireAuth, async (req, res): Promise<void> => {
     ? await db.select().from(metricTargetsTable).where(eq(metricTargetsTable.metricKey, metric_key))
     : await db.select().from(metricTargetsTable);
 
-  const scoped = ownTerritoryId
-    ? rows.filter((r) => r.territoryId === ownTerritoryId || r.territoryId === null)
-    : rows;
+  const scoped = ownTerritoryId ? rows.filter((r) => r.territoryId === ownTerritoryId || r.territoryId === null) : rows;
 
   res.json(ListMetricTargetsResponse.parse(await shapeRows(scoped)));
 });
 
-// Admins are trusted to configure any territory's target (or Global) --
-// same "global roles aren't territory-scoped" convention already used by
-// PUT /metric-mappings and PUT /manual-metric-values. requireAdmin's
-// ADMIN_ROLES set includes head_of_channels and excludes pam.
+// Head/Admin only. pam_user_id is explicit and validated against
+// territories.owner_user_id (services/targetService.ts) -- never silently
+// derived, never allowed to mismatch.
 router.put("/metric-targets", requireAdmin, async (req, res): Promise<void> => {
   const body = UpsertMetricTargetBody.parse(req.body);
-  if (!METRIC_BY_KEY.has(body.metric_key)) {
-    res.status(404).json({ error: `Unknown metric_key: ${body.metric_key}` });
-    return;
-  }
-  if (body.territory_id) {
-    const [territory] = await db.select().from(territoriesTable).where(eq(territoriesTable.id, body.territory_id));
-    if (!territory) {
-      res.status(404).json({ error: `Unknown territory_id: ${body.territory_id}` });
+
+  let saved;
+  try {
+    saved = await upsertTarget({
+      metricKey: body.metric_key,
+      periodKey: body.period,
+      territoryId: body.territory_id,
+      pamUserId: body.pam_user_id,
+      targetValue: body.target_value,
+      note: body.note ?? null,
+      actingUserId: req.actingUser!.id,
+    });
+  } catch (err) {
+    if (err instanceof TargetNotTargetableError) {
+      res.status(404).json({ error: err.message });
       return;
     }
+    if (err instanceof TargetTerritoryNotFoundError || err instanceof TargetPamNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof TargetPamTerritoryMismatchError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
-
-  const now = new Date();
-  const values = {
-    metricKey: body.metric_key,
-    period: body.period,
-    territoryId: body.territory_id ?? null,
-    targetValue: String(body.target_value),
-    note: body.note ?? null,
-    updatedByUserId: req.actingUser!.id,
-    updatedAt: now,
-  };
-  const updateSet = {
-    targetValue: values.targetValue,
-    note: values.note,
-    updatedByUserId: values.updatedByUserId,
-    updatedAt: values.updatedAt,
-  };
-
-  // A single atomic INSERT .. ON CONFLICT .. DO UPDATE -- no select-then-write
-  // race window, no transaction, no swallowed DB error. The two unique
-  // indexes are disjoint (a non-null territory_id can only ever violate the
-  // plain composite index; a null one only the partial "global" index), so
-  // which conflict target to use is decided by which case this write is.
-  const [saved] = body.territory_id
-    ? await db
-        .insert(metricTargetsTable)
-        .values(values)
-        .onConflictDoUpdate({
-          target: [metricTargetsTable.metricKey, metricTargetsTable.period, metricTargetsTable.territoryId],
-          set: updateSet,
-        })
-        .returning()
-    : await db
-        .insert(metricTargetsTable)
-        .values(values)
-        .onConflictDoUpdate({
-          target: [metricTargetsTable.metricKey, metricTargetsTable.period],
-          targetWhere: sql`${metricTargetsTable.territoryId} is null`,
-          set: updateSet,
-        })
-        .returning();
 
   res.json(UpsertMetricTargetResponse.parse((await shapeRows([saved]))[0]));
 });
 
-// Admin-only, same as PUT -- admins aren't territory-scoped anywhere else
-// in this app (metric-mappings, manual-metric-values), so no additional
-// per-territory check beyond requireAdmin.
+// Admin-only, same as PUT.
 router.delete("/metric-targets/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const [existing] = await db.select().from(metricTargetsTable).where(eq(metricTargetsTable.id, id));
-  if (!existing) {
+  const deleted = await deleteTarget(id);
+  if (!deleted) {
     res.status(404).json({ error: "Target not found" });
     return;
   }
-  await db.delete(metricTargetsTable).where(eq(metricTargetsTable.id, id));
   res.json(DeleteMetricTargetResponse.parse({ id, deleted: true }));
 });
 

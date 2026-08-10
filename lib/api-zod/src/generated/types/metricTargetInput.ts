@@ -8,10 +8,12 @@
 import type { KpiPeriod } from './kpiPeriod';
 
 export interface MetricTargetInput {
+  /** Must be one of the curated targetable metrics (see TARGETABLE_METRIC_KEYS) -- 404 otherwise. */
   metric_key: string;
   period: KpiPeriod;
-  /** @nullable */
-  territory_id?: string | null;
+  territory_id: string;
+  /** Must be the canonical owner of territory_id (territories.owner_user_id) -- 400 otherwise. Explicit and validated, never silently derived or swapped. */
+  pam_user_id: string;
   /**
      * No KPI in this product has a meaningful negative target.
      * @minimum 0

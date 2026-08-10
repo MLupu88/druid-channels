@@ -1296,7 +1296,7 @@ export const TransitionPortfolioStatusResponse = zod.object({
 
 
 /**
- * @summary Reassign ownership to a different PAM. Head of Channels/admin only -- a PAM cannot reassign their own or any other relationship.
+ * @summary Reassign ownership to a different PAM. Head of Channels/admin only -- a PAM cannot reassign their own or any other relationship. The target PAM must already be the canonical owner (territories.owner_user_id) of this relationship's territory.
  */
 export const ReassignPortfolioRelationshipParams = zod.object({
   "id": zod.coerce.string()
@@ -2113,7 +2113,32 @@ export const UpsertManualMetricValueResponse = zod.object({
 
 
 /**
- * @summary List management-configured KPI targets. A PAM sees only their own territory plus Global; a global/admin user sees all.
+ * @summary Stage 6.2 Team/My Targets grid -- one row per (canonically-owned territory, targetable metric) for the selected period, with target, actual (from the same canonical KPI computation as Overview), and progress. Rows with no target configured yet are included (target_value/target_id null) so Head/Admin can create one directly. A PAM is always forced to their own (territory, PAM) scope regardless of query params; Head/Admin may filter.
+ */
+export const ListTeamTargetsQueryParams = zod.object({
+  "period": zod.coerce.string().nullish(),
+  "pam_user_id": zod.coerce.string().nullish().describe('Head\/Admin only -- ignored for a PAM caller.'),
+  "territory": zod.coerce.string().nullish().describe('Head\/Admin only (id or name) -- ignored for a PAM caller.')
+})
+
+export const ListTeamTargetsResponseItem = zod.object({
+  "pam_user_id": zod.string(),
+  "pam_name": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "metric_key": zod.string(),
+  "metric_label": zod.string(),
+  "target_value": zod.number().nullable(),
+  "target_id": zod.string().nullable().describe('Set when a target row already exists for this PAM\/territory\/metric\/period -- null means \"no target set\", used by Team Targets to offer create-vs-edit.'),
+  "actual_value": zod.number().nullable().describe('From the same canonical KPI computation Overview uses -- never recomputed separately.'),
+  "progress_percent": zod.number().nullable().describe('Null when there is no target to measure progress against -- never computed as if target were 0.'),
+  "status": zod.enum(['ahead', 'behind', 'no_target'])
+})
+export const ListTeamTargetsResponse = zod.array(ListTeamTargetsResponseItem)
+
+
+/**
+ * @summary List management-configured KPI targets. A PAM sees only their own territory; a global/admin user sees all.
  */
 export const ListMetricTargetsQueryParams = zod.object({
   "metric_key": zod.coerce.string().nullish()
@@ -2125,8 +2150,11 @@ export const ListMetricTargetsResponseItem = zod.object({
   "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
   "territory_id": zod.string().nullable(),
   "territory_name": zod.string(),
+  "pam_user_id": zod.string().nullable().describe('Nullable only for legacy pre-6.2 rows that could not be safely assigned a canonical PAM (see the Stage 6.2 report). Every row created\/updated from 6.2 onward always has one.'),
+  "pam_name": zod.string().nullable(),
   "target_value": zod.number(),
   "note": zod.string().nullable(),
+  "created_by_name": zod.string().nullable(),
   "updated_by_name": zod.string().nullable(),
   "updated_at": zod.string()
 })
@@ -2134,16 +2162,17 @@ export const ListMetricTargetsResponse = zod.array(ListMetricTargetsResponseItem
 
 
 /**
- * @summary Create or update the target for a metric/period/territory (or Global). Head of Channels/admin only -- never changes the metric's actual value.
+ * @summary Create or update the target for a metric/period/PAM/territory. Head of Channels/admin only -- never changes the metric's actual value. pam_user_id must be territory_id's canonical owner.
  */
 export const upsertMetricTargetBodyTargetValueMin = 0;
 
 
 
 export const UpsertMetricTargetBody = zod.object({
-  "metric_key": zod.string(),
+  "metric_key": zod.string().describe('Must be one of the curated targetable metrics (see TARGETABLE_METRIC_KEYS) -- 404 otherwise.'),
   "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
-  "territory_id": zod.string().nullish(),
+  "territory_id": zod.string(),
+  "pam_user_id": zod.string().describe('Must be the canonical owner of territory_id (territories.owner_user_id) -- 400 otherwise. Explicit and validated, never silently derived or swapped.'),
   "target_value": zod.number().min(upsertMetricTargetBodyTargetValueMin).describe('No KPI in this product has a meaningful negative target.'),
   "note": zod.string().nullish()
 })
@@ -2154,8 +2183,11 @@ export const UpsertMetricTargetResponse = zod.object({
   "period": zod.enum(['q1', 'q2', 'q3', 'q4', 'ytd']).describe('The same canonical reporting-period keys used throughout the KPI\/reporting\/PPTX stack.'),
   "territory_id": zod.string().nullable(),
   "territory_name": zod.string(),
+  "pam_user_id": zod.string().nullable().describe('Nullable only for legacy pre-6.2 rows that could not be safely assigned a canonical PAM (see the Stage 6.2 report). Every row created\/updated from 6.2 onward always has one.'),
+  "pam_name": zod.string().nullable(),
   "target_value": zod.number(),
   "note": zod.string().nullable(),
+  "created_by_name": zod.string().nullable(),
   "updated_by_name": zod.string().nullable(),
   "updated_at": zod.string()
 })

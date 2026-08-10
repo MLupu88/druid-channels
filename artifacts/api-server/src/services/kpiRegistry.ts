@@ -35,6 +35,22 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
 
 export const METRIC_BY_KEY = new Map(METRIC_REGISTRY.map((m) => [m.key, m]));
 
+// Stage 6.2: the curated set of metrics a PAM can be given a Team Targets
+// target against. Deliberately small -- not every Overview KPI is a
+// sensible PAM performance objective (e.g. active_onboarding/
+// certified_partners are still DEMO-sourced, not production-ready; Channel
+// Radar signal counts are intelligence, not a PAM's own output). This is
+// the single source of truth: the API is the only place this list is
+// declared, and the frontend (Team Targets, My Targets) only ever renders
+// whatever rows the API returns -- it carries no metric list of its own,
+// so the two can never drift.
+export const TARGETABLE_METRIC_KEYS = ["new_partner_prospects", "signed_partners"] as const;
+export type TargetableMetricKey = (typeof TARGETABLE_METRIC_KEYS)[number];
+
+export function isTargetableMetric(metricKey: string): metricKey is TargetableMetricKey {
+  return (TARGETABLE_METRIC_KEYS as readonly string[]).includes(metricKey);
+}
+
 // Metrics whose current/target/last_week values are USD-denominated money,
 // as opposed to a plain count (signed_partners, renewals, everything else).
 // Only these get currency-converted for display; a count must never be
