@@ -155,3 +155,19 @@ export function getAppGuideContext(query: string): AppGuideEntry[] {
   const matched = APP_GUIDE.filter((entry) => entry.keywords.some((k) => q.includes(k)) || q.includes(entry.title.toLowerCase()));
   return matched.length > 0 ? matched : APP_GUIDE;
 }
+
+// Stage 6.6 audit fix: the single canonical allow-list of real, navigable
+// app routes -- reused by copilotProvider.ts to sanitize a model-returned
+// suggested_route rather than maintaining a second, potentially-drifting
+// route list. "*" (search's guide entry) is not a navigable route on its
+// own, so it's excluded here.
+const VALID_APP_ROUTES = new Set(APP_GUIDE.map((entry) => entry.route).filter((route) => route !== "*"));
+
+// Exact match only -- deterministic, no prefix/pattern matching (a route
+// with an unexpected suffix, query string, or path segment is not "close
+// enough"). Anything that isn't a literal, known, internal route -- unknown
+// path, external http(s) URL, a bare protocol like javascript:, or
+// malformed text -- fails this check.
+export function isValidAppRoute(route: string): boolean {
+  return VALID_APP_ROUTES.has(route);
+}

@@ -17,7 +17,7 @@ import { db } from "@workspace/db";
 import { connectionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { hasCredential } from "./connections";
-import type { AppGuideEntry } from "./appGuide";
+import { isValidAppRoute, type AppGuideEntry } from "./appGuide";
 import type { PamWorkspaceSummary, PartnerContext } from "./copilotContextService";
 
 export class CopilotNotConfiguredError extends Error {
@@ -186,5 +186,17 @@ export async function chatViaDeepSeek(payload: CopilotRequestPayload): Promise<C
   const validated = CopilotReplySchema.safeParse(parsed);
   if (!validated.success) throw new CopilotProviderError("schema_invalid");
 
-  return validated.data;
+  return { ...validated.data, suggested_route: sanitizeSuggestedRoute(validated.data.suggested_route) };
+}
+
+// Stage 6.6 audit fix: the model's own text is never trusted as a
+// navigation target. Only an exact match against the real, canonical route
+// list (appGuide.ts's APP_GUIDE -- the same list how-to answers are already
+// grounded in) is returned; anything else -- an unknown internal path, a
+// full external http(s) URL, a bare protocol like "javascript:", or
+// malformed text -- becomes null rather than reaching the frontend's
+// setLocation() call. Exported for direct unit testing.
+export function sanitizeSuggestedRoute(route: string | null): string | null {
+  if (!route) return null;
+  return isValidAppRoute(route) ? route : null;
 }

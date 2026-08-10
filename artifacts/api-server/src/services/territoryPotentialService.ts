@@ -38,6 +38,13 @@ const YIELD_STOP_THRESHOLD = 0.1;
 // principle (equal qualification bar, unequal market opportunity), not a
 // bug. Documented here, not opaque -- these are the only two numbers this
 // decision uses.
+//
+// Stage 6.6 audit: these are v1 product heuristics, not a calibrated model
+// -- recorded here explicitly as a starting point to revisit once enough
+// real territory data exists to validate/tune them against. The frontend
+// labels this "Observed Partner Potential" (not "Potential") specifically
+// so these thresholds are never mistaken for an external market-size
+// estimate (see components/territory-potential-card.tsx).
 const POTENTIAL_HIGH_THRESHOLD = 30;
 const POTENTIAL_MEDIUM_THRESHOLD = 10;
 

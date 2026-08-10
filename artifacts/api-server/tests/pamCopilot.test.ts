@@ -10,9 +10,9 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { classifyIntent } from "../src/services/copilotIntent";
-import { getAppGuideContext, APP_GUIDE } from "../src/services/appGuide";
+import { getAppGuideContext, APP_GUIDE, isValidAppRoute } from "../src/services/appGuide";
 import { isNeedingAttention } from "../src/services/partnerRelationshipService";
-import { chatViaDeepSeek, CopilotProviderError } from "../src/services/copilotProvider";
+import { chatViaDeepSeek, sanitizeSuggestedRoute, CopilotProviderError } from "../src/services/copilotProvider";
 
 const originalFetch = globalThis.fetch;
 
@@ -130,4 +130,49 @@ test("chatViaDeepSeek rejects a reply whose shape doesn't match the schema (e.g.
   });
 
   await assert.rejects(() => chatViaDeepSeek({ intent: "operational", question: "What should I focus on?" }), CopilotProviderError);
+});
+
+// ---- suggested_route sanitization (Stage 6.6 audit fix) ------------------
+// Never trust the model's own text as a navigation target -- only a real,
+// canonical app route (appGuide.ts's APP_GUIDE) is ever returned.
+
+test("check 1: a valid internal route (present in APP_GUIDE) is accepted as-is", () => {
+  assert.equal(isValidAppRoute("/recruitment"), true);
+  assert.equal(sanitizeSuggestedRoute("/recruitment"), "/recruitment");
+});
+
+test("check 2: an unknown internal-looking route is rejected -> null", () => {
+  assert.equal(isValidAppRoute("/this-page-does-not-exist"), false);
+  assert.equal(sanitizeSuggestedRoute("/this-page-does-not-exist"), null);
+});
+
+test("check 3: an external http(s) URL is rejected -> null, never returned as a navigation target", () => {
+  assert.equal(isValidAppRoute("https://evil.example.com"), false);
+  assert.equal(sanitizeSuggestedRoute("https://evil.example.com"), null);
+  assert.equal(sanitizeSuggestedRoute("http://localhost/recruitment"), null);
+});
+
+test("check 4: malformed/protocol-based/empty route text is rejected -> null", () => {
+  assert.equal(sanitizeSuggestedRoute("javascript:alert(1)"), null);
+  assert.equal(sanitizeSuggestedRoute("not a route"), null);
+  assert.equal(sanitizeSuggestedRoute(""), null);
+  assert.equal(sanitizeSuggestedRoute(null), null);
+});
+
+test("the search guide entry's non-navigable route ('*') is never itself treated as valid", () => {
+  assert.equal(isValidAppRoute("*"), false);
+});
+
+test("chatViaDeepSeek end-to-end: an invalid suggested_route from the model is sanitized to null before returning", async () => {
+  process.env.AI_API_KEY = "test-key";
+  const replyWithBadRoute = {
+    answer: "Here's what I found.",
+    evidence: [],
+    suggested_route: "https://phishing.example.com/login",
+    follow_ups: [],
+  };
+  mockFetchOnce(200, { choices: [{ message: { content: JSON.stringify(replyWithBadRoute) }, finish_reason: "stop" }] });
+
+  const result = await chatViaDeepSeek({ intent: "how_to", question: "How do I import my book?" });
+  assert.equal(result.suggested_route, null);
 });

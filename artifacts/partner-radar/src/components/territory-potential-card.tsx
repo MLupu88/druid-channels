@@ -45,6 +45,12 @@ function formatYield(y: number | null): string {
  * the currently-configured target (e.g. "Available qualified pool (12) is
  * below the configured target (20) for New Partner Prospects.") -- never an
  * automated recommendation to change the target.
+ *
+ * Stage 6.6 audit fix: labeled "Observed Partner Potential" (not "Potential")
+ * with explicit helper text -- the low/medium/high band is a count of what
+ * DRUID Channels has itself found/qualified so far, never an external
+ * market-size estimate (see territoryPotentialService.ts's 10/30 v1
+ * thresholds, unchanged by this fix).
  */
 export function TerritoryPotentialCard({ summary, targetFact }: { summary: TerritoryPotentialSummary; targetFact?: string | null }) {
   const movedOn = summary.qualified_prospect_count - summary.available_prospect_count;
@@ -55,10 +61,13 @@ export function TerritoryPotentialCard({ summary, targetFact }: { summary: Terri
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-base font-medium">{summary.territory_name}</CardTitle>
           <Badge variant="outline" className={`font-normal ${POTENTIAL_STYLE[summary.potential_band]}`}>
-            Potential: {POTENTIAL_LABEL[summary.potential_band]}
+            Observed Partner Potential: {POTENTIAL_LABEL[summary.potential_band]}
           </Badge>
         </div>
         <p className="text-xs text-muted-foreground">Discovery state: {SATURATION_LABEL[summary.saturation_state]}</p>
+        <p className="text-xs text-muted-foreground/80">
+          Based on qualified prospects and existing partners observed in DRUID Channels so far. This is not an external market-size estimate.
+        </p>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
