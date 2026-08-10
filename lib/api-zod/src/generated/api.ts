@@ -977,6 +977,32 @@ export const SearchResponse = zod.array(SearchResponseItem)
 
 
 /**
+ * @summary Stage 6.4 PAM Workspace Copilot. Read-only, grounded Q&A over a controlled context snapshot (never raw SQL, never unrestricted DB access) built from the caller's own canonical territory, or -- for Head/Admin only -- an explicitly specified PAM's territory.
+ */
+export const chatWithPamCopilotBodyMessageMax = 2000;
+
+export const chatWithPamCopilotBodyPeriodRegExp = new RegExp('^\\d{4}-(q1|q2|q3|q4|ytd)$');
+
+
+export const ChatWithPamCopilotBody = zod.object({
+  "message": zod.string().min(1).max(chatWithPamCopilotBodyMessageMax),
+  "period": zod.string().regex(chatWithPamCopilotBodyPeriodRegExp).describe('Stage 6.3 -- composite \"<year>-<quarterKey>\" period identity used throughout the KPI\/reporting\/PPTX\/targets stack (never a bare \"q3\", which would collide across years). Invalid\/missing values resolve server-side to the current year + current quarter.'),
+  "pam_user_id": zod.string().nullish().describe('Head\/Admin only -- explicitly drill into this PAM\'s own territory context. Ignored for a PAM caller, who is always forced to their own identity server-side.'),
+  "company_id": zod.string().nullish().describe('Optional current-record context (e.g. the partner detail view the PAM has open). Must resolve to a company already present in the caller\'s authorized territory, or the Copilot reports it as not found.')
+})
+
+export const ChatWithPamCopilotResponse = zod.object({
+  "answer": zod.string(),
+  "evidence": zod.array(zod.object({
+  "label": zod.string(),
+  "value": zod.string()
+})).describe('Compact stored-fact references the answer relies on, e.g. a label of \"Q3 Signed Partners target\" with value \"5\". Empty when the answer doesn\'t hinge on specific supplied facts.'),
+  "suggested_route": zod.string().nullable().describe('A real in-app route the PAM could navigate to next (e.g. \"\/recruitment\"), or null.'),
+  "follow_ups": zod.array(zod.string()).describe('Up to 4 short suggested next questions, as plain text only -- never an executable action.')
+})
+
+
+/**
  * @summary Lightweight canonical-company lookup by name/domain, for the Portfolio manual-add and import-review company picker
  */
 export const SearchCompaniesQueryParams = zod.object({

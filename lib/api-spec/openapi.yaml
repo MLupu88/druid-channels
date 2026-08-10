@@ -50,6 +50,8 @@ tags:
     description: Lightweight canonical-company lookup, used by Portfolio manual add and import review to find/reuse an existing company
   - name: search
     description: Stage 6.3 internal application search across every module
+  - name: pam-copilot
+    description: Stage 6.4 PAM Workspace Copilot -- grounded, read-only Q&A over a controlled snapshot of the caller's own workspace and a maintained App Guide
 
 paths:
   /auth/login:
@@ -693,6 +695,33 @@ paths:
                   $ref: "#/components/schemas/SearchResult"
         "400":
           description: Query shorter than the minimum length
+
+  /pam-copilot/chat:
+    post:
+      operationId: chatWithPamCopilot
+      tags: [pam-copilot]
+      summary: Stage 6.4 PAM Workspace Copilot. Read-only, grounded Q&A over a controlled context snapshot (never raw SQL, never unrestricted DB access) built from the caller's own canonical territory, or -- for Head/Admin only -- an explicitly specified PAM's territory.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PamCopilotChatBody"
+      responses:
+        "200":
+          description: Grounded answer, with optional compact evidence references and a suggested next route/follow-ups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PamCopilotChatResponse"
+        "400":
+          description: Empty/invalid message, or a Head/Admin caller omitted pam_user_id
+        "403":
+          description: Caller has no canonical territory, or (PAM only) attempted to specify a different pam_user_id/territory than their own
+        "404":
+          description: Specified pam_user_id has no canonical territory
+        "502":
+          description: AI provider call failed or is not configured
 
   /companies/search:
     get:
@@ -2481,6 +2510,55 @@ components:
         href:
           type: string
           description: The module's list page -- v1 navigates to the module, not a deep link to this specific record.
+
+    PamCopilotChatBody:
+      type: object
+      required: [message, period]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        period:
+          $ref: "#/components/schemas/KpiPeriod"
+        pam_user_id:
+          type: ["string", "null"]
+          description: Head/Admin only -- explicitly drill into this PAM's own territory context. Ignored for a PAM caller, who is always forced to their own identity server-side.
+        company_id:
+          type: ["string", "null"]
+          description: Optional current-record context (e.g. the partner detail view the PAM has open). Must resolve to a company already present in the caller's authorized territory, or the Copilot reports it as not found.
+
+    PamCopilotEvidenceItem:
+      type: object
+      required: [label, value]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+
+    PamCopilotChatResponse:
+      type: object
+      required: [answer, evidence, suggested_route, follow_ups]
+      properties:
+        answer:
+          type: string
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamCopilotEvidenceItem"
+          description: >-
+            Compact stored-fact references the answer relies on, e.g. a
+            label of "Q3 Signed Partners target" with value "5". Empty when
+            the answer doesn't hinge on specific supplied facts.
+        suggested_route:
+          type: ["string", "null"]
+          description: A real in-app route the PAM could navigate to next (e.g. "/recruitment"), or null.
+        follow_ups:
+          type: array
+          items:
+            type: string
+          description: Up to 4 short suggested next questions, as plain text only -- never an executable action.
 
     CompanyRef:
       type: object

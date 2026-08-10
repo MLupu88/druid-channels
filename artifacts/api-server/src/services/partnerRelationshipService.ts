@@ -43,6 +43,20 @@ export function isValidRelationshipTransition(from: RelationshipStatus, to: Rela
   return false;
 }
 
+// Shared "needs attention" rule: an active relationship with no next action
+// set, and no interaction in the last 30 days (or never). Exported so
+// routes/portfolio.ts's summary count and the Copilot's
+// getPartnersNeedingAttention (copilotContextService.ts) apply the exact
+// same threshold rather than two independently-maintained copies.
+const ATTENTION_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function isNeedingAttention(r: Pick<PartnerRelationship, "status" | "nextAction" | "lastInteractionAt">, now: Date = new Date()): boolean {
+  if (r.status !== "active") return false;
+  if (r.nextAction) return false;
+  const lastInteractionMs = r.lastInteractionAt ? r.lastInteractionAt.getTime() : null;
+  return lastInteractionMs === null || lastInteractionMs < now.getTime() - ATTENTION_STALE_MS;
+}
+
 export function eventTypeForTransition(from: RelationshipStatus, to: RelationshipStatus): "reactivated" | "closed" | "status_changed" {
   if (to === "active" && (from === "dormant" || from === "closed")) return "reactivated";
   if (to === "closed") return "closed";

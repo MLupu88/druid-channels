@@ -572,6 +572,49 @@ export interface SearchResult {
   href: string;
 }
 
+/**
+ * Stage 6.3 -- composite "<year>-<quarterKey>" period identity used throughout the KPI/reporting/PPTX/targets stack (never a bare "q3", which would collide across years). Invalid/missing values resolve server-side to the current year + current quarter.
+ * @pattern ^\d{4}-(q1|q2|q3|q4|ytd)$
+ */
+export type KpiPeriod = string;
+
+export interface PamCopilotChatBody {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  message: string;
+  period: KpiPeriod;
+  /**
+     * Head/Admin only -- explicitly drill into this PAM's own territory context. Ignored for a PAM caller, who is always forced to their own identity server-side.
+     * @nullable
+     */
+  pam_user_id?: string | null;
+  /**
+     * Optional current-record context (e.g. the partner detail view the PAM has open). Must resolve to a company already present in the caller's authorized territory, or the Copilot reports it as not found.
+     * @nullable
+     */
+  company_id?: string | null;
+}
+
+export interface PamCopilotEvidenceItem {
+  label: string;
+  value: string;
+}
+
+export interface PamCopilotChatResponse {
+  answer: string;
+  /** Compact stored-fact references the answer relies on, e.g. a label of "Q3 Signed Partners target" with value "5". Empty when the answer doesn't hinge on specific supplied facts. */
+  evidence: PamCopilotEvidenceItem[];
+  /**
+     * A real in-app route the PAM could navigate to next (e.g. "/recruitment"), or null.
+     * @nullable
+     */
+  suggested_route: string | null;
+  /** Up to 4 short suggested next questions, as plain text only -- never an executable action. */
+  follow_ups: string[];
+}
+
 export interface CompanyRef {
   id: string;
   name: string;
@@ -1602,12 +1645,6 @@ export interface ManualMetricValueInput {
   /** @nullable */
   note?: string | null;
 }
-
-/**
- * Stage 6.3 -- composite "<year>-<quarterKey>" period identity used throughout the KPI/reporting/PPTX/targets stack (never a bare "q3", which would collide across years). Invalid/missing values resolve server-side to the current year + current quarter.
- * @pattern ^\d{4}-(q1|q2|q3|q4|ytd)$
- */
-export type KpiPeriod = string;
 
 export interface MetricTarget {
   id: string;

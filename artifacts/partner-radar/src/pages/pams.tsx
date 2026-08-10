@@ -81,7 +81,7 @@ export default function Pams() {
             </Button>
           </div>
           <div className="flex-1 overflow-auto">
-            <PamWorkspace territoryId={selected.territoryId} pamName={selected.name} />
+            <PamWorkspace territoryId={selected.territoryId} pamName={selected.name} pamUserId={selected.id} />
           </div>
         </div>
       )}

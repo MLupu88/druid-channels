@@ -36,6 +36,7 @@ import {
   reassignRelationshipOwner,
   ReassignmentTerritoryMismatchError,
   addActivity,
+  isNeedingAttention,
   InvalidRelationshipTransitionError,
   type RelationshipStatus,
 } from "../services/partnerRelationshipService";
@@ -143,13 +144,7 @@ router.get("/portfolio/summary", requireAuth, async (req, res): Promise<void> =>
 
   const inRecruitment = scopedRecruitments.filter((r) => isActiveStage(r.stage as RecruitmentStage)).length;
 
-  const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  const needsAttention = scopedRelationships.filter((r) => {
-    if (r.status !== "active") return false;
-    if (r.nextAction) return false;
-    const lastInteractionMs = r.lastInteractionAt ? r.lastInteractionAt.getTime() : null;
-    return lastInteractionMs === null || lastInteractionMs < thirtyDaysAgoMs;
-  }).length;
+  const needsAttention = scopedRelationships.filter((r) => isNeedingAttention(r)).length;
 
   res.json(
     GetPortfolioSummaryResponse.parse({

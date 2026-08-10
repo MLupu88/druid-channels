@@ -23,6 +23,7 @@
     "test:portfolio-normalization": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/portfolioNormalization.test.ts",
     "test:target-progress": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/targetProgress.test.ts",
     "test:period-resolution": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/periodResolution.test.ts",
+    "test:pam-copilot": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/pamCopilot.test.ts",
     "seed": "tsx ./src/scripts/seed.ts"
   },
   "dependencies": {

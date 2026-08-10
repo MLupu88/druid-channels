@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Building2 } from 'lucide-react';
 import { PeriodSelector } from '@/components/period-selector';
 import { getDefaultPeriodKey } from '@/lib/period';
+import { PamCopilot } from '@/components/pam-copilot';
 
 /**
  * Shared workspace view scoped to a single PAM's territory. Used both as the
@@ -17,8 +18,13 @@ import { getDefaultPeriodKey } from '@/lib/period';
  * to the caller's own territory) and, for the head_of_channels, as the
  * detail view opened from the PAMs directory (explicit territoryId, which
  * the server allows for global-role callers only).
+ *
+ * pamUserId is only ever passed for the Head/Admin drill-down case (see
+ * pams.tsx) -- it's what lets the Stage 6.4 Copilot know which PAM's
+ * workspace to use instead of silently falling back to the Head's own
+ * (nonexistent, since Head has no territory) context.
  */
-export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; pamName?: string }) {
+export function PamWorkspace({ territoryId, pamName, pamUserId }: { territoryId?: string; pamName?: string; pamUserId?: string }) {
   const { data: territories } = useListTerritories();
   const territoryName = territoryId ? territories?.find((t) => t.id === territoryId)?.name : undefined;
 
@@ -185,6 +191,8 @@ export function PamWorkspace({ territoryId, pamName }: { territoryId?: string; p
           </Card>
         </TabsContent>
       </Tabs>
+
+      <PamCopilot pamUserId={pamUserId} pamName={pamName} />
     </div>
   );
 }

@@ -68,6 +68,8 @@ import type {
   MetricMappingPreviewInput,
   MetricTarget,
   MetricTargetInput,
+  PamCopilotChatBody,
+  PamCopilotChatResponse,
   Partner,
   PartnerActivityItem,
   PartnerDetail,
@@ -2166,6 +2168,77 @@ export function useSearch<TData = Awaited<ReturnType<typeof search>>, TError = E
 
 
 
+
+export const getChatWithPamCopilotUrl = () => {
+
+
+
+
+  return `/api/pam-copilot/chat`
+}
+
+/**
+ * @summary Stage 6.4 PAM Workspace Copilot. Read-only, grounded Q&A over a controlled context snapshot (never raw SQL, never unrestricted DB access) built from the caller's own canonical territory, or -- for Head/Admin only -- an explicitly specified PAM's territory.
+ */
+export const chatWithPamCopilot = async (pamCopilotChatBody: PamCopilotChatBody, options?: Parameters<typeof customFetch>[1]): Promise<PamCopilotChatResponse> => {
+
+  return customFetch<PamCopilotChatResponse>(getChatWithPamCopilotUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(pamCopilotChatBody)
+  }
+);}
+
+
+
+
+
+export const getChatWithPamCopilotMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatWithPamCopilot>>, TError,{data: BodyType<PamCopilotChatBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof chatWithPamCopilot>>, TError,{data: BodyType<PamCopilotChatBody>}, TContext> => {
+
+const mutationKey = ['chatWithPamCopilot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof chatWithPamCopilot>>, {data: BodyType<PamCopilotChatBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  chatWithPamCopilot(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChatWithPamCopilotMutationResult = NonNullable<Awaited<ReturnType<typeof chatWithPamCopilot>>>
+    export type ChatWithPamCopilotMutationBody = BodyType<PamCopilotChatBody>
+    export type ChatWithPamCopilotMutationError = ErrorType<void>
+
+    /**
+ * @summary Stage 6.4 PAM Workspace Copilot. Read-only, grounded Q&A over a controlled context snapshot (never raw SQL, never unrestricted DB access) built from the caller's own canonical territory, or -- for Head/Admin only -- an explicitly specified PAM's territory.
+ */
+export const useChatWithPamCopilot = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatWithPamCopilot>>, TError,{data: BodyType<PamCopilotChatBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof chatWithPamCopilot>>,
+        TError,
+        {data: BodyType<PamCopilotChatBody>},
+        TContext
+      > => {
+      return useMutation(getChatWithPamCopilotMutationOptions(options));
+    }
 
 export const getSearchCompaniesUrl = (params: SearchCompaniesParams,) => {
   const normalizedParams = new URLSearchParams();

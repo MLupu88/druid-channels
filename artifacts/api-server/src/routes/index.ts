@@ -21,6 +21,7 @@ import companiesRouter from "./companies";
 import portfolioRouter from "./portfolio";
 import portfolioImportsRouter from "./portfolio_imports";
 import searchRouter from "./search";
+import pamCopilotRouter from "./pam_copilot";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(companiesRouter);
 router.use(portfolioRouter);
 router.use(portfolioImportsRouter);
 router.use(searchRouter);
+router.use(pamCopilotRouter);
 
 export default router;
