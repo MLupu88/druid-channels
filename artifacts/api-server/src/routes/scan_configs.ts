@@ -28,6 +28,17 @@ function shapeLastRun(r: typeof scanRunsTable.$inferSelect | undefined, territor
     error_message: r.errorMessage,
     started_at: r.startedAt.toISOString(),
     completed_at: r.completedAt ? r.completedAt.toISOString() : null,
+    // Production hotfix: real progress counters, written incrementally
+    // while the scan is still running (see discoveryEngine.ts's
+    // writeScanRunProgress) -- this is the read path the frontend polls
+    // for the live Discovery progress panel.
+    queries_run: r.queriesRun,
+    unique_companies_seen: r.uniqueCompaniesSeen,
+    new_companies_count: r.newCompaniesCount,
+    duplicates_removed: r.duplicatesRemoved,
+    candidates_sent_to_llm: r.candidatesSentToLlm,
+    candidates_qualified: r.candidatesQualified,
+    stopped_reason: r.stoppedReason,
   };
 }
 

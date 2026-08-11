@@ -26,6 +26,7 @@
     "test:pam-copilot": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/pamCopilot.test.ts",
     "test:discovery-budget": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryBudget.test.ts",
     "test:territory-potential": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/territoryPotential.test.ts",
+    "test:discovery-engine": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryEngine.test.ts",
     "seed": "tsx ./src/scripts/seed.ts"
   },
   "dependencies": {

@@ -8,6 +8,7 @@ import {
   scanConfigsTable,
   territoriesTable,
   connectionsTable,
+  SCAN_RUN_STOPPED_REASONS,
   type ScanConfig,
   type Territory,
 } from "@workspace/db";
@@ -657,6 +658,13 @@ export interface LiveDiscoveryStats {
   duplicatesRemoved: number;
   candidatesSentToLlm: number;
   candidatesQualified: number;
+  // Product decision (hotfix): a candidate that fully clears qualification
+  // AND identity resolution is persisted immediately, not batched until the
+  // whole run succeeds -- so this is the true "how many new prospects did
+  // this run actually create" count, meaningful even on a run that later
+  // fails. See the persistence loop below and runDiscoveryForConfig's use
+  // of it as qualifiedCount on the live path.
+  prospectsCreated: number;
   stoppedReason: BudgetStopReason;
 }
 
@@ -665,13 +673,31 @@ export interface LiveDiscoveryResult {
   stats: LiveDiscoveryStats;
 }
 
+// Production hotfix: progress checkpoints written *while the scan is still
+// running*, not just once at the very end. Each call is a single tiny
+// single-row UPDATE by primary key -- bounded by the same hard caps already
+// enforced (at most MAX_QUERIES_PER_RUN query checkpoints + at most
+// MAX_CANDIDATES_TO_LLM*2 qualification checkpoints per run, never one per
+// search result), so this is a small, fixed number of extra writes, not
+// unbounded chatter. This is also what makes partial progress survive a
+// mid-run exception: by the time an error propagates out of
+// attemptLiveDiscovery, every counter up to the last completed checkpoint
+// is already durable in scan_runs, independent of whether the function
+// itself ever returns normally.
+async function writeScanRunProgress(
+  runId: string,
+  patch: Partial<Pick<LiveDiscoveryStats, "queriesRun" | "uniqueCompaniesSeen" | "newCompaniesCount" | "duplicatesRemoved" | "candidatesSentToLlm" | "candidatesQualified">>,
+): Promise<void> {
+  await db.update(scanRunsTable).set(patch).where(eq(scanRunsTable.id, runId));
+}
+
 // Stage 6.5 Cost-Aware Adaptive Discovery: bounded initial batch -> evaluate
 // new-candidate yield -> optional bounded expansion -> stop on a hard cap or
 // sustained poor yield (see discoveryBudget.ts's decideNextBatch). Territory
 // size affects how much of the existing MAX_QUERIES_PER_RUN/
 // MAX_CANDIDATES_TO_LLM ceiling a run actually uses -- it never raises the
 // ceiling itself, and it never changes qualifyChecks' qualification bar.
-async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): Promise<LiveDiscoveryResult | null> {
+async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, runId: string): Promise<LiveDiscoveryResult | null> {
   const rows = await db.select().from(connectionsTable).where(inArray(connectionsTable.providerType, REQUIRED_PROVIDER_TYPES));
   const byType = new Map(rows.map((r) => [r.providerType, r]));
   const ready = REQUIRED_PROVIDER_TYPES.every((t) => hasCredential(byType.get(t)?.credentialEnvVar ?? null));
@@ -682,6 +708,12 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): P
     // a second buildSearchQueries call -- search and AI qualification below
     // literally share the same array, not just equal-by-construction copies.
     const criteria = buildPartnerSearchCriteria(config, territory);
+    // Same excluded-domains gate runDiscoveryForConfig's own loop has always
+    // applied for the demo path -- reused verbatim (not reimplemented) so a
+    // live candidate is excluded at exactly the same logical point it always
+    // was: after qualification, before persistence, never affecting whether
+    // it's counted toward resultsFound (candidates.length) below.
+    const excludedDomains = (config.excludedDomains as string[]) ?? [];
     const candidates: Candidate[] = [];
     // Cross-query dedup: the same URL can legitimately surface from more
     // than one query variant (see buildAutomaticQueries) -- only qualify it
@@ -723,6 +755,7 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): P
     let duplicatesRemoved = 0;
     let uniqueCompaniesSeen = 0;
     let newCompaniesCount = 0;
+    let prospectsCreated = 0;
     let stoppedReason: BudgetStopReason = "completed";
     const recentYields: number[] = [];
 
@@ -791,7 +824,12 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): P
           // Tavily's search result already carries usable content -- no
           // second external call. extract() only validates/bounds it.
           const page = await extractionProvider.extract(result.url, { text: result.snippet, publishedAt: result.publishedAt });
+          // Checkpoint 3: recorded as "sent" the moment the call is made,
+          // before awaiting the result -- if qualify() itself throws
+          // (timeout, network error, etc.), this candidate genuinely was
+          // sent, and that fact is already durable.
           candidatesSentToLlm++;
+          await writeScanRunProgress(runId, { candidatesSentToLlm });
           const qualification = await aiProvider.qualify({
             companyName: result.title,
             domain: evidenceDomain,
@@ -809,9 +847,13 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): P
 
           // Same qualification bar regardless of territory -- qualifyChecks
           // and config.minChecksRequired are untouched by anything in this
-          // adaptive-budget loop.
-          if (qualifyChecks(checks, config.minChecksRequired).priority === null) continue;
+          // adaptive-budget loop. Result is kept (not just null-checked) --
+          // it's the exact QualificationResult persistCandidate needs below,
+          // never recomputed a second time.
+          const qualificationResult = qualifyChecks(checks, config.minChecksRequired);
+          if (qualificationResult.priority === null) continue;
           candidatesQualified++;
+          await writeScanRunProgress(runId, { candidatesQualified });
 
           // Cost control: identity resolution (an extra search + AI call)
           // only runs for evidence that already clears the qualification bar
@@ -826,7 +868,7 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): P
             continue; // never persist the publisher's identity in place of the real company
           }
 
-          candidates.push({
+          const candidate: Candidate = {
             companyName: identity.companyName,
             domain: identity.companyDomain,
             country: "Unknown",
@@ -848,8 +890,30 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): P
                 confidence: "medium" as Confidence,
                 rawExcerpt: page.text.slice(0, 400),
               })),
-          });
+          };
+          // resultsFound (candidates.length, computed by the caller) counts
+          // every candidate that reached this point, regardless of the
+          // excluded-domain gate just below -- unchanged from before this
+          // hotfix, see the excludedDomains comment above.
+          candidates.push(candidate);
+
+          // Product decision (hotfix): persist immediately, not batched
+          // until the whole run succeeds -- so a later candidate's provider
+          // failure can never discard a candidate that already fully
+          // cleared qualification + identity resolution. Same
+          // persistCandidate call, same transaction/dedupe/evidence/
+          // canonicalization behavior as the pre-hotfix batched call; only
+          // WHEN it runs has changed.
+          if (!isExcludedDomain(candidate.domain, excludedDomains)) {
+            const created = await persistCandidate(candidate, qualificationResult, territory, "connected");
+            if (created) prospectsCreated++;
+          }
         }
+
+        // Checkpoint 1/2: after this query's results are fully searched and
+        // deduped -- queriesRun, plus the dedupe counters as they stand so
+        // far this run. One write per completed query, never per result.
+        await writeScanRunProgress(runId, { queriesRun, uniqueCompaniesSeen, newCompaniesCount, duplicatesRemoved });
       }
 
       recentYields.push(computeNewCandidateYield({ rawResults: batchRaw, uniqueCompanies: batchUnique, newCompanies: batchNew }));
@@ -857,7 +921,7 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory): P
 
     return {
       candidates,
-      stats: { queriesRun, uniqueCompaniesSeen, newCompaniesCount, duplicatesRemoved, candidatesSentToLlm, candidatesQualified, stoppedReason },
+      stats: { queriesRun, uniqueCompaniesSeen, newCompaniesCount, duplicatesRemoved, candidatesSentToLlm, candidatesQualified, prospectsCreated, stoppedReason },
     };
   } catch (err) {
     const notImplemented =
@@ -970,19 +1034,88 @@ export interface DiscoveryOutcome {
 // error just by reading .message off whatever they catch.
 export class DiscoveryScanFailedError extends Error {}
 
+export interface DiscoveryFailureClassification {
+  stoppedReason: (typeof SCAN_RUN_STOPPED_REASONS)[number];
+  message: string;
+}
+
+// Production hotfix: AiProviderError.code/SearchProviderError.code (already
+// a small closed set of internal classifications -- never the raw provider
+// response) previously collapsed into one generic message per provider and
+// were never persisted as stopped_reason at all, which is why a real
+// production failure (AI qualification timing out mid-scan) showed
+// stopped_reason=NULL and an uninformative message. Every mapped code below
+// is bounded and non-sensitive; nothing here ever touches err.message,
+// a response body, a header, or a stack trace.
+const AI_ERROR_CLASSIFICATION: Record<string, DiscoveryFailureClassification> = {
+  timeout: {
+    stoppedReason: "ai_timeout",
+    message: "AI qualification timed out. Search work completed, but qualification did not finish in time. Please retry the scan.",
+  },
+  network_error: {
+    stoppedReason: "ai_network_error",
+    message: "Could not reach the AI provider during qualification. Please retry the scan.",
+  },
+  http_error: {
+    stoppedReason: "ai_http_error",
+    message: "The AI provider returned an error during qualification. Please retry or check the AI connection in Admin.",
+  },
+  oversized_response: {
+    stoppedReason: "ai_oversized_response",
+    message: "AI qualification returned an unusable response. Please retry the scan.",
+  },
+  malformed_json: {
+    stoppedReason: "ai_malformed_response",
+    message: "AI qualification returned an unusable response. Please retry the scan.",
+  },
+  empty_response: {
+    stoppedReason: "ai_empty_response",
+    message: "AI qualification returned an unusable response. Please retry the scan.",
+  },
+  truncated: {
+    stoppedReason: "ai_truncated_response",
+    message: "AI qualification returned an unusable response. Please retry the scan.",
+  },
+  schema_invalid: {
+    stoppedReason: "ai_schema_invalid",
+    message: "AI qualification returned an unusable response. Please retry the scan.",
+  },
+};
+
+const SEARCH_ERROR_CLASSIFICATION: Record<string, DiscoveryFailureClassification> = {
+  timeout: { stoppedReason: "search_timeout", message: "Web search timed out. Please retry the scan." },
+  network_error: { stoppedReason: "search_network_error", message: "Could not reach the search provider. Please retry the scan." },
+  http_error: {
+    stoppedReason: "search_http_error",
+    message: "The search provider returned an error. Please retry or check the Web Search connection in Admin.",
+  },
+  oversized_response: { stoppedReason: "search_oversized_response", message: "Web search returned an unusable response. Please retry the scan." },
+  malformed_json: { stoppedReason: "search_malformed_response", message: "Web search returned an unusable response. Please retry the scan." },
+  malformed_response: { stoppedReason: "search_malformed_response", message: "Web search returned an unusable response. Please retry the scan." },
+};
+
 // Classifies the *typed* error object -- not a message string read back out
-// of the DB later -- into a stable, hand-written user-facing message. The
-// three provider branches are unreachable via the live path today
-// (attemptLiveDiscovery already intercepts *NotImplementedError internally
-// and falls back to demo), but stay as defense-in-depth and become live the
-// moment one provider is implemented while others remain stubbed.
-function classifyDiscoveryError(err: unknown): string {
-  if (err instanceof searchProvider.SearchNotImplementedError) return "Search provider not connected.";
-  if (err instanceof extractionProvider.ExtractionNotImplementedError) return "Page extraction provider not connected.";
-  if (err instanceof aiProvider.AiNotImplementedError) return "AI qualification provider not connected.";
-  if (err instanceof searchProvider.SearchProviderError) return "Web search provider call failed. Please try again.";
-  if (err instanceof aiProvider.AiProviderError) return "AI qualification call failed. Please try again.";
-  return "Discovery scan could not be completed. Please try again or contact an administrator.";
+// of the DB later -- into a stable, hand-written, bounded (stoppedReason,
+// message) pair. The NotImplemented branches are unreachable via the live
+// path today (attemptLiveDiscovery already intercepts *NotImplementedError
+// internally and falls back to demo), but stay as defense-in-depth and
+// become live the moment one provider is implemented while others remain
+// stubbed. Exported for direct unit testing without needing a live provider
+// call or a thrown exception from real network code.
+export function classifyDiscoveryFailure(err: unknown): DiscoveryFailureClassification {
+  if (err instanceof searchProvider.SearchNotImplementedError) return { stoppedReason: "error", message: "Search provider not connected." };
+  if (err instanceof extractionProvider.ExtractionNotImplementedError) {
+    return { stoppedReason: "error", message: "Page extraction provider not connected." };
+  }
+  if (err instanceof aiProvider.AiNotImplementedError) return { stoppedReason: "error", message: "AI qualification provider not connected." };
+
+  if (err instanceof aiProvider.AiProviderError) {
+    return AI_ERROR_CLASSIFICATION[err.code] ?? { stoppedReason: "error", message: "AI qualification call failed. Please try again." };
+  }
+  if (err instanceof searchProvider.SearchProviderError) {
+    return SEARCH_ERROR_CLASSIFICATION[err.code] ?? { stoppedReason: "error", message: "Web search provider call failed. Please try again." };
+  }
+  return { stoppedReason: "error", message: "Discovery scan could not be completed. Please try again or contact an administrator." };
 }
 
 export async function runDiscoveryForConfig(scanConfigId: string): Promise<DiscoveryOutcome> {
@@ -999,19 +1132,32 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
     .returning();
 
   try {
-    const liveResult = await attemptLiveDiscovery(config, territory);
+    const liveResult = await attemptLiveDiscovery(config, territory, run!.id);
     const dataStatus: "demo" | "connected" = liveResult ? "connected" : "demo";
     const candidates = liveResult?.candidates ?? generateDemoCandidates(config, territory);
     const excludedDomains = (config.excludedDomains as string[]) ?? [];
 
-    let qualifiedCount = 0;
-    for (const candidate of candidates) {
-      if (isExcludedDomain(candidate.domain, excludedDomains)) continue;
-      const qualification = qualifyChecks(candidate.checks, config.minChecksRequired);
-      if (!qualification.priority) continue;
+    // Product decision (hotfix): a live candidate is already persisted the
+    // moment it clears qualification + identity resolution, inside
+    // attemptLiveDiscovery itself (see its persistence block) -- so it must
+    // never be re-persisted here, which would either double-insert or
+    // silently no-op via upsertCompanyOrSkip's active-prospect dedupe and
+    // under-report qualifiedCount. Only the demo path (which has no
+    // provider-failure mode and was never in scope for this change) still
+    // qualifies+persists candidates in this loop, exactly as before.
+    let qualifiedCount: number;
+    if (liveResult) {
+      qualifiedCount = liveResult.stats.prospectsCreated;
+    } else {
+      qualifiedCount = 0;
+      for (const candidate of candidates) {
+        if (isExcludedDomain(candidate.domain, excludedDomains)) continue;
+        const qualification = qualifyChecks(candidate.checks, config.minChecksRequired);
+        if (!qualification.priority) continue;
 
-      const created = await persistCandidate(candidate, qualification, territory, dataStatus);
-      if (created) qualifiedCount++;
+        const created = await persistCandidate(candidate, qualification, territory, dataStatus);
+        if (created) qualifiedCount++;
+      }
     }
 
     // Stage 6.5: run-level search-productivity stats only exist on the live
@@ -1044,7 +1190,7 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
 
     return { run: completedRun!, prospectsCreated: qualifiedCount };
   } catch (err) {
-    const safeMessage = classifyDiscoveryError(err);
+    const { stoppedReason, message: safeMessage } = classifyDiscoveryFailure(err);
 
     // Bounded, safe diagnostic fields only -- never the raw err.message or
     // a raw exception object. A message string can itself embed a DB URL,
@@ -1054,16 +1200,23 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
     // raw diagnostics are needed later, they must go through an explicit
     // secret-redacting sanitizer first -- not logged verbatim here.
     logger.error(
-      { scanConfigId, errorName: err instanceof Error ? err.name : typeof err, safeMessage },
+      { scanConfigId, errorName: err instanceof Error ? err.name : typeof err, stoppedReason, safeMessage },
       "Discovery scan failed",
     );
 
+    // Deliberately does NOT set queriesRun/uniqueCompaniesSeen/
+    // newCompaniesCount/duplicatesRemoved/candidatesSentToLlm/
+    // candidatesQualified here -- those were already written incrementally
+    // as real checkpoints during attemptLiveDiscovery (see
+    // writeScanRunProgress), so whatever the run genuinely completed before
+    // failing stays on the row. Only the terminal fields change.
     await db
       .update(scanRunsTable)
       .set({
         status: "failed",
         completedAt: new Date(),
         errorMessage: safeMessage,
+        stoppedReason,
       })
       .where(eq(scanRunsTable.id, run!.id));
     throw new DiscoveryScanFailedError(safeMessage);

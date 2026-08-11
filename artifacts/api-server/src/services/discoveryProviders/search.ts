@@ -17,7 +17,7 @@ export class SearchNotImplementedError extends Error {
 }
 
 // A small closed set of internal failure classifications -- never the raw
-// provider error text. See classifyDiscoveryError() in discoveryEngine.ts
+// provider error text. See classifyDiscoveryFailure() in discoveryEngine.ts
 // for the user-facing mapping.
 export class SearchProviderError extends Error {
   constructor(public code: string) {

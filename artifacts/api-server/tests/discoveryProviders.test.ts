@@ -6,10 +6,16 @@
 // none of the functions under test here ever query -- the placeholder
 // value is set by the "test:discovery-providers" script, not this file
 // (ESM hoists imports before any of this file's own top-level code runs).
-import { test, after } from "node:test";
+import { test, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { searchViaTavily, SearchProviderError } from "../src/services/discoveryProviders/search";
-import { qualifyViaDeepSeek, AiProviderError } from "../src/services/discoveryProviders/ai";
+import {
+  qualifyViaDeepSeek,
+  identifyCompanyViaDeepSeek,
+  AiProviderError,
+  QUALIFICATION_TIMEOUT_MS,
+  IDENTITY_TIMEOUT_MS,
+} from "../src/services/discoveryProviders/ai";
 
 const originalFetch = globalThis.fetch;
 
@@ -20,6 +26,19 @@ function mockFetchOnce(status: number, body: unknown) {
 
 after(() => {
   globalThis.fetch = originalFetch;
+});
+
+// Production hotfix: every test in this file sets its own fetch mock and
+// AI_API_KEY/SEARCH_API_KEY before use, but nothing previously restored
+// them *between* tests -- a test order change or a new test appended
+// without its own mock could silently inherit a previous test's rejecting
+// fetch or "configured" env state. Restored after every test, not just once
+// at the end of the file, so tests can never leak state into each other
+// regardless of order.
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  delete process.env.AI_API_KEY;
+  delete process.env.SEARCH_API_KEY;
 });
 
 test("searchViaTavily normalizes Tavily results and never fabricates a publish date", async () => {
@@ -152,4 +171,63 @@ test("qualifyViaDeepSeek throws AiProviderError on malformed model output", asyn
       }),
     AiProviderError,
   );
+});
+
+// ---- Production hotfix: split qualification vs identity timeouts --------
+
+test("check: main qualification timeout is 60 seconds", () => {
+  assert.equal(QUALIFICATION_TIMEOUT_MS, 60_000);
+});
+
+test("check: identity resolution remains separately bounded at 20 seconds", () => {
+  assert.equal(IDENTITY_TIMEOUT_MS, 20_000);
+});
+
+test("qualifyViaDeepSeek still maps an aborted request to AiProviderError('timeout') -- AbortController protection intact", async () => {
+  process.env.AI_API_KEY = "test-key";
+  globalThis.fetch = (async () => {
+    const err = new Error("The operation was aborted");
+    err.name = "AbortError";
+    throw err;
+  }) as typeof fetch;
+
+  try {
+    await qualifyViaDeepSeek({
+      companyName: "Acme Systems",
+      domain: "acme.example",
+      evidence: [{ url: "https://acme.example/news", text: "evidence" }],
+      criteria: {
+        partnerTypes: [],
+        industries: [],
+        technologies: [],
+        territoryName: "Global",
+        territoryCountries: [],
+        excludedDomains: [],
+        minChecksRequired: 3,
+        searchIntent: [],
+        targetSignalTypes: [],
+      },
+    });
+    assert.fail("expected qualifyViaDeepSeek to throw");
+  } catch (err) {
+    assert.ok(err instanceof AiProviderError);
+    assert.equal((err as AiProviderError).code, "timeout");
+  }
+});
+
+test("identifyCompanyViaDeepSeek still maps an aborted request to AiProviderError('timeout') -- AbortController protection intact", async () => {
+  process.env.AI_API_KEY = "test-key";
+  globalThis.fetch = (async () => {
+    const err = new Error("The operation was aborted");
+    err.name = "AbortError";
+    throw err;
+  }) as typeof fetch;
+
+  try {
+    await identifyCompanyViaDeepSeek({ subjectCompanyName: "Acme Systems", candidates: [] });
+    assert.fail("expected identifyCompanyViaDeepSeek to throw");
+  } catch (err) {
+    assert.ok(err instanceof AiProviderError);
+    assert.equal((err as AiProviderError).code, "timeout");
+  }
 });

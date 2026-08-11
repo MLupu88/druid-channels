@@ -63,7 +63,8 @@ import {
   Pencil,
   Trash2,
   Sparkles,
-  Target
+  Target,
+  RefreshCw
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -72,9 +73,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { format, formatDistanceToNowStrict } from 'date-fns';
+import { format } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
-import type { ProspectDecisionInputDecision, ScanConfig, ProspectNextAction, ListProspectsFreshness } from '@workspace/api-client-react';
+import type { ProspectDecisionInputDecision, ScanConfig, ScanRun, ProspectNextAction, ListProspectsFreshness } from '@workspace/api-client-react';
+import {
+  inferDiscoveryPhase,
+  inferActivePhase,
+  isScanActive,
+  shouldPollDiscoveryProgress,
+  formatCompletionSummary,
+  formatFailureProgressSummary,
+  formatFailureHeader,
+  ACTIVE_PHASE_LABEL,
+} from '@/lib/discovery-progress';
 
 // UI-only filter types: the generated API param types plus a local "all"
 // sentinel that means "no filter" and is never sent to the API.
@@ -178,6 +189,53 @@ function DataStatusBadge({ dataStatus }: { dataStatus: string }) {
   return <Badge variant="outline" className="font-normal text-muted-foreground">Demo data</Badge>;
 }
 
+// Production hotfix: real Discovery progress -- built entirely from
+// scan_runs' persisted counters (see discovery-progress.ts), polled while
+// the scan is active. Never a fabricated/interpolated percentage; the
+// running-state phase and counters below are exactly what the backend has
+// genuinely completed so far, and a failed run keeps whatever it completed
+// before stopping (see discoveryEngine.ts's incremental checkpoints).
+function DiscoveryProgressPanel({ run, onRetry, retryDisabled }: { run: ScanRun; onRetry: () => void; retryDisabled: boolean }) {
+  const phase = inferDiscoveryPhase(run);
+
+  if (phase === 'starting' || phase === 'searching' || phase === 'qualifying') {
+    return (
+      <div className="rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-xs space-y-2.5 max-w-md" data-testid="panel-discovery-progress-running">
+        <p className="font-medium text-foreground">{ACTIVE_PHASE_LABEL[phase]}</p>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+          <div className="space-y-0.5">
+            <p className="text-muted-foreground uppercase tracking-wider text-[10px] font-medium mb-1">Searching sources</p>
+            <p className="text-muted-foreground">Queries completed: <span className="text-foreground font-medium">{run.queries_run}</span></p>
+            <p className="text-muted-foreground">Companies found: <span className="text-foreground font-medium">{run.unique_companies_seen}</span></p>
+            <p className="text-muted-foreground">Duplicates removed: <span className="text-foreground font-medium">{run.duplicates_removed}</span></p>
+            <p className="text-muted-foreground">New candidates: <span className="text-foreground font-medium">{run.new_companies_count}</span></p>
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-muted-foreground uppercase tracking-wider text-[10px] font-medium mb-1">AI qualification</p>
+            <p className="text-muted-foreground">Sent for qualification: <span className="text-foreground font-medium">{run.candidates_sent_to_llm}</span></p>
+            <p className="text-muted-foreground">Qualified prospects: <span className="text-foreground font-medium">{run.candidates_qualified}</span></p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'stopped') {
+    return (
+      <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-xs space-y-1.5 max-w-md" data-testid="panel-discovery-progress-failed">
+        <p className="font-medium text-rose-800">{formatFailureHeader(run)}</p>
+        <p className="text-rose-700">{formatFailureProgressSummary(run)}</p>
+        {run.error_message && <p className="text-rose-700">{run.error_message}</p>}
+        <Button size="sm" variant="outline" className="mt-1.5 h-7 text-xs gap-1.5" onClick={onRetry} disabled={retryDisabled} data-testid="button-retry-scan">
+          <RefreshCw className="h-3 w-3" /> Retry scan
+        </Button>
+      </div>
+    );
+  }
+
+  return null; // 'completed' -- the one-line header summary is enough, no separate panel
+}
+
 function CriteriaChips({ label, values }: { label: string; values: string[] | undefined }) {
   return (
     <div>
@@ -230,7 +288,44 @@ export default function Prospects() {
 
   const { data: territories } = useListTerritories();
   const { data: users } = useListUsers({ query: { enabled: isGlobalUser, queryKey: getListUsersQueryKey() } });
-  const { data: scanConfigs } = useListScanConfigs();
+  const runScanMutation = useRunScan({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getListProspectsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListScanConfigsQueryKey() });
+        toast({
+          title: data.data_status === 'connected' ? "Scan complete (live sources)" : "Scan complete (demo data)",
+          description: data.message ?? `Found ${data.results_found}, ${data.results_qualified} qualified for review.`,
+        });
+      },
+      onError: (err: any) => {
+        // Production hotfix: the backend's own safe, specific failure
+        // message (e.g. "AI qualification timed out...") replaces the old
+        // generic "could not complete" text -- detailed progress/failure
+        // info also stays visible in the page itself (DiscoveryProgressPanel
+        // below), so the toast is never the only diagnostic.
+        toast({
+          variant: "destructive",
+          title: "Scan failed",
+          description: err?.message ?? "The discovery scan could not complete. Existing prospects were not affected.",
+        });
+      },
+    }
+  });
+
+  // Production hotfix: short polling while any scan is actively running OR
+  // while the Run-scan POST itself is still in flight -- POST /scans/run is
+  // long-running and synchronous, so for its entire duration the cached
+  // scan-config list can still show the *previous* completed/failed run.
+  // Gating polling on cached data alone would mean the newly-inserted
+  // "running" row is never observed until the POST resolves. Stops the
+  // instant neither condition holds (see shouldPollDiscoveryProgress).
+  const { data: scanConfigs } = useListScanConfigs({
+    query: {
+      queryKey: getListScanConfigsQueryKey(),
+      refetchInterval: (query) => (shouldPollDiscoveryProgress(runScanMutation.isPending, query.state.data) ? 1500 : false),
+    },
+  });
   
   const { data: prospects, isLoading } = useListProspects({
     ...(search ? { search } : {}),
@@ -356,26 +451,6 @@ export default function Prospects() {
     deleteMutation.mutate({ id: selectedId });
   };
 
-  const runScanMutation = useRunScan({
-    mutation: {
-      onSuccess: (data) => {
-        queryClient.invalidateQueries({ queryKey: getListProspectsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListScanConfigsQueryKey() });
-        toast({
-          title: data.data_status === 'connected' ? "Scan complete (live sources)" : "Scan complete (demo data)",
-          description: data.message ?? `Found ${data.results_found}, ${data.results_qualified} qualified for review.`,
-        });
-      },
-      onError: () => {
-        toast({
-          variant: "destructive",
-          title: "Scan failed",
-          description: "The discovery scan could not complete. Existing prospects were not affected.",
-        });
-      },
-    }
-  });
-
   // PAM: their /scan-configs list is already server-scoped to their own
   // territory, so only the active-config filter matters. Global user: the
   // scan must target whichever territory is currently selected in the
@@ -433,28 +508,20 @@ export default function Prospects() {
     if (!lastRun) {
       return <span>Never scanned yet</span>;
     }
+    // Production hotfix: running/failed states no longer say "running... 42
+    // seconds ago" or a single generic failure line -- the real, counter-
+    // driven detail (phase, partial progress, safe failure reason, Retry)
+    // renders in DiscoveryProgressPanel just below the header instead. This
+    // header line stays a short, glanceable summary only.
     if (lastRun.status === 'running' || lastRun.status === 'queued') {
-      return (
-        <>
-          <span>Discovery scan running…</span>
-          <span>·</span>
-          <span>Started {formatDistanceToNowStrict(new Date(lastRun.started_at), { addSuffix: true })}</span>
-        </>
-      );
+      return <span>{ACTIVE_PHASE_LABEL[inferActivePhase(lastRun)]}…</span>;
     }
     if (lastRun.status === 'failed') {
-      return (
-        <>
-          <span className="text-rose-700">Last scan failed</span>
-          {lastRun.error_message && <span className="text-rose-700">· {lastRun.error_message}</span>}
-        </>
-      );
+      return <span className="text-rose-700">Last scan failed</span>;
     }
     return (
       <>
-        <span>Last scanned {formatDistanceToNowStrict(new Date(lastRun.completed_at ?? lastRun.started_at), { addSuffix: true })}</span>
-        <span>·</span>
-        <span>Found {lastRun.results_found}, {lastRun.results_qualified} qualified</span>
+        <span>{formatCompletionSummary(lastRun)}</span>
         <DataStatusBadge dataStatus={lastRun.data_status} />
       </>
     );
@@ -525,6 +592,14 @@ export default function Prospects() {
             </Button>
           </div>
         </div>
+
+        {targetScanConfig?.last_run && (isScanActive(targetScanConfig.last_run.status) || targetScanConfig.last_run.status === 'failed') && (
+          <DiscoveryProgressPanel
+            run={targetScanConfig.last_run}
+            onRetry={runDiscoveryScan}
+            retryDisabled={runScanMutation.isPending}
+          />
+        )}
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">

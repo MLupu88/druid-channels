@@ -9,7 +9,33 @@ import { scanConfigsTable } from "./scan_configs";
 // discoveryBudget.ts/discoveryEngine.ts). All default to 0/null so existing
 // rows (and every demo-mode run, which never runs the adaptive loop) stay
 // honestly "no real search productivity data" rather than fabricated.
-export const SCAN_RUN_STOPPED_REASONS = ["budget_exhausted", "saturation", "completed", "manual", "error"] as const;
+// Production hotfix: widened with bounded, non-sensitive AI/search failure
+// classifications (see discoveryEngine.ts's classifyDiscoveryFailure) so a
+// genuine provider failure's stopped_reason is diagnosable without ever
+// persisting a raw provider error/response. `enum` here is a drizzle-orm
+// TypeScript-level constraint on a plain `text` column -- it does not
+// generate a Postgres CHECK constraint, so widening this array is a
+// source-only change; no migration is needed.
+export const SCAN_RUN_STOPPED_REASONS = [
+  "budget_exhausted",
+  "saturation",
+  "completed",
+  "manual",
+  "error",
+  "ai_timeout",
+  "ai_network_error",
+  "ai_http_error",
+  "ai_oversized_response",
+  "ai_malformed_response",
+  "ai_empty_response",
+  "ai_truncated_response",
+  "ai_schema_invalid",
+  "search_timeout",
+  "search_network_error",
+  "search_http_error",
+  "search_oversized_response",
+  "search_malformed_response",
+] as const;
 
 export const scanRunsTable = pgTable("scan_runs", {
   id: uuid("id").primaryKey().defaultRandom(),

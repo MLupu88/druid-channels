@@ -182,6 +182,7 @@ export * from './scanRunInputMode';
 export * from './scanRunResult';
 export * from './scanRunResultStatus';
 export * from './scanRunStatus';
+export * from './scanStoppedReason';
 export * from './searchCompaniesParams';
 export * from './searchParams';
 export * from './searchResult';

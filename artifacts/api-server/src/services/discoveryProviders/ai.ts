@@ -121,7 +121,15 @@ const AiQualificationSchema = z.object({
 });
 
 const MAX_TOKENS = 900;
-const REQUEST_TIMEOUT_MS = 20_000;
+// Production hotfix: the main qualification call (qualifyViaDeepSeek) and
+// the much smaller identity-resolution call (identifyCompanyViaDeepSeek)
+// previously shared one 20s timeout. A real CEE scan's qualification call
+// legitimately needs more headroom than a 3-candidate identity lookup, so
+// they're now independently bounded -- this is strictly a timeout-budget
+// split; the request body (model, thinking, response_format, max_tokens)
+// for each call is unchanged.
+export const QUALIFICATION_TIMEOUT_MS = 60_000;
+export const IDENTITY_TIMEOUT_MS = 20_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 50_000;
 
 const SYSTEM_PROMPT = `You are an assistant that evaluates whether a company found via a web search is a good potential channel/alliance partner for DRUID, an enterprise conversational/agentic AI platform vendor.
@@ -214,7 +222,7 @@ export async function qualifyViaDeepSeek(input: AiQualificationInput): Promise<A
   };
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), QUALIFICATION_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch("https://api.deepseek.com/chat/completions", {
@@ -359,7 +367,7 @@ export async function identifyCompanyViaDeepSeek(input: IdentityResolutionInput)
   if (!apiKey) throw new AiNotImplementedError();
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), IDENTITY_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch("https://api.deepseek.com/chat/completions", {

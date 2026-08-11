@@ -81,6 +81,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { sortConnectionsByDisplayOrder, getConnectionTone, isErrorTone } from '@/lib/connection-display';
 import {
   Pencil, Save, Database, Sparkles, Unplug, CheckCircle2, Search, Bot, Loader2, XCircle, Eye,
   Plus, MoreHorizontal, KeyRound, UserX, UserCheck, Copy,
@@ -1008,11 +1009,15 @@ const CONNECTION_ICONS: Record<string, React.ElementType> = {
   ai: Bot,
 };
 
-function ConnectionStatusBadge({ status }: { status: string }) {
-  if (status === 'connected') return <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 font-normal shrink-0"><span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Connected</span></Badge>;
-  if (status === 'unverified') return <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-normal shrink-0"><span className="flex items-center gap-1"><Eye className="h-3 w-3" /> Credential set (unverified)</span></Badge>;
-  if (status === 'error') return <Badge variant="outline" className="text-rose-700 bg-rose-50 border-rose-200 font-normal shrink-0"><span className="flex items-center gap-1"><XCircle className="h-3 w-3" /> Error</span></Badge>;
-  return <Badge variant="outline" className="text-muted-foreground font-normal shrink-0">Not connected</Badge>;
+function ConnectionStatusBadge({ status, hasCredential }: { status: string; hasCredential: boolean }) {
+  const tone = getConnectionTone(status, hasCredential);
+  if (tone === 'connected') return <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 font-normal shrink-0"><span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Connected</span></Badge>;
+  if (tone === 'configured') return <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-normal shrink-0"><span className="flex items-center gap-1"><Eye className="h-3 w-3" /> Configured</span></Badge>;
+  if (tone === 'error') return <Badge variant="outline" className="text-rose-700 bg-rose-50 border-rose-200 font-normal shrink-0"><span className="flex items-center gap-1"><XCircle className="h-3 w-3" /> Error</span></Badge>;
+  // not_configured: a missing credential is a normal, expected
+  // configuration state on this page (not evidence of an outage) --
+  // neutral/grey, never red.
+  return <Badge variant="outline" className="text-muted-foreground font-normal shrink-0">Not configured</Badge>;
 }
 
 function DataStatusPill({ status }: { status: string }) {
@@ -1031,11 +1036,11 @@ function ConnectionCard({ connection }: { connection: Connection }) {
     mutation: {
       onSuccess: (result) => {
         queryClient.invalidateQueries({ queryKey: getListConnectionsQueryKey() });
-        const ok = result.status === 'connected' || result.status === 'unverified';
+        const failed = isErrorTone(getConnectionTone(result.status, result.has_credential));
         toast({
-          title: ok ? 'Test complete' : 'Connection failed',
+          title: failed ? 'Connection failed' : 'Test complete',
           description: result.last_error ?? undefined,
-          variant: ok ? 'default' : 'destructive',
+          variant: failed ? 'destructive' : 'default',
         });
       },
       onError: (err: any) => {
@@ -1059,7 +1064,7 @@ function ConnectionCard({ connection }: { connection: Connection }) {
             </p>
           </div>
         </div>
-        <ConnectionStatusBadge status={connection.status} />
+        <ConnectionStatusBadge status={connection.status} hasCredential={connection.has_credential} />
       </CardHeader>
       <CardContent className="p-5 flex items-center justify-between gap-4">
         <div className="text-xs text-muted-foreground space-y-1">
@@ -1068,7 +1073,7 @@ function ConnectionCard({ connection }: { connection: Connection }) {
             {connection.last_tested_at ? format(new Date(connection.last_tested_at), 'MMM d, HH:mm') : 'Never'}
           </p>
           {connection.last_error && (
-            <p className="text-rose-600">{connection.last_error}</p>
+            <p className={isErrorTone(getConnectionTone(connection.status, connection.has_credential)) ? 'text-rose-600' : 'text-muted-foreground'}>{connection.last_error}</p>
           )}
         </div>
         <Button
@@ -1557,7 +1562,7 @@ function ConnectionsDataTab() {
           </div>
         ) : (
           <div className="space-y-3">
-            {connections?.map((c) => <ConnectionCard key={c.id} connection={c} />)}
+            {sortConnectionsByDisplayOrder(connections ?? []).map((c) => <ConnectionCard key={c.id} connection={c} />)}
           </div>
         )}
       </div>

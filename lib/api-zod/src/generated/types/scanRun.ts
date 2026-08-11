@@ -7,6 +7,7 @@
  */
 import type { DiscoveryDataStatus } from './discoveryDataStatus';
 import type { ScanRunStatus } from './scanRunStatus';
+import type { ScanStoppedReason } from './scanStoppedReason';
 
 export interface ScanRun {
   id: string;
@@ -22,4 +23,14 @@ export interface ScanRun {
   started_at: string;
   /** @nullable */
   completed_at?: string | null;
+  /** Search queries actually run so far, updated incrementally while the scan is still running. */
+  queries_run: number;
+  unique_companies_seen: number;
+  new_companies_count: number;
+  duplicates_removed: number;
+  /** Candidates genuinely sent for AI qualification so far -- updated before each call completes, so it reflects real progress even if the scan later fails. */
+  candidates_sent_to_llm: number;
+  /** Candidates that genuinely completed qualification and passed the 5-check bar so far. */
+  candidates_qualified: number;
+  stopped_reason?: ScanStoppedReason | null;
 }

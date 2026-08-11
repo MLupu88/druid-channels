@@ -8,7 +8,9 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:metric-target-selection": "tsx --test tests/metricTargetSelection.test.ts"
+    "test:metric-target-selection": "tsx --test tests/metricTargetSelection.test.ts",
+    "test:connection-display": "tsx --test tests/connectionDisplay.test.ts",
+    "test:discovery-progress": "tsx --test tests/discoveryProgress.test.ts"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

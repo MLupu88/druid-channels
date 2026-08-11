@@ -3385,9 +3385,45 @@ components:
       enum: [demo, connected]
       description: Whether this scan ran against a live provider chain ("connected") or the deterministic fallback generator ("demo") -- never fabricated as connected.
 
+    ScanStoppedReason:
+      type: string
+      description: Bounded, non-sensitive classification of why an adaptive Discovery run stopped -- never a raw provider error/response. Present once a run has stopped for any reason (completed, budget-capped, saturated, or a provider failure); null while still running.
+      enum:
+        - budget_exhausted
+        - saturation
+        - completed
+        - manual
+        - error
+        - ai_timeout
+        - ai_network_error
+        - ai_http_error
+        - ai_oversized_response
+        - ai_malformed_response
+        - ai_empty_response
+        - ai_truncated_response
+        - ai_schema_invalid
+        - search_timeout
+        - search_network_error
+        - search_http_error
+        - search_oversized_response
+        - search_malformed_response
+
     ScanRun:
       type: object
-      required: [id, scan_config_id, status, results_found, results_qualified, data_status, started_at]
+      required:
+        - id
+        - scan_config_id
+        - status
+        - results_found
+        - results_qualified
+        - data_status
+        - started_at
+        - queries_run
+        - unique_companies_seen
+        - new_companies_count
+        - duplicates_removed
+        - candidates_sent_to_llm
+        - candidates_qualified
       properties:
         id:
           type: string
@@ -3410,6 +3446,25 @@ components:
           type: string
         completed_at:
           type: ["string", "null"]
+        queries_run:
+          type: number
+          description: Search queries actually run so far, updated incrementally while the scan is still running.
+        unique_companies_seen:
+          type: number
+        new_companies_count:
+          type: number
+        duplicates_removed:
+          type: number
+        candidates_sent_to_llm:
+          type: number
+          description: Candidates genuinely sent for AI qualification so far -- updated before each call completes, so it reflects real progress even if the scan later fails.
+        candidates_qualified:
+          type: number
+          description: Candidates that genuinely completed qualification and passed the 5-check bar so far.
+        stopped_reason:
+          oneOf:
+            - $ref: "#/components/schemas/ScanStoppedReason"
+            - type: "null"
 
     KpiRow:
       type: object

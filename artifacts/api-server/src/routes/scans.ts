@@ -99,6 +99,13 @@ router.get("/scan-runs", requireAuth, async (req, res): Promise<void> => {
     error_message: r.run.errorMessage,
     started_at: r.run.startedAt.toISOString(),
     completed_at: r.run.completedAt ? r.run.completedAt.toISOString() : null,
+    queries_run: r.run.queriesRun,
+    unique_companies_seen: r.run.uniqueCompaniesSeen,
+    new_companies_count: r.run.newCompaniesCount,
+    duplicates_removed: r.run.duplicatesRemoved,
+    candidates_sent_to_llm: r.run.candidatesSentToLlm,
+    candidates_qualified: r.run.candidatesQualified,
+    stopped_reason: r.run.stoppedReason,
   }))));
 });
 
