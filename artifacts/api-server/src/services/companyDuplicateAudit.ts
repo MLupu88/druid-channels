@@ -1,8 +1,8 @@
-// Phase 3A: pure, DB-free logic backing the read-only production duplicate
-// audit script (src/scripts/auditCompanyDuplicates.ts). Kept separate from
-// the script itself so the grouping/classification decisions are directly
-// unit-testable without a DB connection -- the script is a thin orchestrator
-// that fetches rows and calls these functions.
+// Phase 3A/3B: pure, DB-free logic backing the read-only production
+// duplicate audit script (src/scripts/auditCompanyDuplicates.ts). Kept
+// separate from the script itself so the grouping/classification decisions
+// are directly unit-testable without a DB connection -- the script is a
+// thin orchestrator that fetches rows and calls these functions.
 import { toRegistrableDomain } from "./companyIdentity";
 
 // Groups company ids by canonical registrable domain. Companies with no
@@ -25,6 +25,52 @@ export function groupCompaniesByCanonicalDomain(
     if (ids.length < 2) groups.delete(key);
   }
   return groups;
+}
+
+// Phase 3B: a company whose STORED domain string is not already canonical
+// (e.g. "WWW.Acme.COM" or "ir.acme.com" sitting in the row, rather than
+// "acme.com") -- regardless of whether it's part of a multi-row duplicate
+// group. This matters specifically for the Phase 3B unique index, which is
+// on the literal domain column, not a computed canonical expression (see
+// the migration's own comment for why): the index only ever catches two
+// rows with byte-identical stored strings. A single non-canonical row with
+// no duplicate sibling today is not blocked by the index, but it IS latent
+// risk -- a future write for the same real company, if it ever bypassed
+// resolveOrCreateCanonicalCompany's tolerant in-app matching, would produce
+// a canonical string that differs from this row's stored string and the
+// index would never catch the collision. Reported for manual review, never
+// auto-normalized here.
+export function findNonCanonicalRows(
+  companies: ReadonlyArray<{ id: string; domain: string | null }>,
+): ReadonlyArray<{ companyId: string; storedDomain: string; canonicalDomain: string | null }> {
+  const result: Array<{ companyId: string; storedDomain: string; canonicalDomain: string | null }> = [];
+  for (const company of companies) {
+    if (!company.domain) continue; // null domain is always allowed, never "non-canonical"
+    const canonical = toRegistrableDomain(company.domain);
+    if (canonical !== company.domain) {
+      result.push({ companyId: company.id, storedDomain: company.domain, canonicalDomain: canonical });
+    }
+  }
+  return result;
+}
+
+// Phase 3B: direct, repeatable check for invariant B (at most one
+// non-rejected prospect per company+territory) independent of any domain
+// duplication -- surfaces any pair that would already violate the Phase 3B
+// unique index before it's created, so `CREATE UNIQUE INDEX` failing with a
+// raw Postgres error is never the first anyone hears about it.
+export function findActiveProspectConflicts(
+  prospects: ReadonlyArray<{ id: string; companyId: string; territoryId: string; status: string }>,
+): ReadonlyArray<{ companyId: string; territoryId: string; prospectIds: string[] }> {
+  const byKey = new Map<string, { companyId: string; territoryId: string; prospectIds: string[] }>();
+  for (const p of prospects) {
+    if (p.status === "rejected") continue;
+    const key = `${p.companyId}|${p.territoryId}`;
+    const entry = byKey.get(key);
+    if (entry) entry.prospectIds.push(p.id);
+    else byKey.set(key, { companyId: p.companyId, territoryId: p.territoryId, prospectIds: [p.id] });
+  }
+  return [...byKey.values()].filter((entry) => entry.prospectIds.length > 1);
 }
 
 export interface DuplicateGroupMember {

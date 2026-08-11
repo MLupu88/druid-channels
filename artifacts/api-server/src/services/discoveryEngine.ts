@@ -1037,6 +1037,22 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 // two different domains only causes harmless extra serialization, never an
 // incorrect match -- the lookup below still compares real canonical domain
 // strings, never the hash itself.
+//
+// Phase 3B: a real `companies_domain_unique` partial unique index now also
+// exists at the DB level -- the lock is kept anyway, deliberately, as the
+// two serve different purposes. The DB index is the final, universal
+// guarantee across every write path (including ones that don't go through
+// this function, e.g. Portfolio manual-add / PAM book import, which are
+// not lock-protected). The advisory lock is what keeps THIS path
+// (Discovery, the one genuinely concurrent trigger -- multiple
+// admin-initiated scans can race) from ever hitting that constraint as a
+// real 23505 unique-violation exception: nothing in persistCandidate or
+// its callers catches one, so an unprotected race here would surface as an
+// unhandled error and could fail an otherwise-healthy scan run for what is
+// really just an expected, harmless race. With the lock, the second
+// transaction blocks and then cleanly finds the first transaction's row
+// instead of ever attempting a colliding INSERT.
+//
 // Exported for testing -- DB-backed (needs a real transaction), so covered
 // by the disposable-Postgres test suite rather than a pure/local one.
 export async function resolveOrCreateCanonicalCompany(tx: Tx, candidate: Candidate): Promise<string> {

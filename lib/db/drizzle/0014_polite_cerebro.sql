@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "companies_domain_unique" ON "companies" USING btree ("domain") WHERE "companies"."domain" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "prospects_company_territory_active_unique" ON "prospects" USING btree ("company_id","territory_id") WHERE "prospects"."status" <> 'rejected';
