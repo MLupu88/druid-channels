@@ -2034,7 +2034,14 @@ components:
         territory_name:
           type: ["string", "null"]
         assigned_user:
-          $ref: "#/components/schemas/User"
+          description: >-
+            Null for a Discovery prospect that has not yet been explicitly
+            assigned by Head of Channels/Admin (see persistCandidate --
+            newly discovered prospects start unassigned, never auto-handed
+            to the territory's PAM).
+          oneOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
         partner_type:
           type: string
         priority:
@@ -2106,7 +2113,12 @@ components:
         territory_name:
           type: ["string", "null"]
         assigned_user:
-          $ref: "#/components/schemas/User"
+          description: >-
+            Null for a Discovery prospect that has not yet been explicitly
+            assigned by Head of Channels/Admin.
+          oneOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
         partner_type:
           type: string
         priority:

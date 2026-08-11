@@ -446,8 +446,13 @@ export default function Overview() {
 
   // Cache-only read on mount/filter change -- generation is exclusively
   // user-triggered via the Regenerate button below, never automatic.
+  // Role-separation hotfix: AI Channel Brief is Head-of-Channels/Admin-only
+  // (see routes/ai_channel_brief.ts) -- a PAM's Overview must never even
+  // call the now-403'ing endpoint, not just hide the resulting panel.
   const aiBriefParams = { territory: scopedTerritory, period, currency };
-  const { data: aiBrief, isLoading: isLoadingAiBrief } = useGetAiChannelBrief(aiBriefParams);
+  const { data: aiBrief, isLoading: isLoadingAiBrief } = useGetAiChannelBrief(aiBriefParams, {
+    query: { enabled: isGlobalUser, queryKey: getGetAiChannelBriefQueryKey(aiBriefParams) },
+  });
 
   const regenerateAiBriefMutation = useRegenerateAiChannelBrief({
     mutation: {
@@ -614,21 +619,27 @@ export default function Overview() {
               </SelectContent>
             </Select>
 
-            <Button
-              variant="outline"
-              className="bg-card"
-              onClick={handleExport}
-              disabled={isExporting}
-              data-testid="button-export-pptx"
-            >
-              {isExporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-              {isExporting ? 'Exporting…' : 'Export PowerPoint'}
-            </Button>
+            {/* Role-separation hotfix: strategic PowerPoint export is
+                Head-of-Channels/Admin-only (see routes/exports.ts). */}
+            {isGlobalUser && (
+              <Button
+                variant="outline"
+                className="bg-card"
+                onClick={handleExport}
+                disabled={isExporting}
+                data-testid="button-export-pptx"
+              >
+                {isExporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                {isExporting ? 'Exporting…' : 'Export PowerPoint'}
+              </Button>
+            )}
           </div>
         </div>
 
         {canViewTeamData && <PamLocalTimeSection users={teamUsers} />}
 
+        {/* Role-separation hotfix: AI Channel Brief is Head-of-Channels/Admin-only. */}
+        {isGlobalUser && (
         <div className="max-w-5xl">
           <AiChannelBriefPanel
             brief={aiBrief}
@@ -638,6 +649,7 @@ export default function Overview() {
             metricLabelByKey={metricLabelByKey}
           />
         </div>
+        )}
 
         {isLoadingKpis ? (
           <div className="space-y-6">

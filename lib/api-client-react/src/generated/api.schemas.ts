@@ -139,7 +139,8 @@ export interface Prospect {
   territory_id: string;
   /** @nullable */
   territory_name?: string | null;
-  assigned_user?: User;
+  /** Null for a Discovery prospect that has not yet been explicitly assigned by Head of Channels/Admin (see persistCandidate -- newly discovered prospects start unassigned, never auto-handed to the territory's PAM). */
+  assigned_user?: User | null;
   partner_type: string;
   priority: ProspectPriority;
   enterprise_access: boolean;
@@ -231,7 +232,8 @@ export interface ProspectDetail {
   territory_id: string;
   /** @nullable */
   territory_name?: string | null;
-  assigned_user?: User;
+  /** Null for a Discovery prospect that has not yet been explicitly assigned by Head of Channels/Admin. */
+  assigned_user?: User | null;
   partner_type: string;
   priority: ProspectDetailPriority;
   enterprise_access: boolean;

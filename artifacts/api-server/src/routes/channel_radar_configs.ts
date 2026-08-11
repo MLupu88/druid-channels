@@ -10,7 +10,7 @@ import {
   UpdateChannelRadarConfigResponse,
 } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middleware/auth";
+import { requireAdmin } from "../middleware/auth";
 import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
 
 const router: IRouter = Router();
@@ -27,9 +27,9 @@ function shapeConfig(c: typeof channelRadarConfigsTable.$inferSelect, territoryN
   };
 }
 
-// GET stays requireAuth + territory-scoped (a PAM can view their own
-// territory's Radar config read-only) -- same convention as scan-configs.
-router.get("/channel-radar-configs", requireAuth, async (req, res): Promise<void> => {
+// Role-separation hotfix: Channel Radar is Head-of-Channels/Admin-only in
+// this stage -- a PAM gets no API access, including read-only config views.
+router.get("/channel-radar-configs", requireAdmin, async (req, res): Promise<void> => {
   const actingUser = req.actingUser!;
   let ownTerritoryId: string | null = null;
   if (!isGlobalUser(actingUser)) {
@@ -52,7 +52,7 @@ router.get("/channel-radar-configs", requireAuth, async (req, res): Promise<void
   res.json(ListChannelRadarConfigsResponse.parse(scoped.map((r) => shapeConfig(r.config, r.territory?.name ?? ""))));
 });
 
-router.get("/channel-radar-configs/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/channel-radar-configs/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const [row] = await db

@@ -23,7 +23,7 @@ import {
 } from "@workspace/api-zod";
 import { eq, and, sql, count, max, inArray, desc, asc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
-import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
+import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, assertOwnUserAccess, ForbiddenScopeError } from "../services/authz";
 import { acceptForRecruitment } from "../services/partnerRecruitmentService";
 
 const router: IRouter = Router();
@@ -279,8 +279,13 @@ router.get("/prospects", requireAuth, async (req, res): Promise<void> => {
   let filtered = rows.filter((row) => row.company !== null);
 
   if (scopedTerritoryId) {
-    // PAM: hard scope to their own territory regardless of any client-supplied filter.
-    filtered = filtered.filter((r) => r.prospect.territoryId === scopedTerritoryId);
+    // Role-separation hotfix: a PAM sees only prospects explicitly assigned
+    // to them by Head/Admin -- territory membership alone is no longer
+    // sufficient (a prospect can sit in a PAM's own territory, discovered
+    // but not yet reviewed/pushed to anyone). Hard-scoped regardless of any
+    // client-supplied filter (including pam_user_id, which can never widen
+    // this for a non-global caller -- see the check above).
+    filtered = filtered.filter((r) => r.prospect.territoryId === scopedTerritoryId && r.prospect.assignedUserId === actingUser.id);
   } else if (territory) {
     // support filter by territory name OR territory id
     filtered = filtered.filter((r) => r.territory?.name === territory || r.prospect.territoryId === territory);
@@ -369,9 +374,14 @@ router.get("/prospects/:id", requireAuth, async (req, res): Promise<void> => {
 
   try {
     await assertRecordTerritoryAccess(req.actingUser!, row.prospect.territoryId, row.territory?.name);
+    // Role-separation hotfix: territory membership alone is no longer
+    // sufficient for a PAM -- the prospect must be explicitly assigned to
+    // them. A 404 (not 403) here, matching "not found" rather than
+    // confirming a real-but-unassigned prospect exists in their territory.
+    assertOwnUserAccess(req.actingUser!, row.prospect.assignedUserId);
   } catch (err) {
     if (err instanceof ForbiddenScopeError) {
-      res.status(403).json({ error: err.message });
+      res.status(404).json({ error: "Prospect not found" });
       return;
     }
     throw err;
@@ -447,6 +457,10 @@ router.post("/prospects/:id/decision", requireAuth, async (req, res): Promise<vo
 
   try {
     await assertRecordTerritoryAccess(req.actingUser!, existing.territoryId, null);
+    // Role-separation hotfix: a PAM may only decide (accept/reject/defer) on
+    // prospects explicitly assigned to them -- territory membership alone is
+    // not enough. Head/admin are exempt via assertOwnUserAccess itself.
+    assertOwnUserAccess(req.actingUser!, existing.assignedUserId);
   } catch (err) {
     if (err instanceof ForbiddenScopeError) {
       res.status(403).json({ error: err.message });
@@ -454,8 +468,12 @@ router.post("/prospects/:id/decision", requireAuth, async (req, res): Promise<vo
     }
     throw err;
   }
-  if (!isGlobalUser(req.actingUser!) && assigned_user_id && assigned_user_id !== req.actingUser!.id) {
-    res.status(403).json({ error: "You cannot assign a prospect to another PAM." });
+  // Role-separation hotfix: assignment/reassignment is Head/Admin-only --
+  // a PAM can no longer even self-assign. The decision field itself
+  // (accept/reject/defer) remains available to a PAM on their own
+  // assigned prospect, handled separately below.
+  if (!isGlobalUser(req.actingUser!) && assigned_user_id) {
+    res.status(403).json({ error: "Only Head of Channels or Admin can assign a prospect." });
     return;
   }
 
@@ -545,6 +563,9 @@ router.patch("/prospects/:id", requireAuth, async (req, res): Promise<void> => {
 
   try {
     await assertRecordTerritoryAccess(req.actingUser!, existing.territoryId, null);
+    // Role-separation hotfix: a PAM may only edit prospects explicitly
+    // assigned to them -- territory membership alone is not enough.
+    assertOwnUserAccess(req.actingUser!, existing.assignedUserId);
   } catch (err) {
     if (err instanceof ForbiddenScopeError) {
       res.status(403).json({ error: err.message });
@@ -552,8 +573,12 @@ router.patch("/prospects/:id", requireAuth, async (req, res): Promise<void> => {
     }
     throw err;
   }
-  if (!isGlobalUser(req.actingUser!) && parsed.data.assigned_user_id && parsed.data.assigned_user_id !== req.actingUser!.id) {
-    res.status(403).json({ error: "You cannot assign a prospect to another PAM." });
+  // Role-separation hotfix: assignment/reassignment is Head/Admin-only --
+  // a PAM can no longer even self-assign. All other editable fields below
+  // (why_it_fits, pam_note, priority, etc.) remain available to a PAM on
+  // their own assigned prospect.
+  if (!isGlobalUser(req.actingUser!) && parsed.data.assigned_user_id !== undefined) {
+    res.status(403).json({ error: "Only Head of Channels or Admin can assign a prospect." });
     return;
   }
 
@@ -617,6 +642,9 @@ router.delete("/prospects/:id", requireAuth, async (req, res): Promise<void> => 
 
   try {
     await assertRecordTerritoryAccess(req.actingUser!, existing.territoryId, null);
+    // Role-separation hotfix: a PAM may only delete prospects explicitly
+    // assigned to them -- territory membership alone is not enough.
+    assertOwnUserAccess(req.actingUser!, existing.assignedUserId);
   } catch (err) {
     if (err instanceof ForbiddenScopeError) {
       res.status(403).json({ error: err.message });
@@ -642,6 +670,9 @@ router.post("/prospects/:id/hubspot", requireAuth, async (req, res): Promise<voi
 
   try {
     await assertRecordTerritoryAccess(req.actingUser!, existing.territoryId, null);
+    // Role-separation hotfix: a PAM may only push prospects explicitly
+    // assigned to them -- territory membership alone is not enough.
+    assertOwnUserAccess(req.actingUser!, existing.assignedUserId);
   } catch (err) {
     if (err instanceof ForbiddenScopeError) {
       res.status(403).json({ error: err.message });

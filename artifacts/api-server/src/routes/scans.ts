@@ -3,13 +3,15 @@ import { db } from "@workspace/db";
 import { scanConfigsTable, scanRunsTable, territoriesTable } from "@workspace/db";
 import { RunScanBody, RunScanResponse, ListScanRunsQueryParams, ListScanRunsResponse } from "@workspace/api-zod";
 import { eq, desc } from "drizzle-orm";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireAdmin } from "../middleware/auth";
 import { assertRecordTerritoryAccess, ForbiddenScopeError, isGlobalUser, getOwnTerritory } from "../services/authz";
 import { runDiscoveryForConfig, DiscoveryScanFailedError } from "../services/discoveryEngine";
 
 const router: IRouter = Router();
 
-router.post("/scans/run", requireAuth, async (req, res): Promise<void> => {
+// Role-separation hotfix: Discovery is a Head-of-Channels/Admin management
+// workflow, not PAM self-service prospecting -- running a scan is admin-only.
+router.post("/scans/run", requireAdmin, async (req, res): Promise<void> => {
   const parsed = RunScanBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

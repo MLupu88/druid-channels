@@ -1,13 +1,14 @@
 import { Router, type IRouter } from "express";
 import { resolvePeriodKey } from "../services/kpiService";
-import { requireAuth } from "../middleware/auth";
+import { requireAdmin } from "../middleware/auth";
 import { resolveScopedTerritory, ForbiddenScopeError } from "../services/authz";
 import { FxUnavailableError, InvalidCurrencyError, parseCurrencyParam } from "../services/fx";
 import { buildQuarterlyReportPptx } from "../services/pptxReport";
 
 const router: IRouter = Router();
 
-router.get("/exports/quarterly-pptx", requireAuth, async (req, res): Promise<void> => {
+// Role-separation hotfix: strategic PowerPoint export is Head-of-Channels/Admin-only.
+router.get("/exports/quarterly-pptx", requireAdmin, async (req, res): Promise<void> => {
   const { territory, period, currency } = req.query as { territory?: string; period?: string; currency?: string };
   const periodKey = resolvePeriodKey(period);
   let target;

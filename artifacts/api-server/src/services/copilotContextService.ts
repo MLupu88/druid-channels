@@ -17,11 +17,10 @@ import {
   partnerRecruitmentsTable,
   partnerActivitiesTable,
   prospectsTable,
-  channelRadarSignalsTable,
   campaignsTable,
   type Company,
 } from "@workspace/db";
-import { eq, and, inArray, ne, desc } from "drizzle-orm";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import { getTeamTargets, type TeamTargetRow } from "./targetService";
 import { resolvePeriodRange } from "./kpiRegistry";
 import { computeDaysInStage, isStalled, isActiveStage, type RecruitmentStage } from "./partnerRecruitmentService";
@@ -29,10 +28,8 @@ import { isNeedingAttention } from "./partnerRelationshipService";
 import { getTerritoryPotential, type TerritoryPotentialSummary } from "./territoryPotentialService";
 
 const TOP_N = 8;
-const RADAR_TOP_N = 8;
 const ACTIVITY_TOP_N = 5;
 const PARTNER_ACTIVITY_TOP_N = 5;
-const PARTNER_RADAR_TOP_N = 5;
 
 export interface PamIdentity {
   pam_user_id: string;
@@ -71,18 +68,6 @@ export interface PortfolioAttentionItem {
   next_action: string | null;
 }
 
-export interface RadarSignalItem {
-  signal_id: string;
-  entity_name: string;
-  signal_type: string;
-  implication: string;
-  impact: string;
-  headline: string;
-  recommended_action: string;
-  source_title: string;
-  discovered_at: string;
-}
-
 export interface ActivityItem {
   name: string;
   type: string;
@@ -114,9 +99,6 @@ export interface PamWorkspaceSummary {
   portfolio: {
     active_partner_count: number;
     needs_attention: PortfolioAttentionItem[];
-  };
-  radar: {
-    recent_signals: RadarSignalItem[];
   };
   activity: {
     recent: ActivityItem[];
@@ -212,27 +194,6 @@ export async function getPartnersNeedingAttention(territoryId: string, limit = T
   return attention.slice(0, limit);
 }
 
-export async function getRecentRadarSignals(territoryId: string, limit = RADAR_TOP_N): Promise<RadarSignalItem[]> {
-  const rows = await db
-    .select()
-    .from(channelRadarSignalsTable)
-    .where(and(eq(channelRadarSignalsTable.territoryId, territoryId), ne(channelRadarSignalsTable.status, "dismissed")))
-    .orderBy(desc(channelRadarSignalsTable.discoveredAt))
-    .limit(limit);
-
-  return rows.map((s) => ({
-    signal_id: s.id,
-    entity_name: s.entityName,
-    signal_type: s.signalType,
-    implication: s.implication,
-    impact: s.impact,
-    headline: s.headline,
-    recommended_action: s.recommendedAction,
-    source_title: s.sourceTitle,
-    discovered_at: s.discoveredAt.toISOString(),
-  }));
-}
-
 export async function getRecentActivities(territoryName: string, limit = ACTIVITY_TOP_N): Promise<ActivityItem[]> {
   const rows = await db
     .select()
@@ -251,12 +212,15 @@ export async function getRecentActivities(territoryName: string, limit = ACTIVIT
   }));
 }
 
-async function getTopDiscoveryProspects(territoryId: string, limit = TOP_N): Promise<{ count: number; top: DiscoveryProspectItem[] }> {
+// Role-separation hotfix: a PAM's Copilot workspace only ever shows
+// prospects explicitly assigned to them, matching what "My Prospects"
+// shows on-screen -- territory membership alone is not enough.
+async function getTopDiscoveryProspects(territoryId: string, pamUserId: string, limit = TOP_N): Promise<{ count: number; top: DiscoveryProspectItem[] }> {
   const rows = await db
     .select({ prospect: prospectsTable, company: companiesTable })
     .from(prospectsTable)
     .innerJoin(companiesTable, eq(prospectsTable.companyId, companiesTable.id))
-    .where(eq(prospectsTable.territoryId, territoryId));
+    .where(and(eq(prospectsTable.territoryId, territoryId), eq(prospectsTable.assignedUserId, pamUserId)));
 
   const relevant = rows.filter((r) => r.prospect.status === "new" || r.prospect.status === "accepted");
   relevant.sort((a, b) => {
@@ -282,7 +246,6 @@ function buildDataQualityNotes(summary: Omit<PamWorkspaceSummary, "data_quality_
   }
   if (summary.portfolio.active_partner_count === 0) notes.push("No active Portfolio relationships in this territory.");
   if (summary.recruitment.active_count === 0) notes.push("No active recruitments in this territory.");
-  if (summary.radar.recent_signals.length === 0) notes.push("No recent Channel Radar signals for this territory.");
   if (summary.activity.recent.length === 0) notes.push("No marketing activity logged yet for this territory.");
   if (summary.territory_potential.potential_band === "insufficient_data") {
     notes.push("Not enough Discovery/Portfolio history yet to assess Territory Potential for this territory.");
@@ -303,16 +266,15 @@ export async function getPamWorkspaceSummary(
 ): Promise<PamWorkspaceSummary> {
   const periodInfo = resolvePeriodRange(periodKey);
 
-  const [performance, priorityRecruitments, allRecruitmentsForCount, partnersNeedingAttention, allRelationshipsForCount, radarSignals, activities, discovery, territoryPotential] =
+  const [performance, priorityRecruitments, allRecruitmentsForCount, partnersNeedingAttention, allRelationshipsForCount, activities, discovery, territoryPotential] =
     await Promise.all([
       getPamTargets(pamUserId, territoryId, periodKey),
       getPriorityRecruitments(territoryId),
       db.select().from(partnerRecruitmentsTable).where(eq(partnerRecruitmentsTable.territoryId, territoryId)),
       getPartnersNeedingAttention(territoryId),
       db.select().from(partnerRelationshipsTable).where(eq(partnerRelationshipsTable.territoryId, territoryId)),
-      getRecentRadarSignals(territoryId),
       getRecentActivities(territoryName),
-      getTopDiscoveryProspects(territoryId),
+      getTopDiscoveryProspects(territoryId, pamUserId),
       getTerritoryPotential(territoryId, territoryName),
     ]);
 
@@ -334,7 +296,6 @@ export async function getPamWorkspaceSummary(
     discovery: { prospect_count: discovery.count, top_prospects: discovery.top },
     recruitment: { active_count: activeRecruitmentCount, stalled_count: stalledCount, priority_recruitments: priorityRecruitments },
     portfolio: { active_partner_count: activePartnerCount, needs_attention: partnersNeedingAttention },
-    radar: { recent_signals: radarSignals },
     activity: { recent: activities },
     territory_potential: territoryPotential,
   };
@@ -359,7 +320,6 @@ export interface PartnerContext {
     follow_up_date: string | null;
   } | null;
   recent_activities: Array<{ activity_type: string; note: string; occurred_at: string }>;
-  recent_radar_signals: Array<{ headline: string; signal_type: string; implication: string; discovered_at: string }>;
 }
 
 // Read-only, scoped to a single company already known to be within the
@@ -369,7 +329,7 @@ export async function getPartnerContext(companyId: string, territoryId: string):
   const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, companyId));
   if (!company) return null;
 
-  const [[relationship], [recruitment], radarSignalRows] = await Promise.all([
+  const [[relationship], [recruitment]] = await Promise.all([
     db
       .select()
       .from(partnerRelationshipsTable)
@@ -380,12 +340,6 @@ export async function getPartnerContext(companyId: string, territoryId: string):
       .where(and(eq(partnerRecruitmentsTable.companyId, companyId), eq(partnerRecruitmentsTable.territoryId, territoryId)))
       .orderBy(desc(partnerRecruitmentsTable.updatedAt))
       .limit(1),
-    db
-      .select()
-      .from(channelRadarSignalsTable)
-      .where(and(eq(channelRadarSignalsTable.companyId, companyId), eq(channelRadarSignalsTable.territoryId, territoryId)))
-      .orderBy(desc(channelRadarSignalsTable.discoveredAt))
-      .limit(PARTNER_RADAR_TOP_N),
   ]);
 
   const activities = relationship
@@ -418,12 +372,6 @@ export async function getPartnerContext(companyId: string, territoryId: string):
         }
       : null,
     recent_activities: activities.map((a) => ({ activity_type: a.activityType, note: a.note, occurred_at: a.occurredAt.toISOString() })),
-    recent_radar_signals: radarSignalRows.map((s) => ({
-      headline: s.headline,
-      signal_type: s.signalType,
-      implication: s.implication,
-      discovered_at: s.discoveredAt.toISOString(),
-    })),
   };
 }
 

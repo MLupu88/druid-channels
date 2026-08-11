@@ -9,6 +9,7 @@ import AccessDenied from '@/pages/access-denied';
 import Login from '@/pages/login';
 import Overview from '@/pages/overview';
 import Prospects from '@/pages/prospects';
+import MyProspects from '@/pages/my-prospects';
 import Recruitment from '@/pages/recruitment';
 import ChannelRadar from '@/pages/channel-radar';
 import Portfolio from '@/pages/portfolio';
@@ -43,9 +44,17 @@ function AuthenticatedApp() {
     <AppLayout>
       <Switch>
         <Route path="/" component={Overview} />
-        <Route path="/new-partners" component={Prospects} />
+        {/* Role-separation hotfix: Discovery (run/manage/assign, global pool)
+            is Head-of-Channels/Admin-only; a PAM sees "My Prospects" (their
+            own assigned rows only) at the same route -- see App-layer nav's
+            comment and routes/prospects.ts's assignment-scoping. */}
+        <Route path="/new-partners">
+          {isGlobalUser ? <Prospects /> : <MyProspects />}
+        </Route>
         <Route path="/recruitment" component={Recruitment} />
-        <Route path="/channel-radar" component={ChannelRadar} />
+        <Route path="/channel-radar">
+          <Guarded allow={isGlobalUser}><ChannelRadar /></Guarded>
+        </Route>
         <Route path="/portfolio" component={Portfolio} />
         <Route path="/portfolio/import" component={PortfolioImport} />
         <Route path="/pams">

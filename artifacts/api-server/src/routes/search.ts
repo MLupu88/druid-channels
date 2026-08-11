@@ -36,8 +36,9 @@ router.get("/search", requireAuth, async (req, res): Promise<void> => {
   }
 
   const actingUser = req.actingUser!;
+  const isGlobal = isGlobalUser(actingUser);
   let scopedTerritoryId: string | null = null;
-  if (!isGlobalUser(actingUser)) {
+  if (!isGlobal) {
     const own = await getOwnTerritory(actingUser.id);
     if (!own) {
       res.status(403).json({ error: "Your account has no territory assigned. Contact an admin." });
@@ -106,6 +107,10 @@ router.get("/search", requireAuth, async (req, res): Promise<void> => {
     const prospects = await db.select().from(prospectsTable);
     for (const p of prospects) {
       if (!matchedCompanyIds.has(p.companyId) || !inScope(p.territoryId)) continue;
+      // Role-separation hotfix: a PAM's Discovery search results are scoped
+      // to prospects explicitly assigned to them, matching what GET /prospects
+      // and My Prospects already show -- territory membership alone is not enough.
+      if (!isGlobal && p.assignedUserId !== actingUser.id) continue;
       const company = companyById.get(p.companyId);
       if (!company) continue;
       results.push({
@@ -125,20 +130,25 @@ router.get("/search", requireAuth, async (req, res): Promise<void> => {
   // monitoring list), matched directly -- company_id is nullable and
   // usually unresolved (see radarCompanyBridge.ts), so a name match here
   // does not require it.
-  const radarSignals = await db.select().from(channelRadarSignalsTable);
-  for (const s of radarSignals) {
-    if (!s.entityName.toLowerCase().includes(q)) continue;
-    if (!inScope(s.territoryId)) continue;
-    results.push({
-      id: s.id,
-      module: "radar",
-      company_name: s.entityName,
-      domain: null,
-      context_label: `Radar Signal · ${s.signalType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`,
-      territory_name: territoryNameById.get(s.territoryId) ?? null,
-      href: "/channel-radar",
-    });
-    if (results.filter((x) => x.module === "radar").length >= MAX_RESULTS_PER_MODULE) break;
+  // Role-separation hotfix: Channel Radar is Head-of-Channels/Admin-only --
+  // a PAM must not see radar results in search, matching the route-level
+  // requireAdmin gate on /channel-radar itself.
+  if (isGlobal) {
+    const radarSignals = await db.select().from(channelRadarSignalsTable);
+    for (const s of radarSignals) {
+      if (!s.entityName.toLowerCase().includes(q)) continue;
+      if (!inScope(s.territoryId)) continue;
+      results.push({
+        id: s.id,
+        module: "radar",
+        company_name: s.entityName,
+        domain: null,
+        context_label: `Radar Signal · ${s.signalType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`,
+        territory_name: territoryNameById.get(s.territoryId) ?? null,
+        href: "/channel-radar",
+      });
+      if (results.filter((x) => x.module === "radar").length >= MAX_RESULTS_PER_MODULE) break;
+    }
   }
 
   res.json(SearchResponse.parse(results));

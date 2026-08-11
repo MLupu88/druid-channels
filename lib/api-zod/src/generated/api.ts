@@ -176,7 +176,7 @@ export const ListProspectsResponseItem = zod.object({
 }),
   "territory_id": zod.string(),
   "territory_name": zod.string().nullish(),
-  "assigned_user": zod.object({
+  "assigned_user": zod.union([zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
@@ -185,7 +185,7 @@ export const ListProspectsResponseItem = zod.object({
   "location_label": zod.string().nullable(),
   "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
-}).optional(),
+}),zod.null()]).optional().describe('Null for a Discovery prospect that has not yet been explicitly assigned by Head of Channels\/Admin (see persistCandidate -- newly discovered prospects start unassigned, never auto-handed to the territory\'s PAM).'),
   "partner_type": zod.string(),
   "priority": zod.enum(['A', 'B']),
   "enterprise_access": zod.boolean(),
@@ -238,7 +238,7 @@ export const GetProspectResponse = zod.object({
 }),
   "territory_id": zod.string(),
   "territory_name": zod.string().nullish(),
-  "assigned_user": zod.object({
+  "assigned_user": zod.union([zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
@@ -247,7 +247,7 @@ export const GetProspectResponse = zod.object({
   "location_label": zod.string().nullable(),
   "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
-}).optional(),
+}),zod.null()]).optional().describe('Null for a Discovery prospect that has not yet been explicitly assigned by Head of Channels\/Admin.'),
   "partner_type": zod.string(),
   "priority": zod.enum(['A', 'B']),
   "enterprise_access": zod.boolean(),
@@ -329,7 +329,7 @@ export const UpdateProspectResponse = zod.object({
 }),
   "territory_id": zod.string(),
   "territory_name": zod.string().nullish(),
-  "assigned_user": zod.object({
+  "assigned_user": zod.union([zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
@@ -338,7 +338,7 @@ export const UpdateProspectResponse = zod.object({
   "location_label": zod.string().nullable(),
   "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
-}).optional(),
+}),zod.null()]).optional().describe('Null for a Discovery prospect that has not yet been explicitly assigned by Head of Channels\/Admin (see persistCandidate -- newly discovered prospects start unassigned, never auto-handed to the territory\'s PAM).'),
   "partner_type": zod.string(),
   "priority": zod.enum(['A', 'B']),
   "enterprise_access": zod.boolean(),
@@ -410,7 +410,7 @@ export const MakeProspectDecisionResponse = zod.object({
 }),
   "territory_id": zod.string(),
   "territory_name": zod.string().nullish(),
-  "assigned_user": zod.object({
+  "assigned_user": zod.union([zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
@@ -419,7 +419,7 @@ export const MakeProspectDecisionResponse = zod.object({
   "location_label": zod.string().nullable(),
   "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
-}).optional(),
+}),zod.null()]).optional().describe('Null for a Discovery prospect that has not yet been explicitly assigned by Head of Channels\/Admin (see persistCandidate -- newly discovered prospects start unassigned, never auto-handed to the territory\'s PAM).'),
   "partner_type": zod.string(),
   "priority": zod.enum(['A', 'B']),
   "enterprise_access": zod.boolean(),

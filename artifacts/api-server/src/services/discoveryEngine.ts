@@ -994,7 +994,14 @@ async function persistCandidate(
       .values({
         companyId,
         territoryId: territory.id,
-        assignedUserId: territory.ownerUserId,
+        // Role-separation hotfix: a newly discovered prospect starts
+        // unassigned -- it is no longer auto-handed to the territory's PAM
+        // at creation time. Only an explicit Head/Admin assignment (see
+        // routes/prospects.ts's admin-only assigned_user_id handling) makes
+        // it visible to a PAM. Existing rows created before this change are
+        // deliberately left untouched (see the Stage report's legacy-data
+        // reconciliation note) -- this only affects new rows from here on.
+        assignedUserId: null,
         partnerType: candidate.partnerType,
         priority: qualification.priority as "A" | "B",
         enterpriseAccess: candidate.checks.enterpriseAccess,

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { GetAiChannelBriefResponse, RegenerateAiChannelBriefBody, RegenerateAiChannelBriefResponse } from "@workspace/api-zod";
 import { resolvePeriodKey } from "../services/kpiService";
-import { requireAuth } from "../middleware/auth";
+import { requireAdmin } from "../middleware/auth";
 import { resolveScopedTerritory, ForbiddenScopeError } from "../services/authz";
 import { FxUnavailableError, InvalidCurrencyError, parseCurrencyParam } from "../services/fx";
 import { getBriefState, regenerateBrief, type BriefStateResult } from "../services/aiChannelBriefService";
@@ -22,7 +22,8 @@ function toResponseShape(result: BriefStateResult) {
   };
 }
 
-router.get("/ai-channel-brief", requireAuth, async (req, res): Promise<void> => {
+// Role-separation hotfix: AI Channel Brief is Head-of-Channels/Admin-only.
+router.get("/ai-channel-brief", requireAdmin, async (req, res): Promise<void> => {
   const { territory, period, currency } = req.query as { territory?: string; period?: string; currency?: string };
   const periodKey = resolvePeriodKey(period);
   let target;
@@ -55,7 +56,7 @@ router.get("/ai-channel-brief", requireAuth, async (req, res): Promise<void> => 
   res.json(GetAiChannelBriefResponse.parse(toResponseShape(result)));
 });
 
-router.post("/ai-channel-brief/regenerate", requireAuth, async (req, res): Promise<void> => {
+router.post("/ai-channel-brief/regenerate", requireAdmin, async (req, res): Promise<void> => {
   const body = RegenerateAiChannelBriefBody.parse(req.body);
   const periodKey = resolvePeriodKey(body.period);
   let target;

@@ -11,7 +11,7 @@ import {
   RunChannelRadarResponse,
 } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
-import { requireAuth } from "../middleware/auth";
+import { requireAdmin } from "../middleware/auth";
 import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
 import { runRadarForConfig, isValidStatusTransition, ChannelRadarNotConfiguredError, ChannelRadarRunFailedError } from "../services/channelRadarEngine";
 import { getExistingPartnerContext, type ExistingPartnerContext } from "../services/partnerRelationshipService";
@@ -56,7 +56,7 @@ function shapeSignal(
   };
 }
 
-router.get("/channel-radar", requireAuth, async (req, res): Promise<void> => {
+router.get("/channel-radar", requireAdmin, async (req, res): Promise<void> => {
   const parsedQuery = ListChannelRadarSignalsQueryParams.safeParse(req.query);
   if (!parsedQuery.success) {
     res.status(400).json({ error: parsedQuery.error.message });
@@ -104,7 +104,7 @@ router.get("/channel-radar", requireAuth, async (req, res): Promise<void> => {
   res.json(ListChannelRadarSignalsResponse.parse(filtered.map((r) => shapeSignal(r.signal, r.territory, r.assignedUser))));
 });
 
-router.get("/channel-radar/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/channel-radar/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const [row] = await db
@@ -133,7 +133,7 @@ router.get("/channel-radar/:id", requireAuth, async (req, res): Promise<void> =>
   res.json(GetChannelRadarSignalResponse.parse(shapeSignal(row.signal, row.territory, row.assignedUser, existingPartnerContext)));
 });
 
-router.patch("/channel-radar/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/channel-radar/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
   const parsed = UpdateChannelRadarSignalBody.safeParse(req.body);
@@ -178,7 +178,7 @@ router.patch("/channel-radar/:id", requireAuth, async (req, res): Promise<void> 
   res.json(UpdateChannelRadarSignalResponse.parse(shapeSignal(updated!, row?.territory ?? null, row?.assignedUser ?? null)));
 });
 
-router.post("/channel-radar/run", requireAuth, async (req, res): Promise<void> => {
+router.post("/channel-radar/run", requireAdmin, async (req, res): Promise<void> => {
   const parsed = RunChannelRadarBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
