@@ -4,6 +4,7 @@ import {
   signalsTable,
   prospectsTable,
   prospectActivityTable,
+  partnerRelationshipsTable,
   scanRunsTable,
   scanConfigsTable,
   territoriesTable,
@@ -12,11 +13,12 @@ import {
   type ScanConfig,
   type Territory,
 } from "@workspace/db";
-import { eq, and, ne, inArray } from "drizzle-orm";
+import { eq, and, ne, inArray, isNotNull, sql } from "drizzle-orm";
 import { hasCredential } from "./connections";
 import * as searchProvider from "./discoveryProviders/search";
 import * as extractionProvider from "./discoveryProviders/extraction";
 import * as aiProvider from "./discoveryProviders/ai";
+import { toRegistrableDomain, isKnownNonCorporateDomain } from "./companyIdentity";
 import {
   decideNextBatch,
   computeNewCandidateYield,
@@ -638,17 +640,41 @@ async function resolveCompanyIdentity(subjectCompanyName: string): Promise<{ nam
 // (defaults to the real resolveCompanyIdentity above) so tests can supply
 // canned results for the first-party / third-party-resolved /
 // third-party-unresolved cases.
+//
+// Phase 3A: the returned companyDomain is always the canonical registrable
+// domain (never a raw hostname/subdomain/URL) -- both branches below run
+// through toRegistrableDomain, so "ir.uipath.com" and a third-party
+// identity-resolution result of "https://www.uipath.com" both collapse to
+// "uipath.com" before this function ever returns. This is the one place
+// evidence identity (evidenceDomain, still used verbatim for
+// signals.sourceDomain by the caller) and company identity (the returned
+// companyDomain) diverge on purpose.
+//
+// Defense-in-depth: even when the AI qualification step marks evidence
+// sourceIsFirstParty=true, evidence hosted on a known non-corporate/platform
+// domain (LinkedIn, YouTube, generic job boards, ...) is never trusted as
+// company identity -- it's forced through the same third-party
+// identity-resolution path as any other publisher, exactly as if the model
+// had classified it correctly. The evidence itself is never discarded for
+// living on such a domain; only its eligibility to name the company is
+// overridden.
 export async function resolveCandidateCompanyIdentity(
   qualification: Pick<aiProvider.AiQualificationOutput, "sourceIsFirstParty" | "subjectCompanyName">,
   evidenceDomain: string,
   resolveIdentity: (subjectCompanyName: string) => Promise<{ name: string; domain: string } | null> = resolveCompanyIdentity,
 ): Promise<{ companyName: string; companyDomain: string } | null> {
-  if (qualification.sourceIsFirstParty) {
-    return { companyName: qualification.subjectCompanyName, companyDomain: evidenceDomain };
+  const evidenceRegistrableDomain = toRegistrableDomain(evidenceDomain);
+  const isEligibleFirstParty = qualification.sourceIsFirstParty && !isKnownNonCorporateDomain(evidenceRegistrableDomain);
+
+  if (isEligibleFirstParty) {
+    if (!evidenceRegistrableDomain) return null; // evidence domain itself isn't a safe, resolvable identity
+    return { companyName: qualification.subjectCompanyName, companyDomain: evidenceRegistrableDomain };
   }
   const resolved = await resolveIdentity(qualification.subjectCompanyName);
   if (!resolved) return null;
-  return { companyName: resolved.name, companyDomain: resolved.domain };
+  const resolvedRegistrableDomain = toRegistrableDomain(resolved.domain);
+  if (!resolvedRegistrableDomain) return null; // resolved identity's domain string wasn't safely parseable either
+  return { companyName: resolved.name, companyDomain: resolvedRegistrableDomain };
 }
 
 export interface LiveDiscoveryStats {
@@ -938,24 +964,37 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
 // The exact transaction type drizzle-orm passes into db.transaction's callback.
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-async function upsertCompanyOrSkip(tx: Tx, candidate: Candidate): Promise<string | null> {
-  const [existing] = await tx.select().from(companiesTable).where(eq(companiesTable.domain, candidate.domain));
-  if (existing) {
-    const [activeProspect] = await tx
-      .select()
-      .from(prospectsTable)
-      .where(and(eq(prospectsTable.companyId, existing.id), ne(prospectsTable.status, "rejected")));
-    if (activeProspect) {
-      // Cost-control B's freshness rule (shouldReuseExistingQualification)
-      // only works going forward if a re-qualification actually refreshes
-      // this timestamp -- reaching this branch means the caller decided the
-      // prior evaluation was stale enough to re-run, so the reuse window
-      // resets from now.
-      await tx.update(prospectsTable).set({ lastResearchedAt: new Date() }).where(eq(prospectsTable.id, activeProspect.id));
-      return null; // dedupe: an active prospect already exists for this company/domain
-    }
-    return existing.id;
-  }
+// Resolves the canonical company row for candidate.domain (already the
+// registrable domain -- see resolveCandidateCompanyIdentity), creating one
+// if none exists yet. Tolerant of legacy rows written before Phase 3A:
+// compares by canonical form, not raw string equality, so a new candidate
+// for "uipath.com" still finds an old "www.uipath.com"/"ir.uipath.com" row
+// instead of creating a second one, without requiring any migration or
+// data rewrite (Phase 3A deliberately never mutates existing rows -- see
+// the read-only audit tool for reviewing what already exists).
+//
+// Concurrency: guarded by a transaction-scoped Postgres advisory lock keyed
+// on a hash of the canonical domain. Two concurrent scans (e.g. different
+// territories, or two admin-triggered runs) discovering the same real
+// company at the same time would otherwise both SELECT before either
+// INSERTs -- a real race under Postgres's default READ COMMITTED isolation
+// (see the Phase 3 audit). pg_advisory_xact_lock is DB-level and
+// process-safe (unlike an in-memory JS mutex, which only protects a single
+// server process/instance): the second transaction blocks here until the
+// first commits and releases the lock, at which point its own SELECT sees
+// the first transaction's already-committed row. A hash collision between
+// two different domains only causes harmless extra serialization, never an
+// incorrect match -- the lookup below still compares real canonical domain
+// strings, never the hash itself.
+// Exported for testing -- DB-backed (needs a real transaction), so covered
+// by the disposable-Postgres test suite rather than a pure/local one.
+export async function resolveOrCreateCanonicalCompany(tx: Tx, candidate: Candidate): Promise<string> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${candidate.domain})::bigint)`);
+
+  const existingCompanies = await tx.select().from(companiesTable).where(isNotNull(companiesTable.domain));
+  const existing = existingCompanies.find((c) => toRegistrableDomain(c.domain) === candidate.domain);
+  if (existing) return existing.id;
+
   const [created] = await tx
     .insert(companiesTable)
     .values({
@@ -969,25 +1008,78 @@ async function upsertCompanyOrSkip(tx: Tx, candidate: Candidate): Promise<string
   return created!.id;
 }
 
+type TerritorySuppression = { kind: "active_prospect"; prospectId: string } | { kind: "portfolio" };
+
+// Phase 3A territory-scoped suppression: a company already prospected
+// (status != "rejected" -- this also covers a company already in
+// Recruitment, since accepting a prospect only ever changes its status to
+// "accepted"/"pushed_to_hubspot", never away from prospects, and
+// partner_recruitments cascade-deletes with its originating prospect, so a
+// Recruitment can never outlive/outreach beyond its prospect) or already a
+// signed Portfolio partner in this SAME territory blocks a new prospect
+// here -- but never blocks a prospect for the same canonical company in a
+// DIFFERENT territory (identity is global; lifecycle is territory-scoped).
+// Portfolio suppression is a separate, explicit check because a
+// Portfolio-only company (manual add / PAM book import) may have no
+// prospect row at all to be caught by the first check.
+async function findTerritorySuppression(tx: Tx, companyId: string, territoryId: string): Promise<TerritorySuppression | null> {
+  const [activeProspect] = await tx
+    .select()
+    .from(prospectsTable)
+    .where(and(eq(prospectsTable.companyId, companyId), eq(prospectsTable.territoryId, territoryId), ne(prospectsTable.status, "rejected")));
+  if (activeProspect) return { kind: "active_prospect", prospectId: activeProspect.id };
+
+  const [relationship] = await tx
+    .select({ id: partnerRelationshipsTable.id })
+    .from(partnerRelationshipsTable)
+    .where(and(eq(partnerRelationshipsTable.companyId, companyId), eq(partnerRelationshipsTable.territoryId, territoryId)));
+  if (relationship) return { kind: "portfolio" };
+
+  return null;
+}
+
 function isExcludedDomain(domain: string, excludedDomains: string[]): boolean {
   return excludedDomains.some((d) => domain === d || domain.endsWith(`.${d}`));
 }
 
-// Persists one qualified candidate (company + signals + prospect + activity)
-// inside a single transaction, so a mid-candidate insert failure can never
-// leave a half-created company/prospect behind. Returns whether a new
-// prospect was actually created (false on a dedupe skip).
-async function persistCandidate(
+// Persists one qualified candidate (company + evidence + prospect +
+// activity) inside a single transaction, so a mid-candidate insert failure
+// can never leave a half-created company/prospect behind. Returns whether a
+// new prospect was actually created (false when suppressed).
+//
+// Phase 3A evidence preservation: the canonical company row and this
+// candidate's signals are ALWAYS persisted once identity resolves --
+// territory suppression only ever withholds creating a SECOND
+// prospect/company for a canonical company already active in this
+// territory. Previously, a dedupe skip discarded the candidate's
+// freshly-qualified evidence entirely; now a second qualified result for
+// the same canonical company + territory still attaches its evidence to
+// the existing company (and refreshes the existing prospect's freshness
+// timestamp) -- it just never creates a duplicate prospect or company row.
+// Exported for testing -- see resolveOrCreateCanonicalCompany above.
+export async function persistCandidate(
   candidate: Candidate,
   qualification: QualificationResult,
   territory: Territory,
   dataStatus: "demo" | "connected",
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
-    const companyId = await upsertCompanyOrSkip(tx, candidate);
-    if (!companyId) return false;
+    const companyId = await resolveOrCreateCanonicalCompany(tx, candidate);
 
     await tx.insert(signalsTable).values(candidate.signals.map((s) => ({ companyId, ...s })));
+
+    const suppression = await findTerritorySuppression(tx, companyId, territory.id);
+    if (suppression) {
+      if (suppression.kind === "active_prospect") {
+        // Cost-control B's freshness rule (shouldReuseExistingQualification)
+        // only works going forward if a re-qualification actually refreshes
+        // this timestamp -- reaching this branch means new evidence for an
+        // already-active prospect just arrived, so the reuse window resets
+        // from now.
+        await tx.update(prospectsTable).set({ lastResearchedAt: new Date() }).where(eq(prospectsTable.id, suppression.prospectId));
+      }
+      return false; // evidence already attached above; no second prospect/company in this territory
+    }
 
     const [prospect] = await tx
       .insert(prospectsTable)
@@ -1148,10 +1240,11 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
     // moment it clears qualification + identity resolution, inside
     // attemptLiveDiscovery itself (see its persistence block) -- so it must
     // never be re-persisted here, which would either double-insert or
-    // silently no-op via upsertCompanyOrSkip's active-prospect dedupe and
-    // under-report qualifiedCount. Only the demo path (which has no
-    // provider-failure mode and was never in scope for this change) still
-    // qualifies+persists candidates in this loop, exactly as before.
+    // silently no-op via resolveOrCreateCanonicalCompany/
+    // findTerritorySuppression's dedupe and under-report qualifiedCount.
+    // Only the demo path (which has no provider-failure mode and was never
+    // in scope for this change) still qualifies+persists candidates in this
+    // loop, exactly as before.
     let qualifiedCount: number;
     if (liveResult) {
       qualifiedCount = liveResult.stats.prospectsCreated;

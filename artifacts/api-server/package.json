@@ -10,6 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:authz": "node --test tests/authz.test.mjs",
     "test:role-separation": "tsx --test tests/roleSeparation.test.ts",
+    "test:company-identity": "tsx --test tests/companyIdentity.test.ts",
+    "test:discovery-dedupe": "tsx --test tests/discoveryDedupe.test.ts",
     "test:ai-brief-hash": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/aiChannelBriefHash.test.ts",
     "test:discovery-providers": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryProviders.test.ts",
     "test:discovery-identity": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryIdentity.test.ts",
@@ -28,7 +30,8 @@
     "test:discovery-budget": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryBudget.test.ts",
     "test:territory-potential": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/territoryPotential.test.ts",
     "test:discovery-engine": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryEngine.test.ts",
-    "seed": "tsx ./src/scripts/seed.ts"
+    "seed": "tsx ./src/scripts/seed.ts",
+    "audit:company-duplicates": "tsx ./src/scripts/auditCompanyDuplicates.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
@@ -40,6 +43,7 @@
     "pino": "^9.14.0",
     "pino-http": "^10.5.0",
     "pptxgenjs": "^4.0.1",
+    "tldts": "^7.4.10",
     "zod": "catalog:"
   },
   "devDependencies": {

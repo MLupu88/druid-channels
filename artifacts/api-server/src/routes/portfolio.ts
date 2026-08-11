@@ -41,6 +41,7 @@ import {
   type RelationshipStatus,
 } from "../services/partnerRelationshipService";
 import { resolveCompanyMatch, normalizeCompanyName } from "../services/companyMatchingService";
+import { toRegistrableDomain } from "../services/companyIdentity";
 import { backfillRadarSignalsForCompany } from "../services/radarCompanyBridge";
 import { isActiveStage, type RecruitmentStage } from "../services/partnerRecruitmentService";
 import { resolvePeriodRange, resolvePeriodKey, splitPeriodKey } from "../services/kpiRegistry";
@@ -262,8 +263,9 @@ router.post("/portfolio", requireAuth, async (req, res): Promise<void> => {
         .values({
           name: data.new_company.name,
           normalizedName: normalizeCompanyName(data.new_company.name),
-          // Never a fabricated placeholder -- null when the PAM doesn't know it.
-          domain: data.new_company.domain?.trim() || null,
+          // Phase 3A: canonical registrable domain, same helper as Discovery
+          // (see companyIdentity.ts) -- never a fabricated placeholder.
+          domain: toRegistrableDomain(data.new_company.domain),
           country: data.new_company.country,
         })
         .returning();

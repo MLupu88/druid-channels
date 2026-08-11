@@ -56,6 +56,69 @@ test("C. unresolved identity: the publisher is never returned as the company", a
   assert.equal(result, null); // caller (discoveryEngine.ts) skips persistence entirely on null
 });
 
+// ---- Phase 3A: canonical registrable-domain identity ------------------------
+
+test("Phase 3A: a first-party subdomain (e.g. ir.acme.example) resolves to the canonical registrable domain, not the raw subdomain", async () => {
+  const resolveIdentity = async () => null;
+  const result = await resolveCandidateCompanyIdentity(
+    { sourceIsFirstParty: true, subjectCompanyName: "Acme Systems" },
+    "ir.acme.example",
+    resolveIdentity,
+  );
+  assert.deepEqual(result, { companyName: "Acme Systems", companyDomain: "acme.example" });
+});
+
+test("Phase 3A: a third-party-resolved identity's domain is also canonicalized, even if the resolver returns a full URL or www-prefixed form", async () => {
+  const resolveIdentity = async () => ({ name: "Acme Systems", domain: "https://www.acme.example/" });
+  const result = await resolveCandidateCompanyIdentity(
+    { sourceIsFirstParty: false, subjectCompanyName: "Acme Systems" },
+    "some-news-site.example",
+    resolveIdentity,
+  );
+  assert.deepEqual(result, { companyName: "Acme Systems", companyDomain: "acme.example" });
+});
+
+// ---- D. evidence-host guard: a known platform domain can never become identity, even if marked first-party ----
+
+test("D: evidence on a known platform domain (e.g. youtube.com) marked sourceIsFirstParty=true is NOT trusted -- forced through third-party resolution instead", async () => {
+  let resolveIdentityCalledWith: string | null = null;
+  const resolveIdentity = async (subjectCompanyName: string) => {
+    resolveIdentityCalledWith = subjectCompanyName;
+    return { name: "Acme Systems", domain: "acme.example" };
+  };
+  const result = await resolveCandidateCompanyIdentity(
+    // The AI qualification step (incorrectly, or via a hostile page) marked
+    // this YouTube video as first-party evidence for "Acme Systems" -- the
+    // guard must override that classification.
+    { sourceIsFirstParty: true, subjectCompanyName: "Acme Systems" },
+    "youtube.com",
+    resolveIdentity,
+  );
+  assert.equal(resolveIdentityCalledWith, "Acme Systems", "expected the guard to force the third-party identity-resolution path");
+  assert.deepEqual(result, { companyName: "Acme Systems", companyDomain: "acme.example" });
+});
+
+test("D: evidence on a known platform domain that cannot be resolved to a real company is dropped, never persisted as the platform's own identity", async () => {
+  const resolveIdentity = async () => null; // unresolved
+  const result = await resolveCandidateCompanyIdentity(
+    { sourceIsFirstParty: true, subjectCompanyName: "Acme Systems" },
+    "linkedin.com",
+    resolveIdentity,
+  );
+  assert.equal(result, null);
+});
+
+test("D: a LinkedIn company-page URL's evidence never becomes companyDomain even when resolution succeeds with a different domain", async () => {
+  const resolveIdentity = async () => ({ name: "Acme Systems", domain: "acme.example" });
+  const result = await resolveCandidateCompanyIdentity(
+    { sourceIsFirstParty: true, subjectCompanyName: "Acme Systems" },
+    "linkedin.com",
+    resolveIdentity,
+  );
+  assert.notEqual(result?.companyDomain, "linkedin.com");
+  assert.deepEqual(result, { companyName: "Acme Systems", companyDomain: "acme.example" });
+});
+
 test("identifyCompanyViaDeepSeek returns a resolved identity from the supplied candidates only", async () => {
   process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {

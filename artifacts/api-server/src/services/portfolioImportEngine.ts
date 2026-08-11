@@ -18,6 +18,7 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import * as normalizationProvider from "./portfolioImportProviders/normalization";
 import { classifyDatePhrase, resolveCompanyMatch, normalizeCompanyName } from "./companyMatchingService";
+import { toRegistrableDomain } from "./companyIdentity";
 import { createRelationshipIfMissing, findRelationshipByCompanyAndTerritory } from "./partnerRelationshipService";
 import { backfillRadarSignalsForCompany } from "./radarCompanyBridge";
 import { logger } from "../lib/logger";
@@ -312,8 +313,11 @@ export async function confirmImportRow(row: PortfolioImportRow, territoryId: str
         .values({
           name: proposal.company_name.trim(),
           normalizedName: normalizeCompanyName(proposal.company_name),
-          // Never a fabricated placeholder -- null when the source didn't state one.
-          domain: proposal.domain?.trim() || null,
+          // Phase 3A: canonical registrable domain, same helper as Discovery
+          // (see companyIdentity.ts) -- never a fabricated placeholder, and
+          // never a raw import-sheet value (e.g. "www.example.com" or a
+          // full profile URL) stored verbatim.
+          domain: toRegistrableDomain(proposal.domain),
           country: proposal.country.trim(),
         })
         .returning();

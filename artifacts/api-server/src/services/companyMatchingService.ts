@@ -9,6 +9,7 @@ import { db } from "@workspace/db";
 import { companiesTable, partnerRelationshipsTable, type Company } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { StartedAtPrecision } from "./partnerRelationshipService";
+import { toRegistrableDomain } from "./companyIdentity";
 
 const LEGAL_SUFFIXES = [
   "ltd",
@@ -48,9 +49,14 @@ export function normalizeCountry(country: string | null | undefined): string | n
   return trimmed === "" ? null : trimmed;
 }
 
+// Phase 3A: delegates to the same PSL-aware canonical helper Discovery uses
+// (see companyIdentity.ts) -- this used to be its own www/protocol-only
+// strip, which (like Discovery's old extractDomain) treated
+// "ir.uipath.com" and "uipath.com" as different domains. Kept as a named
+// export here since it's this module's established public API and other
+// files already import it by this name.
 export function normalizeDomain(domain: string | null | undefined): string | null {
-  if (!domain) return null;
-  return domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "") || null;
+  return toRegistrableDomain(domain);
 }
 
 const MONTHS: Record<string, number> = {
