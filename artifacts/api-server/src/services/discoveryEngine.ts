@@ -67,12 +67,52 @@ export interface Candidate {
   domain: string;
   country: string;
   partnerType: string;
+  // Hotfix: the business-model classification that decides recruitment
+  // eligibility -- see isEligibleRecruitmentArchetype below. Deliberately
+  // separate from partnerType (a free-text display label): eligibility must
+  // never be decided by substring-matching partnerType.
+  recruitmentArchetype: aiProvider.RecruitmentArchetype;
   checks: FiveChecks;
   whyItFits: string;
   whyNow: string;
   suggestedAngle: string;
   suggestedTargetRole: string;
   signals: CandidateSignal[];
+}
+
+// ---- Recruitment eligibility (hotfix on top of Phase 3A) ------------------
+//
+// Product rule: pure technology/software/platform vendors (the evidence
+// subject's own core business is developing and selling its own product --
+// UiPath, Microsoft, SAP, Genesys-style companies) must never become a PAM
+// recruitment Discovery prospect in this motion. System integrators,
+// consultancies, MSPs, resellers, distributors, implementation partners,
+// and BPO/services providers remain eligible -- including ones with strong
+// technology capability/adjacency (see FiveChecks.technologyAdjacency,
+// which stays completely independent of this gate; see also the
+// AiQualificationOutput.recruitmentArchetype doc comment in
+// discoveryProviders/ai.ts).
+//
+// The AI only classifies (recruitmentArchetype); this set is the actual
+// eligibility decision, owned entirely by application code, never by the
+// model. "technology_vendor" and "other" are both deliberately excluded --
+// an unclassifiable/ambiguous evidence subject never silently becomes an
+// eligible prospect. There is currently no structured signal this gate can
+// use to make an exception for "other" ("clear qualifying channel-delivery
+// evidence"), so it stays excluded by default; revisit if that proves too
+// strict in practice.
+const ELIGIBLE_RECRUITMENT_ARCHETYPES: ReadonlySet<aiProvider.RecruitmentArchetype> = new Set([
+  "system_integrator",
+  "consultancy",
+  "managed_service_provider",
+  "reseller",
+  "distributor",
+  "implementation_partner",
+  "bpo_service_provider",
+]);
+
+export function isEligibleRecruitmentArchetype(archetype: aiProvider.RecruitmentArchetype): boolean {
+  return ELIGIBLE_RECRUITMENT_ARCHETYPES.has(archetype);
 }
 
 // ---- Qualification (product spec section 10) ----------------------------
@@ -131,6 +171,9 @@ interface SignalKind {
 interface Archetype {
   id: string;
   label: string;
+  // Every demo archetype is, by construction, a channel-eligible business
+  // model (never a technology_vendor) -- see isEligibleRecruitmentArchetype.
+  recruitmentArchetype: aiProvider.RecruitmentArchetype;
   adjacencies: string[];
   industries: string[];
   druidAngle: string;
@@ -149,6 +192,7 @@ const ARCHETYPES: Archetype[] = [
   {
     id: "contact_center_integrator",
     label: "Contact-center integrator",
+    recruitmentArchetype: "system_integrator",
     adjacencies: ["Genesys", "NiCE", "Cisco", "Amazon Connect", "Five9", "Avaya"],
     industries: ["Banking", "Insurance", "Retail"],
     druidAngle: "Add an enterprise AI-agent and process-completion layer to the firm's existing contact-center transformation programs.",
@@ -158,6 +202,7 @@ const ARCHETYPES: Archetype[] = [
   {
     id: "automation_workflow_specialist",
     label: "Automation & workflow specialist",
+    recruitmentArchetype: "implementation_partner",
     adjacencies: ["UiPath", "ServiceNow", "Microsoft Power Platform", "Salesforce", "SAP", "Oracle"],
     industries: ["Healthcare", "Higher education", "Banking"],
     druidAngle: "Give the firm's customers and employees a conversational way to access and orchestrate the workflows it already automates.",
@@ -167,6 +212,7 @@ const ARCHETYPES: Archetype[] = [
   {
     id: "ai_data_consultancy",
     label: "AI & data consultancy",
+    recruitmentArchetype: "consultancy",
     adjacencies: ["Microsoft", "AWS", "Google Cloud", "NVIDIA"],
     industries: ["Retail", "Banking", "Healthcare"],
     druidAngle: "Move the firm from AI advisory and prototypes to production-grade enterprise AI agents.",
@@ -176,6 +222,7 @@ const ARCHETYPES: Archetype[] = [
   {
     id: "bpo_managed_service",
     label: "BPO / managed service provider",
+    recruitmentArchetype: "bpo_service_provider",
     adjacencies: ["Genesys", "ServiceNow", "Salesforce"],
     industries: ["Banking", "Healthcare", "Insurance"],
     druidAngle: "Package DRUID's AI agents inside the firm's recurring managed-service proposition.",
@@ -185,6 +232,7 @@ const ARCHETYPES: Archetype[] = [
   {
     id: "telco_msp",
     label: "Telco / enterprise MSP",
+    recruitmentArchetype: "managed_service_provider",
     adjacencies: ["Cisco", "Microsoft", "AWS"],
     industries: ["Retail", "Banking", "Public sector"],
     druidAngle: "Combine DRUID with the firm's cloud, communications, and managed-services stack for enterprise customers.",
@@ -194,6 +242,7 @@ const ARCHETYPES: Archetype[] = [
   {
     id: "vertical_specialist",
     label: "Vertical specialist",
+    recruitmentArchetype: "consultancy",
     adjacencies: ["Salesforce", "SAP", "Microsoft"],
     industries: ["Banking", "Insurance", "Healthcare", "Higher education", "Retail"],
     druidAngle: "Combine DRUID's platform and pre-built AI-agent starting points with the firm's domain expertise and customer access.",
@@ -422,6 +471,7 @@ function generateCandidate(config: ScanConfig, territory: Territory, usedDomains
     domain,
     country,
     partnerType: archetype.label,
+    recruitmentArchetype: archetype.recruitmentArchetype,
     checks,
     whyItFits,
     whyNow,
@@ -899,6 +949,7 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
             domain: identity.companyDomain,
             country: "Unknown",
             partnerType: qualification.partnerType,
+            recruitmentArchetype: qualification.recruitmentArchetype,
             checks,
             whyItFits: qualification.whyItFits,
             whyNow: qualification.whyNow,
@@ -1067,6 +1118,21 @@ export async function persistCandidate(
     const companyId = await resolveOrCreateCanonicalCompany(tx, candidate);
 
     await tx.insert(signalsTable).values(candidate.signals.map((s) => ({ companyId, ...s })));
+
+    // Hotfix: recruitment eligibility. The canonical company and this
+    // candidate's evidence are preserved above regardless -- a technology
+    // vendor (or an unclassified "other") still resolves canonical identity
+    // and keeps its evidence/context, it just never enters the PAM
+    // recruitment funnel as a prospect. Logged (not counted in a new
+    // schema field -- see the hotfix report) so a filtered candidate is
+    // never silently invisible.
+    if (!isEligibleRecruitmentArchetype(candidate.recruitmentArchetype)) {
+      logger.info(
+        { companyName: candidate.companyName, domain: candidate.domain, recruitmentArchetype: candidate.recruitmentArchetype, territoryId: territory.id },
+        "Discovery: candidate filtered -- ineligible recruitment archetype, no prospect created",
+      );
+      return false;
+    }
 
     const suppression = await findTerritorySuppression(tx, companyId, territory.id);
     if (suppression) {

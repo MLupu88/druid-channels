@@ -100,6 +100,7 @@ test("qualifyViaDeepSeek parses a valid qualification and filters invalid eviden
   process.env.AI_API_KEY = "test-key";
   const validQualification = {
     partner_type: "System integrator",
+    recruitment_archetype: "system_integrator",
     signal_type: "ai_investment",
     subject_company_name: "Acme Systems",
     source_is_first_party: true,
@@ -137,6 +138,7 @@ test("qualifyViaDeepSeek parses a valid qualification and filters invalid eviden
   });
 
   assert.equal(result.partnerType, "System integrator");
+  assert.equal(result.recruitmentArchetype, "system_integrator");
   assert.equal(result.signalType, "ai_investment");
   assert.equal(result.subjectCompanyName, "Acme Systems");
   assert.equal(result.sourceIsFirstParty, true);

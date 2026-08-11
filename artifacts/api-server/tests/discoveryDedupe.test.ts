@@ -63,6 +63,10 @@ function buildCandidate(domain: string, companyName: string, sourceUrl: string):
     domain,
     country: "Unknown",
     partnerType: "System integrator",
+    // These tests are about identity/dedupe, not eligibility (see
+    // discoveryEligibility.test.ts for that) -- an eligible archetype keeps
+    // every "created: true" assertion below meaningful.
+    recruitmentArchetype: "system_integrator",
     checks: ALL_TRUE_CHECKS,
     whyItFits: "test fixture",
     whyNow: "test fixture",

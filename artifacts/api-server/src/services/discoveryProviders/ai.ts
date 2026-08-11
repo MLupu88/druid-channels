@@ -70,8 +70,35 @@ export interface AiQualificationInput {
 
 const SIGNAL_TYPES = ["partnership", "ai_investment", "enterprise_access", "technology", "hiring", "event", "tender"] as const;
 
+// Hotfix: recruitment-eligibility archetype. AI classifies WHAT KIND of
+// business the evidence subject is (never whether it's eligible -- that
+// decision belongs to application code, see discoveryEngine.ts's
+// isEligibleRecruitmentArchetype). A closed enum instead of free-text
+// partnerType matching -- partnerType stays a free-text display label (e.g.
+// "Automation platform vendor"), but eligibility must never be decided by
+// substring-matching that string.
+export const RECRUITMENT_ARCHETYPES = [
+  "system_integrator",
+  "consultancy",
+  "managed_service_provider",
+  "reseller",
+  "distributor",
+  "implementation_partner",
+  "bpo_service_provider",
+  "technology_vendor",
+  "other",
+] as const;
+export type RecruitmentArchetype = (typeof RECRUITMENT_ARCHETYPES)[number];
+
 export interface AiQualificationOutput {
   partnerType: string;
+  // The evidence subject's business-model classification for DRUID's PAM
+  // channel-recruitment program -- see RECRUITMENT_ARCHETYPES. Deliberately
+  // independent of technologyAdjacency/relevantCapability below: a company
+  // can have strong technology capability and still be a system integrator,
+  // reseller, or consultancy, and a technology_vendor can show enterprise
+  // access or technology adjacency without that changing its archetype.
+  recruitmentArchetype: RecruitmentArchetype;
   // The primary signal family this evidence represents -- used by
   // discoveryEngine.ts to tag the persisted signal row correctly, instead
   // of hardcoding one type for every live-path signal.
@@ -104,6 +131,7 @@ export interface AiQualificationOutput {
 
 const AiQualificationSchema = z.object({
   partner_type: z.string().min(1).max(120),
+  recruitment_archetype: z.enum(RECRUITMENT_ARCHETYPES),
   signal_type: z.enum(SIGNAL_TYPES),
   subject_company_name: z.string().min(1).max(200),
   source_is_first_party: z.boolean(),
@@ -150,6 +178,19 @@ Assess exactly five yes/no checks, each grounded in the supplied evidence text -
 
 If the evidence does not support a check, mark it false. Do not guess yes to be helpful.
 
+recruitment_archetype classifies the evidence subject's BUSINESS MODEL for DRUID's PAM channel-recruitment program -- this is about how the company makes money and delivers to its own customers, never about which technologies it uses, integrates with, or is adjacent to. Choose exactly one:
+- system_integrator: builds/integrates enterprise IT solutions for clients, often spanning multiple vendors' platforms.
+- consultancy: advises on and implements enterprise technology/process change for clients; not the platform owner.
+- managed_service_provider: operates/manages IT or business-process systems for clients on an ongoing basis.
+- reseller: sells/resells third-party technology products to end customers.
+- distributor: distributes third-party technology products to a reseller/partner network.
+- implementation_partner: implements/deploys a specific technology platform for clients -- not that platform's own vendor.
+- bpo_service_provider: delivers business-process outsourcing (e.g. contact center) services, whether on its own or third-party technology.
+- technology_vendor: the subject's own core business is DEVELOPING AND SELLING its own software, platform, or product -- e.g. an automation platform vendor, an ERP vendor, a CCaaS/contact-center platform vendor, or any company whose product is what a channel partner would resell/integrate/implement, rather than the channel partner itself. Evidence of enterprise customers, integrations, partner programs, or technology adjacency does NOT change this classification if the subject's own core business is selling its own platform -- e.g. UiPath, Microsoft, SAP, and Genesys are all technology_vendor regardless of how many integrations or partners they have.
+- other: none of the above clearly applies, or the evidence does not support a confident classification.
+
+Never let technology_adjacency, relevant_capability, or enterprise_access influence recruitment_archetype. A company can have strong technology capability and still be a system_integrator, reseller, consultancy, or implementation_partner rather than a technology_vendor; a technology_vendor can show enterprise access or technology adjacency evidence without that changing its archetype.
+
 signal_type must be the single best-fitting category for the primary evidence you were given: partnership, ai_investment, enterprise_access, technology, hiring, event, or tender.
 
 subject_company_name is the company whose capability/partnership/signal this evidence is actually ABOUT -- read the evidence text itself to determine this. Never assume it is the same as the page title or the domain hosting the evidence. For example, a news article on an analyst site titled "Acme Corp announces X" is evidence about Acme Corp, not about the analyst site that published it.
@@ -162,6 +203,7 @@ Respond with ONLY a single JSON object, no markdown, no commentary, matching exa
 
 {
   "partner_type": "string, e.g. 'System integrator', 'Value added reseller', 'AI consultancy'",
+  "recruitment_archetype": "system_integrator | consultancy | managed_service_provider | reseller | distributor | implementation_partner | bpo_service_provider | technology_vendor | other",
   "signal_type": "partnership | ai_investment | enterprise_access | technology | hiring | event | tender",
   "subject_company_name": "string -- the company this evidence is actually about",
   "source_is_first_party": boolean,
@@ -291,6 +333,7 @@ export async function qualifyViaDeepSeek(input: AiQualificationInput): Promise<A
 
   return {
     partnerType: validated.data.partner_type,
+    recruitmentArchetype: validated.data.recruitment_archetype,
     signalType: validated.data.signal_type,
     subjectCompanyName: validated.data.subject_company_name,
     sourceIsFirstParty: validated.data.source_is_first_party,
