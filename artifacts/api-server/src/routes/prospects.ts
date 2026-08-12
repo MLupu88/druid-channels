@@ -17,11 +17,13 @@ import {
   MakeProspectDecisionResponse,
   PushProspectToHubspotResponse,
   GetProspectStatsResponse,
+  ListRecentProspectActivityQueryParams,
+  ListRecentProspectActivityResponse,
   UpdateProspectBody,
   UpdateProspectResponse,
   DeleteProspectResponse,
 } from "@workspace/api-zod";
-import { eq, and, sql, count, max, inArray, desc, asc } from "drizzle-orm";
+import { eq, and, gte, sql, count, max, inArray, desc, asc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, assertOwnUserAccess, ForbiddenScopeError } from "../services/authz";
 import { acceptForRecruitment } from "../services/partnerRecruitmentService";
@@ -227,6 +229,49 @@ router.get("/prospects/stats/summary", requireAuth, async (req, res): Promise<vo
     by_partner_type: byPartnerType,
     week_over_week: 1.15,
   }));
+});
+
+// Phase 4: powers the PAM Overview "Your Actions" recent-activity feed.
+// Reuses prospect_activity (the existing activity/history abstraction) --
+// no new table. Assignment-scoped for a PAM (their own prospects only,
+// same convention as GET /prospects), unscoped for Head/Admin -- though
+// this is a PAM-only UI feature today, so the frontend never calls this for
+// a global user. Bounded to a small fixed count either way.
+const RECENT_ACTIVITY_LIMIT = 20;
+const RECENT_ACTIVITY_DEFAULT_DAYS = 7;
+
+router.get("/prospects/activity/recent", requireAuth, async (req, res): Promise<void> => {
+  const parsedQuery = ListRecentProspectActivityQueryParams.safeParse(req.query);
+  if (!parsedQuery.success) {
+    res.status(400).json({ error: parsedQuery.error.message });
+    return;
+  }
+  const actingUser = req.actingUser!;
+  const days = parsedQuery.data.days ?? RECENT_ACTIVITY_DEFAULT_DAYS;
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const rows = await db
+    .select({ activity: prospectActivityTable, prospect: prospectsTable, company: companiesTable, actor: usersTable })
+    .from(prospectActivityTable)
+    .innerJoin(prospectsTable, eq(prospectActivityTable.prospectId, prospectsTable.id))
+    .innerJoin(companiesTable, eq(prospectsTable.companyId, companiesTable.id))
+    .leftJoin(usersTable, eq(prospectActivityTable.actorUserId, usersTable.id))
+    .where(gte(prospectActivityTable.timestamp, since))
+    .orderBy(desc(prospectActivityTable.timestamp));
+
+  const scoped = isGlobalUser(actingUser) ? rows : rows.filter((r) => r.prospect.assignedUserId === actingUser.id);
+
+  res.json(ListRecentProspectActivityResponse.parse(
+    scoped.slice(0, RECENT_ACTIVITY_LIMIT).map((r) => ({
+      id: r.activity.id,
+      prospect_id: r.prospect.id,
+      company_name: r.company.name,
+      event_type: r.activity.eventType,
+      timestamp: r.activity.timestamp.toISOString(),
+      actor_name: r.actor?.name ?? null,
+      note: r.activity.note,
+    }))
+  ));
 });
 
 router.get("/prospects", requireAuth, async (req, res): Promise<void> => {

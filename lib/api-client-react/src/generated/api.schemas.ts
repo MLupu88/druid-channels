@@ -278,6 +278,31 @@ export interface ProspectDetail {
   updated_at?: string | null;
 }
 
+export type RecentProspectActivityItemEventType = typeof RecentProspectActivityItemEventType[keyof typeof RecentProspectActivityItemEventType];
+
+
+export const RecentProspectActivityItemEventType = {
+  discovered: 'discovered',
+  reviewed: 'reviewed',
+  accepted: 'accepted',
+  rejected: 'rejected',
+  deferred: 'deferred',
+  hubspot_pushed: 'hubspot_pushed',
+  note_added: 'note_added',
+} as const;
+
+export interface RecentProspectActivityItem {
+  id: string;
+  prospect_id: string;
+  company_name: string;
+  event_type: RecentProspectActivityItemEventType;
+  timestamp: string;
+  /** @nullable */
+  actor_name?: string | null;
+  /** @nullable */
+  note?: string | null;
+}
+
 export type RecruitmentStage = typeof RecruitmentStage[keyof typeof RecruitmentStage];
 
 
@@ -2503,5 +2528,13 @@ export type ListPartnersParams = {
  * @nullable
  */
 territory?: string | null;
+};
+
+export type ListRecentProspectActivityParams = {
+/**
+ * How many days back to include. Defaults to 7 (a rolling 7-day window, not calendar "this week").
+ * @nullable
+ */
+days?: number | null;
 };
 

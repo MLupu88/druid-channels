@@ -60,6 +60,7 @@ import { type Currency, formatMetricValue, formatTrendLabel, formatStatusLabel }
 import { findExistingTarget } from '@/lib/metric-target-selection';
 import { getDefaultPeriodKey } from '@/lib/period';
 import { PeriodSelector } from '@/components/period-selector';
+import { PamActionQueue } from '@/components/pam-action-queue';
 import type { KpiPeriod } from '@workspace/api-client-react';
 
 function StatusBadge({ status }: { status: string | null }) {
@@ -635,6 +636,10 @@ export default function Overview() {
             )}
           </div>
         </div>
+
+        {/* Phase 4: PAM-only action queue, prominent at the top of the PAM's
+            own Overview -- the Head of Channels Overview is unchanged. */}
+        {!isGlobalUser && <PamActionQueue />}
 
         {canViewTeamData && <PamLocalTimeSection users={teamUsers} />}
 

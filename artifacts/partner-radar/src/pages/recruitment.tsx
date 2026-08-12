@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useSearch } from 'wouter';
 import {
   useListRecruitments,
   getListRecruitmentsQueryKey,
@@ -103,7 +104,11 @@ export default function Recruitment() {
   const [territory, setTerritory] = useState<string>('all');
   const [stage, setStage] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Phase 4: deep-link support -- the Overview "Your Actions" queue links
+  // straight into a specific recruitment (?id=...) instead of just the list.
+  const locationSearch = useSearch();
+  const deepLinkId = new URLSearchParams(locationSearch).get('id');
+  const [selectedId, setSelectedId] = useState<string | null>(deepLinkId);
   const [transitionNote, setTransitionNote] = useState('');
   const [notPursuingOpen, setNotPursuingOpen] = useState(false);
   const [notPursuingReason, setNotPursuingReason] = useState('');

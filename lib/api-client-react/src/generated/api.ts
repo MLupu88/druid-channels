@@ -58,6 +58,7 @@ import type {
   ListPortfolioImportsParams,
   ListPortfolioParams,
   ListProspectsParams,
+  ListRecentProspectActivityParams,
   ListRecruitmentsParams,
   ListScanRunsParams,
   ListTeamTargetsParams,
@@ -86,6 +87,7 @@ import type {
   ProspectEditInput,
   ProspectStats,
   ReassignPortfolioRelationshipInput,
+  RecentProspectActivityItem,
   Recruitment,
   RecruitmentDetail,
   RegenerateAiChannelBriefInput,
@@ -6033,6 +6035,90 @@ export function useGetProspectStats<TData = Awaited<ReturnType<typeof getProspec
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetProspectStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListRecentProspectActivityUrl = (params?: ListRecentProspectActivityParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/prospects/activity/recent?${stringifiedParams}` : `/api/prospects/activity/recent`
+}
+
+/**
+ * @summary Phase 4 -- recent prospect_activity entries, scoped to the caller's own assigned prospects (PAM) or unscoped (Head/Admin). Powers the PAM Overview "Your Actions" recent-activity feed.
+ */
+export const listRecentProspectActivity = async (params?: ListRecentProspectActivityParams, options?: Parameters<typeof customFetch>[1]): Promise<RecentProspectActivityItem[]> => {
+
+  return customFetch<RecentProspectActivityItem[]>(getListRecentProspectActivityUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRecentProspectActivityQueryKey = (params?: ListRecentProspectActivityParams,) => {
+    return [
+    `/api/prospects/activity/recent`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListRecentProspectActivityQueryOptions = <TData = Awaited<ReturnType<typeof listRecentProspectActivity>>, TError = ErrorType<unknown>>(params?: ListRecentProspectActivityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecentProspectActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRecentProspectActivityQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRecentProspectActivity>>> = ({ signal }) => listRecentProspectActivity(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRecentProspectActivity>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRecentProspectActivityQueryResult = NonNullable<Awaited<ReturnType<typeof listRecentProspectActivity>>>
+export type ListRecentProspectActivityQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Phase 4 -- recent prospect_activity entries, scoped to the caller's own assigned prospects (PAM) or unscoped (Head/Admin). Powers the PAM Overview "Your Actions" recent-activity feed.
+ */
+
+export function useListRecentProspectActivity<TData = Awaited<ReturnType<typeof listRecentProspectActivity>>, TError = ErrorType<unknown>>(
+ params?: ListRecentProspectActivityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecentProspectActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRecentProspectActivityQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -1913,6 +1913,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProspectStats"
 
+  /prospects/activity/recent:
+    get:
+      operationId: listRecentProspectActivity
+      tags: [prospects]
+      summary: Phase 4 -- recent prospect_activity entries, scoped to the caller's own assigned prospects (PAM) or unscoped (Head/Admin). Powers the PAM Overview "Your Actions" recent-activity feed.
+      parameters:
+        - name: days
+          in: query
+          description: How many days back to include. Defaults to 7 (a rolling 7-day window, not calendar "this week").
+          schema:
+            type: ["number", "null"]
+      responses:
+        "200":
+          description: Recent activity, newest first, bounded to a small fixed count
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecentProspectActivityItem"
+
 components:
   schemas:
     HealthStatus:
@@ -2184,6 +2205,29 @@ components:
       required: [id, event_type, timestamp]
       properties:
         id:
+          type: string
+        event_type:
+          type: string
+          enum: [discovered, reviewed, accepted, rejected, deferred, hubspot_pushed, note_added]
+        timestamp:
+          type: string
+        actor_name:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+
+    # Phase 4: same shape as ActivityItem, plus which prospect/company the
+    # entry belongs to -- needed because this is a cross-prospect feed
+    # (ActivityItem is always read nested under one already-known prospect).
+    RecentProspectActivityItem:
+      type: object
+      required: [id, prospect_id, company_name, event_type, timestamp]
+      properties:
+        id:
+          type: string
+        prospect_id:
+          type: string
+        company_name:
           type: string
         event_type:
           type: string

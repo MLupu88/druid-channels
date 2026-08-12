@@ -5,7 +5,7 @@
 // Assigned PAM control. GET /prospects already returns exactly this PAM's
 // assigned rows server-side, so this page only needs to render them.
 import React, { useState, useEffect } from 'react';
-import { Link } from 'wouter';
+import { Link, useSearch } from 'wouter';
 import {
   useListProspects,
   useGetProspect,
@@ -14,6 +14,7 @@ import {
   useDeleteProspect,
   getListProspectsQueryKey,
   getGetProspectQueryKey,
+  getListRecentProspectActivityQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -158,7 +159,11 @@ export default function MyProspects() {
   const [nextAction, setNextAction] = useState<NextActionFilter>('all');
   const [freshness, setFreshness] = useState<FreshnessFilter>('all');
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Phase 4: deep-link support -- the Overview "Your Actions" queue links
+  // straight into a specific prospect (?id=...) instead of just the list.
+  const locationSearch = useSearch();
+  const deepLinkId = new URLSearchParams(locationSearch).get('id');
+  const [selectedId, setSelectedId] = useState<string | null>(deepLinkId);
 
   const [acceptDialogOpen, setAcceptDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -200,6 +205,9 @@ export default function MyProspects() {
       onSuccess: (data, variables) => {
         queryClient.invalidateQueries({ queryKey: getListProspectsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetProspectQueryKey(variables.id) });
+        // Phase 4: a decision always logs a prospect_activity event -- keep
+        // the Overview "Your Actions" recent-activity card in sync too.
+        queryClient.invalidateQueries({ queryKey: getListRecentProspectActivityQueryKey() });
         setAcceptDialogOpen(false);
         setRejectDialogOpen(false);
         setNote('');
@@ -217,6 +225,8 @@ export default function MyProspects() {
       onSuccess: (_data, variables) => {
         queryClient.invalidateQueries({ queryKey: getListProspectsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetProspectQueryKey(variables.id) });
+        // Phase 4: an edit always logs a prospect_activity event too.
+        queryClient.invalidateQueries({ queryKey: getListRecentProspectActivityQueryKey() });
         setEditDialogOpen(false);
         toast({ title: 'Prospect updated' });
       },
@@ -552,6 +562,32 @@ export default function MyProspects() {
                       <span>·</span>
                       <NextActionBadge nextAction={detail.next_action ?? 'none'} />
                     </div>
+
+                    {/* Phase 4: PAM-entered operational input, visually
+                        separated from the AI-generated content above (which
+                        has its own "AI SUMMARY"/Sparkles treatment) -- this
+                        is the only content on this tab you wrote yourself,
+                        never AI-generated, never edited here directly (use
+                        Edit details). */}
+                    {(detail.pam_note || (detail.status === 'rejected' && detail.rejection_reason)) && (
+                      <div className="bg-primary/5 border border-primary/20 rounded-md p-4 space-y-3">
+                        <h4 className="text-sm font-medium text-primary/80 uppercase tracking-wider flex items-center gap-1.5">
+                          <Pencil className="h-3.5 w-3.5" /> Your input
+                        </h4>
+                        {detail.status === 'rejected' && detail.rejection_reason && (
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground mb-1">Rejection reason</p>
+                            <p className="text-sm text-foreground/80">{detail.rejection_reason}</p>
+                          </div>
+                        )}
+                        {detail.pam_note && (
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground mb-1">Note</p>
+                            <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{detail.pam_note}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="evidence" className="m-0 space-y-4">

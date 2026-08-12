@@ -15,6 +15,7 @@
     "test:discovery-eligibility": "tsx --test tests/discoveryEligibility.test.ts",
     "test:company-duplicate-audit": "tsx --test tests/companyDuplicateAudit.test.ts",
     "test:migration-invariants": "tsx --test tests/migrationInvariants.test.ts",
+    "test:pam-action-queue": "tsx --test tests/pamActionQueue.test.ts",
     "test:ai-brief-hash": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/aiChannelBriefHash.test.ts",
     "test:discovery-providers": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryProviders.test.ts",
     "test:discovery-identity": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryIdentity.test.ts",

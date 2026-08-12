@@ -2849,3 +2849,22 @@ export const GetProspectStatsResponse = zod.object({
 })
 
 
+/**
+ * @summary Phase 4 -- recent prospect_activity entries, scoped to the caller's own assigned prospects (PAM) or unscoped (Head/Admin). Powers the PAM Overview "Your Actions" recent-activity feed.
+ */
+export const ListRecentProspectActivityQueryParams = zod.object({
+  "days": zod.coerce.number().nullish().describe('How many days back to include. Defaults to 7 (a rolling 7-day window, not calendar \"this week\").')
+})
+
+export const ListRecentProspectActivityResponseItem = zod.object({
+  "id": zod.string(),
+  "prospect_id": zod.string(),
+  "company_name": zod.string(),
+  "event_type": zod.enum(['discovered', 'reviewed', 'accepted', 'rejected', 'deferred', 'hubspot_pushed', 'note_added']),
+  "timestamp": zod.string(),
+  "actor_name": zod.string().nullish(),
+  "note": zod.string().nullish()
+})
+export const ListRecentProspectActivityResponse = zod.array(ListRecentProspectActivityResponseItem)
+
+
