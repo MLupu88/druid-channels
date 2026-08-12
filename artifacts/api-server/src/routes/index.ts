@@ -23,6 +23,7 @@ import portfolioImportsRouter from "./portfolio_imports";
 import searchRouter from "./search";
 import pamCopilotRouter from "./pam_copilot";
 import territoryPotentialRouter from "./territory_potential";
+import opportunitiesRouter from "./opportunities";
 
 const router: IRouter = Router();
 
@@ -50,5 +51,6 @@ router.use(portfolioImportsRouter);
 router.use(searchRouter);
 router.use(pamCopilotRouter);
 router.use(territoryPotentialRouter);
+router.use(opportunitiesRouter);
 
 export default router;

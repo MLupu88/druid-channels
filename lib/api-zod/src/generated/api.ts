@@ -2323,6 +2323,291 @@ export const DeleteMetricTargetResponse = zod.object({
 
 
 /**
+ * @summary Phase 5A -- get the company-wide annual target (Irina/Head-level) for a metric/year, or null if unset. "annual" is a genuine third target-period value distinct from q1-q4; it is never the same concept as the "ytd" reporting period.
+ */
+export const GetAnnualTargetQueryParams = zod.object({
+  "metric_key": zod.coerce.string(),
+  "year": zod.coerce.number()
+})
+
+export const GetAnnualTargetResponse = zod.union([zod.object({
+  "id": zod.string(),
+  "metric_key": zod.string(),
+  "year": zod.number(),
+  "target_value": zod.number(),
+  "note": zod.string().nullable(),
+  "created_by_name": zod.string().nullable(),
+  "updated_by_name": zod.string().nullable(),
+  "updated_at": zod.string()
+}),zod.null()])
+
+
+/**
+ * @summary Create or update the company-wide annual target for a metric/year. Head of Channels/admin only. Deliberately does not divide the annual figure across quarters or PAMs -- PAM quarterly allocations remain separate rows written via PUT /metric-targets.
+ */
+export const upsertAnnualTargetBodyTargetValueMin = 0;
+
+
+
+export const UpsertAnnualTargetBody = zod.object({
+  "metric_key": zod.string().describe('Must be one of the curated targetable metrics (see TARGETABLE_METRIC_KEYS) -- 404 otherwise.'),
+  "year": zod.number(),
+  "target_value": zod.number().min(upsertAnnualTargetBodyTargetValueMin).describe('The company-wide annual figure. Never automatically divided by four -- PAM quarterly allocations are separate rows, compared against this via GET \/metric-targets\/annual-cascade.'),
+  "note": zod.string().nullish()
+})
+
+export const UpsertAnnualTargetResponse = zod.object({
+  "id": zod.string(),
+  "metric_key": zod.string(),
+  "year": zod.number(),
+  "target_value": zod.number(),
+  "note": zod.string().nullable(),
+  "created_by_name": zod.string().nullable(),
+  "updated_by_name": zod.string().nullable(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Phase 5A -- the full annual target cascade for a metric/year -- Head of Channels/admin only (exposes every PAM's individual quarterly allocations, not just the caller's own). Rolls up annual_target, allocated_to_pams (never annual_target / 4 -- the two are independently derived and compared), unallocated_amount, overallocated_amount, quarterly allocation totals, actual company-wide performance, and attainment percent.
+ */
+export const GetAnnualCascadeQueryParams = zod.object({
+  "metric_key": zod.coerce.string(),
+  "year": zod.coerce.number()
+})
+
+export const GetAnnualCascadeResponse = zod.object({
+  "metric_key": zod.string(),
+  "year": zod.number(),
+  "annual_target": zod.number().nullable(),
+  "allocated_to_pams": zod.number().describe('Sum of every PAM\'s own q1-q4 allocation rows -- never derived by dividing annual_target by four.'),
+  "unallocated_amount": zod.number().nullable().describe('max(0, annual_target - allocated_to_pams). Null only when there is no annual_target to measure against.'),
+  "overallocated_amount": zod.number().describe('max(0, allocated_to_pams - annual_target). Zero whenever allocations do not exceed the annual target.'),
+  "quarterly_totals": zod.object({
+  "q1": zod.number(),
+  "q2": zod.number(),
+  "q3": zod.number(),
+  "q4": zod.number()
+}),
+  "actual": zod.number().nullable().describe('Company-wide actual performance for the year to date. For closed_revenue this is the credit-aware figure (credit_value\/credit_date when present on a won opportunity, otherwise deal_value\/closed_at) -- it can differ from the closed_revenue reporting KPI.'),
+  "attainment_percent": zod.number().nullable().describe('round(actual \/ annual_target \* 100). Null when there is no annual_target to measure against.'),
+  "allocations": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "pam_name": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "q1": zod.number().nullable(),
+  "q2": zod.number().nullable(),
+  "q3": zod.number().nullable(),
+  "q4": zod.number().nullable()
+}))
+})
+
+
+/**
+ * @summary List partner opportunities (the commercial deal ledger). A PAM sees only opportunities in their own canonical territory and assigned to themselves; Head of Channels/admin see all.
+ */
+export const ListOpportunitiesQueryParams = zod.object({
+  "status": zod.union([zod.literal('open'),zod.literal('won'),zod.literal('lost'),zod.literal(null)]).nullish(),
+  "attribution_type": zod.union([zod.literal('partner_sourced'),zod.literal('partner_influenced'),zod.literal(null)]).nullish(),
+  "territory": zod.coerce.string().nullish()
+})
+
+export const ListOpportunitiesResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "assigned_user_id": zod.string(),
+  "assigned_user_name": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "deal_value": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "opportunity_date": zod.string().describe('The real business date the opportunity was opened -- never the same as created_at. May be well before app go-live for a backfilled historical record.'),
+  "expected_close_date": zod.string().nullable(),
+  "closed_at": zod.string().nullable().describe('The true business\/CRM close date. Required whenever status=won. Never falsified to make a historical deal appear to close inside a later target period -- see credit_date for that.'),
+  "credit_value": zod.number().nullable().describe('Target-attainment override. When set, this amount (denominated in this row\'s own currency) is credited to the target period identified by credit_date instead of deal_value. Independent of the closed_revenue reporting figure, which always uses deal_value\/closed_at only.'),
+  "credit_date": zod.string().nullable().describe('Target-attainment override date. When set, this opportunity\'s credited value lands in the target period containing credit_date instead of closed_at. closed_at is never edited to achieve this.'),
+  "customer_name": zod.string().nullable(),
+  "note": zod.string().nullable(),
+  "source_system": zod.enum(['manual', 'import', 'hubspot']).describe('Source-neutral identity, added ahead of the actual HubSpot integration (not yet implemented -- no HubSpot API calls exist anywhere in this app). \"manual\" is a PAM-entered row (the default); \"import\" is reserved for a future bulk backfill; \"hubspot\" is reserved for a future live sync.'),
+  "external_id": zod.string().nullable().describe('Foreign record id once an import or future HubSpot sync populates this row. Null for every manually-created row.'),
+  "source_updated_at": zod.string().nullable(),
+  "last_synced_at": zod.string().nullable(),
+  "created_by_user_id": zod.string().nullable(),
+  "created_by_name": zod.string().nullable(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+export const ListOpportunitiesResponse = zod.array(ListOpportunitiesResponseItem)
+
+
+/**
+ * @summary Create a new partner opportunity. A PAM may only create in their own canonical territory, assigned to themselves; Head/Admin may create for any valid PAM/territory. status=won requires closed_at.
+ */
+
+export const createOpportunityBodyDealValueExclusiveMin = 0;
+
+export const createOpportunityBodyCurrencyDefault = `USD`;
+
+export const CreateOpportunityBody = zod.object({
+  "name": zod.string().min(1),
+  "company_id": zod.string(),
+  "territory_id": zod.string(),
+  "assigned_user_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "status": zod.enum(['open', 'won', 'lost']).optional().describe('Defaults to \"open\". status=won requires closed_at to be set in the same request.'),
+  "deal_value": zod.number().gt(createOpportunityBodyDealValueExclusiveMin),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']).default(createOpportunityBodyCurrencyDefault),
+  "opportunity_date": zod.string().describe('The real business date the opportunity was opened. Must be set honestly even for a backfilled historical record -- never defaulted to today.'),
+  "expected_close_date": zod.string().nullish(),
+  "closed_at": zod.string().nullish().describe('Required when status=won.'),
+  "credit_value": zod.number().nullish().describe('Must be positive when present.'),
+  "credit_date": zod.string().nullish(),
+  "customer_name": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "source_system": zod.enum(['manual', 'import', 'hubspot']).optional().describe('Defaults to \"manual\".'),
+  "external_id": zod.string().nullish(),
+  "source_updated_at": zod.string().nullish()
+})
+
+export const CreateOpportunityResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "assigned_user_id": zod.string(),
+  "assigned_user_name": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "deal_value": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "opportunity_date": zod.string().describe('The real business date the opportunity was opened -- never the same as created_at. May be well before app go-live for a backfilled historical record.'),
+  "expected_close_date": zod.string().nullable(),
+  "closed_at": zod.string().nullable().describe('The true business\/CRM close date. Required whenever status=won. Never falsified to make a historical deal appear to close inside a later target period -- see credit_date for that.'),
+  "credit_value": zod.number().nullable().describe('Target-attainment override. When set, this amount (denominated in this row\'s own currency) is credited to the target period identified by credit_date instead of deal_value. Independent of the closed_revenue reporting figure, which always uses deal_value\/closed_at only.'),
+  "credit_date": zod.string().nullable().describe('Target-attainment override date. When set, this opportunity\'s credited value lands in the target period containing credit_date instead of closed_at. closed_at is never edited to achieve this.'),
+  "customer_name": zod.string().nullable(),
+  "note": zod.string().nullable(),
+  "source_system": zod.enum(['manual', 'import', 'hubspot']).describe('Source-neutral identity, added ahead of the actual HubSpot integration (not yet implemented -- no HubSpot API calls exist anywhere in this app). \"manual\" is a PAM-entered row (the default); \"import\" is reserved for a future bulk backfill; \"hubspot\" is reserved for a future live sync.'),
+  "external_id": zod.string().nullable().describe('Foreign record id once an import or future HubSpot sync populates this row. Null for every manually-created row.'),
+  "source_updated_at": zod.string().nullable(),
+  "last_synced_at": zod.string().nullable(),
+  "created_by_user_id": zod.string().nullable(),
+  "created_by_name": zod.string().nullable(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Get a single opportunity. A PAM may only read their own (own territory + own assignment); Head/Admin may read any.
+ */
+export const GetOpportunityParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetOpportunityResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "assigned_user_id": zod.string(),
+  "assigned_user_name": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "deal_value": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "opportunity_date": zod.string().describe('The real business date the opportunity was opened -- never the same as created_at. May be well before app go-live for a backfilled historical record.'),
+  "expected_close_date": zod.string().nullable(),
+  "closed_at": zod.string().nullable().describe('The true business\/CRM close date. Required whenever status=won. Never falsified to make a historical deal appear to close inside a later target period -- see credit_date for that.'),
+  "credit_value": zod.number().nullable().describe('Target-attainment override. When set, this amount (denominated in this row\'s own currency) is credited to the target period identified by credit_date instead of deal_value. Independent of the closed_revenue reporting figure, which always uses deal_value\/closed_at only.'),
+  "credit_date": zod.string().nullable().describe('Target-attainment override date. When set, this opportunity\'s credited value lands in the target period containing credit_date instead of closed_at. closed_at is never edited to achieve this.'),
+  "customer_name": zod.string().nullable(),
+  "note": zod.string().nullable(),
+  "source_system": zod.enum(['manual', 'import', 'hubspot']).describe('Source-neutral identity, added ahead of the actual HubSpot integration (not yet implemented -- no HubSpot API calls exist anywhere in this app). \"manual\" is a PAM-entered row (the default); \"import\" is reserved for a future bulk backfill; \"hubspot\" is reserved for a future live sync.'),
+  "external_id": zod.string().nullable().describe('Foreign record id once an import or future HubSpot sync populates this row. Null for every manually-created row.'),
+  "source_updated_at": zod.string().nullable(),
+  "last_synced_at": zod.string().nullable(),
+  "created_by_user_id": zod.string().nullable(),
+  "created_by_name": zod.string().nullable(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
+ * @summary Edit an opportunity. A PAM may only update their own (own territory + own assignment), may never reassign it to another PAM, and may never widen its territory scope. Head/Admin may update any field for any opportunity. status=won requires closed_at (existing or provided in the same request).
+ */
+export const UpdateOpportunityParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+export const updateOpportunityBodyDealValueExclusiveMin = 0;
+
+
+
+export const UpdateOpportunityBody = zod.object({
+  "name": zod.string().min(1).optional(),
+  "company_id": zod.string().optional(),
+  "territory_id": zod.string().optional().describe('A PAM may never change this away from their own canonical territory (cannot widen scope).'),
+  "assigned_user_id": zod.string().optional().describe('A PAM may never change this to a different PAM (no reassignment).'),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']).optional(),
+  "status": zod.enum(['open', 'won', 'lost']).optional().describe('status=won requires closed_at (existing or provided in the same request).'),
+  "deal_value": zod.number().gt(updateOpportunityBodyDealValueExclusiveMin).optional(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']).optional(),
+  "opportunity_date": zod.string().optional(),
+  "expected_close_date": zod.string().nullish(),
+  "closed_at": zod.string().nullish(),
+  "credit_value": zod.number().nullish(),
+  "credit_date": zod.string().nullish(),
+  "customer_name": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "source_system": zod.enum(['manual', 'import', 'hubspot']).optional().describe('Source-neutral identity, added ahead of the actual HubSpot integration (not yet implemented -- no HubSpot API calls exist anywhere in this app). \"manual\" is a PAM-entered row (the default); \"import\" is reserved for a future bulk backfill; \"hubspot\" is reserved for a future live sync.'),
+  "external_id": zod.string().nullish(),
+  "source_updated_at": zod.string().nullish()
+})
+
+export const UpdateOpportunityResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "assigned_user_id": zod.string(),
+  "assigned_user_name": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "deal_value": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "opportunity_date": zod.string().describe('The real business date the opportunity was opened -- never the same as created_at. May be well before app go-live for a backfilled historical record.'),
+  "expected_close_date": zod.string().nullable(),
+  "closed_at": zod.string().nullable().describe('The true business\/CRM close date. Required whenever status=won. Never falsified to make a historical deal appear to close inside a later target period -- see credit_date for that.'),
+  "credit_value": zod.number().nullable().describe('Target-attainment override. When set, this amount (denominated in this row\'s own currency) is credited to the target period identified by credit_date instead of deal_value. Independent of the closed_revenue reporting figure, which always uses deal_value\/closed_at only.'),
+  "credit_date": zod.string().nullable().describe('Target-attainment override date. When set, this opportunity\'s credited value lands in the target period containing credit_date instead of closed_at. closed_at is never edited to achieve this.'),
+  "customer_name": zod.string().nullable(),
+  "note": zod.string().nullable(),
+  "source_system": zod.enum(['manual', 'import', 'hubspot']).describe('Source-neutral identity, added ahead of the actual HubSpot integration (not yet implemented -- no HubSpot API calls exist anywhere in this app). \"manual\" is a PAM-entered row (the default); \"import\" is reserved for a future bulk backfill; \"hubspot\" is reserved for a future live sync.'),
+  "external_id": zod.string().nullable().describe('Foreign record id once an import or future HubSpot sync populates this row. Null for every manually-created row.'),
+  "source_updated_at": zod.string().nullable(),
+  "last_synced_at": zod.string().nullable(),
+  "created_by_user_id": zod.string().nullable(),
+  "created_by_name": zod.string().nullable(),
+  "created_at": zod.string(),
+  "updated_at": zod.string()
+})
+
+
+/**
  * @summary Export the quarterly Head of Channels report as a PowerPoint deck
  */
 export const exportQuarterlyPptxQueryCurrencyDefault = `USD`;

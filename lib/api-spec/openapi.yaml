@@ -54,6 +54,8 @@ tags:
     description: Stage 6.4 PAM Workspace Copilot -- grounded, read-only Q&A over a controlled snapshot of the caller's own workspace and a maintained App Guide
   - name: territory-potential
     description: Stage 6.5 Territory Potential -- deterministic, count-based Discovery capacity/saturation summary per territory. Context for target setting, never target automation.
+  - name: opportunities
+    description: Phase 5A -- the commercial deal ledger (partner_opportunities). Backs pipeline, closed revenue, and opportunities-created reporting, and the credit-aware annual target attainment cascade.
 
 paths:
   /auth/login:
@@ -1582,6 +1584,181 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteResult"
+        "404":
+          description: Not found
+
+  /metric-targets/annual:
+    get:
+      operationId: getAnnualTarget
+      tags: [metric-targets]
+      summary: Phase 5A -- get the company-wide annual target (Irina/Head-level) for a metric/year, or null if unset. "annual" is a genuine third target-period value distinct from q1-q4; it is never the same concept as the "ytd" reporting period.
+      parameters:
+        - name: metric_key
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: The annual target row, or null if none is configured yet
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AnnualTarget"
+                  - type: "null"
+    put:
+      operationId: upsertAnnualTarget
+      tags: [metric-targets]
+      summary: Create or update the company-wide annual target for a metric/year. Head of Channels/admin only. Deliberately does not divide the annual figure across quarters or PAMs -- PAM quarterly allocations remain separate rows written via PUT /metric-targets.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnualTargetInput"
+      responses:
+        "200":
+          description: Saved annual target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnualTarget"
+        "404":
+          description: metric_key is not a targetable metric
+
+  /metric-targets/annual-cascade:
+    get:
+      operationId: getAnnualCascade
+      tags: [metric-targets]
+      summary: Phase 5A -- the full annual target cascade for a metric/year -- Head of Channels/admin only (exposes every PAM's individual quarterly allocations, not just the caller's own). Rolls up annual_target, allocated_to_pams (never annual_target / 4 -- the two are independently derived and compared), unallocated_amount, overallocated_amount, quarterly allocation totals, actual company-wide performance, and attainment percent.
+      parameters:
+        - name: metric_key
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Annual cascade roll-up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnualCascade"
+        "404":
+          description: metric_key is not a targetable metric
+
+  /opportunities:
+    get:
+      operationId: listOpportunities
+      tags: [opportunities]
+      summary: List partner opportunities (the commercial deal ledger). A PAM sees only opportunities in their own canonical territory and assigned to themselves; Head of Channels/admin see all.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum: [open, won, lost, null]
+        - name: attribution_type
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum: [partner_sourced, partner_influenced, null]
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+            description: Head/Admin only (id or name) -- ignored for a PAM caller, who is always forced to their own territory.
+      responses:
+        "200":
+          description: List of opportunities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Opportunity"
+    post:
+      operationId: createOpportunity
+      tags: [opportunities]
+      summary: Create a new partner opportunity. A PAM may only create in their own canonical territory, assigned to themselves; Head/Admin may create for any valid PAM/territory. status=won requires closed_at.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpportunityInput"
+      responses:
+        "201":
+          description: Created opportunity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
+        "400":
+          description: Invalid input, e.g. status=won without closed_at, or a non-positive deal_value/credit_value
+        "403":
+          description: PAM attempted to create outside their own territory or assign to a different PAM
+
+  /opportunities/{id}:
+    get:
+      operationId: getOpportunity
+      tags: [opportunities]
+      summary: Get a single opportunity. A PAM may only read their own (own territory + own assignment); Head/Admin may read any.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The opportunity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
+        "403":
+          description: Caller does not have access to this opportunity
+        "404":
+          description: Not found
+    patch:
+      operationId: updateOpportunity
+      tags: [opportunities]
+      summary: Edit an opportunity. A PAM may only update their own (own territory + own assignment), may never reassign it to another PAM, and may never widen its territory scope. Head/Admin may update any field for any opportunity. status=won requires closed_at (existing or provided in the same request).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpportunityEditInput"
+      responses:
+        "200":
+          description: Updated opportunity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
+        "400":
+          description: Invalid input, e.g. status=won without closed_at, or a non-positive deal_value/credit_value
+        "403":
+          description: Caller does not have access to this opportunity, attempted to reassign it to another PAM, or attempted to widen its territory scope
         "404":
           description: Not found
 
@@ -4003,6 +4180,109 @@ components:
         status:
           $ref: "#/components/schemas/TeamTargetStatus"
 
+    AnnualTarget:
+      type: object
+      required: [id, metric_key, year, target_value, note, created_by_name, updated_by_name, updated_at]
+      properties:
+        id:
+          type: string
+        metric_key:
+          type: string
+        year:
+          type: number
+        target_value:
+          type: number
+        note:
+          type: ["string", "null"]
+        created_by_name:
+          type: ["string", "null"]
+        updated_by_name:
+          type: ["string", "null"]
+        updated_at:
+          type: string
+
+    AnnualTargetInput:
+      type: object
+      required: [metric_key, year, target_value]
+      properties:
+        metric_key:
+          type: string
+          description: Must be one of the curated targetable metrics (see TARGETABLE_METRIC_KEYS) -- 404 otherwise.
+        year:
+          type: number
+        target_value:
+          type: number
+          minimum: 0
+          description: The company-wide annual figure. Never automatically divided by four -- PAM quarterly allocations are separate rows, compared against this via GET /metric-targets/annual-cascade.
+        note:
+          type: ["string", "null"]
+
+    PamAllocation:
+      type: object
+      required: [pam_user_id, pam_name, territory_id, territory_name, q1, q2, q3, q4]
+      properties:
+        pam_user_id:
+          type: string
+        pam_name:
+          type: string
+        territory_id:
+          type: string
+        territory_name:
+          type: string
+        q1:
+          type: ["number", "null"]
+        q2:
+          type: ["number", "null"]
+        q3:
+          type: ["number", "null"]
+        q4:
+          type: ["number", "null"]
+
+    QuarterlyAllocationTotals:
+      type: object
+      required: [q1, q2, q3, q4]
+      properties:
+        q1:
+          type: number
+        q2:
+          type: number
+        q3:
+          type: number
+        q4:
+          type: number
+
+    AnnualCascade:
+      type: object
+      required: [metric_key, year, annual_target, allocated_to_pams, unallocated_amount, overallocated_amount, quarterly_totals, actual, attainment_percent, allocations]
+      properties:
+        metric_key:
+          type: string
+        year:
+          type: number
+        annual_target:
+          type: ["number", "null"]
+        allocated_to_pams:
+          type: number
+          description: Sum of every PAM's own q1-q4 allocation rows -- never derived by dividing annual_target by four.
+        unallocated_amount:
+          type: ["number", "null"]
+          description: max(0, annual_target - allocated_to_pams). Null only when there is no annual_target to measure against.
+        overallocated_amount:
+          type: number
+          description: max(0, allocated_to_pams - annual_target). Zero whenever allocations do not exceed the annual target.
+        quarterly_totals:
+          $ref: "#/components/schemas/QuarterlyAllocationTotals"
+        actual:
+          type: ["number", "null"]
+          description: Company-wide actual performance for the year to date. For closed_revenue this is the credit-aware figure (credit_value/credit_date when present on a won opportunity, otherwise deal_value/closed_at) -- it can differ from the closed_revenue reporting KPI.
+        attainment_percent:
+          type: ["number", "null"]
+          description: round(actual / annual_target * 100). Null when there is no annual_target to measure against.
+        allocations:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamAllocation"
+
     AiBriefState:
       type: string
       enum: [never_generated, ready, stale, insufficient_data]
@@ -4192,6 +4472,207 @@ components:
         partner_referrals:
           type: number
         notes:
+          type: ["string", "null"]
+
+    OpportunityAttributionType:
+      type: string
+      enum: [partner_sourced, partner_influenced]
+
+    OpportunityStatus:
+      type: string
+      enum: [open, won, lost]
+
+    OpportunitySourceSystem:
+      type: string
+      enum: [manual, import, hubspot]
+      description: Source-neutral identity, added ahead of the actual HubSpot integration (not yet implemented -- no HubSpot API calls exist anywhere in this app). "manual" is a PAM-entered row (the default); "import" is reserved for a future bulk backfill; "hubspot" is reserved for a future live sync.
+
+    Opportunity:
+      type: object
+      required:
+        - id
+        - name
+        - company_id
+        - company_name
+        - territory_id
+        - territory_name
+        - assigned_user_id
+        - assigned_user_name
+        - attribution_type
+        - status
+        - deal_value
+        - currency
+        - opportunity_date
+        - expected_close_date
+        - closed_at
+        - credit_value
+        - credit_date
+        - customer_name
+        - note
+        - source_system
+        - external_id
+        - source_updated_at
+        - last_synced_at
+        - created_by_user_id
+        - created_by_name
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        company_id:
+          type: string
+        company_name:
+          type: string
+        territory_id:
+          type: string
+        territory_name:
+          type: string
+        assigned_user_id:
+          type: string
+        assigned_user_name:
+          type: string
+        attribution_type:
+          $ref: "#/components/schemas/OpportunityAttributionType"
+        status:
+          $ref: "#/components/schemas/OpportunityStatus"
+        deal_value:
+          type: number
+        currency:
+          type: string
+          enum: [USD, EUR, GBP]
+        opportunity_date:
+          type: string
+          description: The real business date the opportunity was opened -- never the same as created_at. May be well before app go-live for a backfilled historical record.
+        expected_close_date:
+          type: ["string", "null"]
+        closed_at:
+          type: ["string", "null"]
+          description: The true business/CRM close date. Required whenever status=won. Never falsified to make a historical deal appear to close inside a later target period -- see credit_date for that.
+        credit_value:
+          type: ["number", "null"]
+          description: Target-attainment override. When set, this amount (denominated in this row's own currency) is credited to the target period identified by credit_date instead of deal_value. Independent of the closed_revenue reporting figure, which always uses deal_value/closed_at only.
+        credit_date:
+          type: ["string", "null"]
+          description: Target-attainment override date. When set, this opportunity's credited value lands in the target period containing credit_date instead of closed_at. closed_at is never edited to achieve this.
+        customer_name:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+        source_system:
+          $ref: "#/components/schemas/OpportunitySourceSystem"
+        external_id:
+          type: ["string", "null"]
+          description: Foreign record id once an import or future HubSpot sync populates this row. Null for every manually-created row.
+        source_updated_at:
+          type: ["string", "null"]
+        last_synced_at:
+          type: ["string", "null"]
+        created_by_user_id:
+          type: ["string", "null"]
+        created_by_name:
+          type: ["string", "null"]
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    OpportunityInput:
+      type: object
+      required: [name, company_id, territory_id, assigned_user_id, attribution_type, deal_value, opportunity_date]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        company_id:
+          type: string
+        territory_id:
+          type: string
+        assigned_user_id:
+          type: string
+        attribution_type:
+          $ref: "#/components/schemas/OpportunityAttributionType"
+        status:
+          $ref: "#/components/schemas/OpportunityStatus"
+          description: Defaults to "open". status=won requires closed_at to be set in the same request.
+        deal_value:
+          type: number
+          exclusiveMinimum: 0
+        currency:
+          type: string
+          enum: [USD, EUR, GBP]
+          default: USD
+        opportunity_date:
+          type: string
+          description: The real business date the opportunity was opened. Must be set honestly even for a backfilled historical record -- never defaulted to today.
+        expected_close_date:
+          type: ["string", "null"]
+        closed_at:
+          type: ["string", "null"]
+          description: Required when status=won.
+        credit_value:
+          type: ["number", "null"]
+          description: Must be positive when present.
+        credit_date:
+          type: ["string", "null"]
+        customer_name:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+        source_system:
+          $ref: "#/components/schemas/OpportunitySourceSystem"
+          description: Defaults to "manual".
+        external_id:
+          type: ["string", "null"]
+        source_updated_at:
+          type: ["string", "null"]
+
+    OpportunityEditInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        company_id:
+          type: string
+        territory_id:
+          type: string
+          description: A PAM may never change this away from their own canonical territory (cannot widen scope).
+        assigned_user_id:
+          type: string
+          description: A PAM may never change this to a different PAM (no reassignment).
+        attribution_type:
+          $ref: "#/components/schemas/OpportunityAttributionType"
+        status:
+          $ref: "#/components/schemas/OpportunityStatus"
+          description: status=won requires closed_at (existing or provided in the same request).
+        deal_value:
+          type: number
+          exclusiveMinimum: 0
+        currency:
+          type: string
+          enum: [USD, EUR, GBP]
+        opportunity_date:
+          type: string
+        expected_close_date:
+          type: ["string", "null"]
+        closed_at:
+          type: ["string", "null"]
+        credit_value:
+          type: ["number", "null"]
+        credit_date:
+          type: ["string", "null"]
+        customer_name:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+        source_system:
+          $ref: "#/components/schemas/OpportunitySourceSystem"
+        external_id:
+          type: ["string", "null"]
+        source_updated_at:
           type: ["string", "null"]
 
     PartnerResearchItem:

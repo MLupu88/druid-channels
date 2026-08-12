@@ -1,4 +1,5 @@
 import { pgTable, text, uuid, timestamp, numeric, integer, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { territoriesTable } from "./territories";
@@ -56,6 +57,19 @@ export const metricTargetsTable = pgTable(
     // can ever produce (both columns are always populated together from
     // 6.2 onward).
     uniqueIndex("metric_targets_pam_territory_unique").on(table.metricKey, table.year, table.period, table.pamUserId, table.territoryId),
+    // Phase 5A: the company-wide annual target (Irina/Head-level, period =
+    // "annual", pam_user_id/territory_id both intentionally null) needs its
+    // own explicit uniqueness -- the index above does NOT reliably enforce
+    // "at most one" for these rows, because a plain (non-partial) unique
+    // index treats every NULL as distinct from every other NULL in
+    // Postgres, so two annual rows for the same metric_key+year would both
+    // insert without conflict. A partial unique index over exactly the
+    // annual-row shape closes that gap: only metric_key+year are indexed
+    // (both NOT NULL, so no NULL-distinctness problem), scoped to rows that
+    // are actually annual/global via the WHERE predicate.
+    uniqueIndex("metric_targets_global_annual_unique")
+      .on(table.metricKey, table.year)
+      .where(sql`${table.pamUserId} is null and ${table.territoryId} is null and ${table.period} = 'annual'`),
   ],
 );
 

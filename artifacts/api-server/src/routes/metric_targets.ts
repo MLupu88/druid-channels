@@ -8,6 +8,12 @@ import {
   DeleteMetricTargetResponse,
   ListTeamTargetsQueryParams,
   ListTeamTargetsResponse,
+  GetAnnualTargetQueryParams,
+  GetAnnualTargetResponse,
+  UpsertAnnualTargetBody,
+  UpsertAnnualTargetResponse,
+  GetAnnualCascadeQueryParams,
+  GetAnnualCascadeResponse,
 } from "@workspace/api-zod";
 import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middleware/auth";
@@ -17,6 +23,9 @@ import {
   upsertTarget,
   deleteTarget,
   getTeamTargets,
+  upsertAnnualTarget,
+  getAnnualTarget,
+  getAnnualCascade,
   TargetNotTargetableError,
   TargetTerritoryNotFoundError,
   TargetPamNotFoundError,
@@ -159,6 +168,86 @@ router.delete("/metric-targets/:id", requireAdmin, async (req, res): Promise<voi
     return;
   }
   res.json(DeleteMetricTargetResponse.parse({ id, deleted: true }));
+});
+
+// Same batch-name-lookup shape as shapeRows above, but for the single
+// company-wide annual row (period="annual", pam_user_id/territory_id both
+// null -- there is no PAM/territory name to resolve here).
+async function shapeAnnualTarget(row: typeof metricTargetsTable.$inferSelect) {
+  const userIds = [row.createdByUserId, row.updatedByUserId].filter((id): id is string => id !== null);
+  const users = userIds.length ? await db.select().from(usersTable).where(inArray(usersTable.id, userIds)) : [];
+  const userName = (id: string | null) => (id ? users.find((u) => u.id === id)?.name ?? null : null);
+
+  return {
+    id: row.id,
+    metric_key: row.metricKey,
+    year: row.year,
+    target_value: Number(row.targetValue),
+    note: row.note,
+    created_by_name: userName(row.createdByUserId),
+    updated_by_name: userName(row.updatedByUserId),
+    updated_at: row.updatedAt.toISOString(),
+  };
+}
+
+// Phase 5A: the company-wide annual target (Irina/Head-level). Read is open
+// to any authenticated user (a PAM needs this figure as context for their
+// own allocation), write is Head/Admin only -- same read/write split as
+// team-targets vs metric-targets above.
+router.get("/metric-targets/annual", requireAuth, async (req, res): Promise<void> => {
+  const parsedQuery = GetAnnualTargetQueryParams.safeParse(req.query);
+  if (!parsedQuery.success) {
+    res.status(400).json({ error: parsedQuery.error.message });
+    return;
+  }
+  const row = await getAnnualTarget(parsedQuery.data.metric_key, parsedQuery.data.year);
+  res.json(GetAnnualTargetResponse.parse(row ? await shapeAnnualTarget(row) : null));
+});
+
+router.put("/metric-targets/annual", requireAdmin, async (req, res): Promise<void> => {
+  const body = UpsertAnnualTargetBody.parse(req.body);
+
+  let saved;
+  try {
+    saved = await upsertAnnualTarget({
+      metricKey: body.metric_key,
+      year: body.year,
+      targetValue: body.target_value,
+      note: body.note ?? null,
+      actingUserId: req.actingUser!.id,
+    });
+  } catch (err) {
+    if (err instanceof TargetNotTargetableError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+
+  res.json(UpsertAnnualTargetResponse.parse(await shapeAnnualTarget(saved)));
+});
+
+// Head/Admin only -- exposes every PAM's individual quarterly allocations,
+// not just the caller's own, so this is a management view, not something a
+// PAM reads about themselves (a PAM's own allocation is already visible via
+// GET /metric-targets, territory-scoped).
+router.get("/metric-targets/annual-cascade", requireAdmin, async (req, res): Promise<void> => {
+  const parsedQuery = GetAnnualCascadeQueryParams.safeParse(req.query);
+  if (!parsedQuery.success) {
+    res.status(400).json({ error: parsedQuery.error.message });
+    return;
+  }
+
+  try {
+    const cascade = await getAnnualCascade(parsedQuery.data.metric_key, parsedQuery.data.year);
+    res.json(GetAnnualCascadeResponse.parse(cascade));
+  } catch (err) {
+    if (err instanceof TargetNotTargetableError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 });
 
 export default router;

@@ -10,6 +10,7 @@ import {
   connectionsTable,
   usersTable,
   partnerRecruitmentsTable,
+  partnerOpportunitiesTable,
 } from "@workspace/db";
 import { eq, and, isNull, gte, lte, inArray, desc } from "drizzle-orm";
 import { METRIC_BY_KEY, METRIC_REGISTRY, resolvePeriodRange, resolvePeriodKey, splitPeriodKey, isMoneyMetric, type SourceType } from "./kpiRegistry";
@@ -65,19 +66,51 @@ export interface KpiComputation {
   records: KpiDetailRecord[];
 }
 
+// metric_mappings is user-configurable (Admin > Connections & data can
+// deliberately set any source_type per metric, including DEMO/MANUAL/
+// NOT_CONNECTED) -- ensureMetricMappingsSeeded must never blindly resync
+// every existing row to the registry's current default, since that would
+// silently discard an admin's intentional customization. This is why the
+// loop below only ever INSERTs rows that don't exist yet, never UPDATEs an
+// existing one.
+//
+// opportunities_created is a narrow, known exception (Phase 5A follow-up):
+// every database seeded before Phase 5A has it stuck at the OLD default
+// (DEMO, from before partner_opportunities existed), and since this
+// function never updates existing rows, that database would never pick up
+// the new PARTNER_RADAR computation no matter how the app code changes.
+// upgradeKnownStaleMappings corrects exactly that one metric_key, and only
+// when it still holds exactly that one legacy value -- every other metric,
+// and any opportunities_created row an admin has since set to something
+// else (including deliberately back to DEMO), is left untouched.
+const LEGACY_STALE_MAPPINGS: ReadonlyArray<{ metricKey: string; staleSourceType: SourceType; correctSourceType: SourceType }> = [
+  { metricKey: "opportunities_created", staleSourceType: "DEMO", correctSourceType: "PARTNER_RADAR" },
+];
+
+async function upgradeKnownStaleMappings(): Promise<void> {
+  for (const { metricKey, staleSourceType, correctSourceType } of LEGACY_STALE_MAPPINGS) {
+    await db
+      .update(metricMappingsTable)
+      .set({ sourceType: correctSourceType, updatedAt: new Date() })
+      .where(and(eq(metricMappingsTable.metricKey, metricKey), eq(metricMappingsTable.sourceType, staleSourceType)));
+  }
+}
+
 export async function ensureMetricMappingsSeeded(): Promise<void> {
   const existing = await db.select().from(metricMappingsTable);
   const existingKeys = new Set(existing.map((m) => m.metricKey));
   const missing = METRIC_REGISTRY.filter((m) => !existingKeys.has(m.key));
-  if (missing.length === 0) return;
-  await db.insert(metricMappingsTable).values(
-    missing.map((m) => ({
-      metricKey: m.key,
-      sourceType: m.defaultSourceType,
-      active: true,
-      mappingJson: null,
-    })),
-  );
+  if (missing.length > 0) {
+    await db.insert(metricMappingsTable).values(
+      missing.map((m) => ({
+        metricKey: m.key,
+        sourceType: m.defaultSourceType,
+        active: true,
+        mappingJson: null,
+      })),
+    );
+  }
+  await upgradeKnownStaleMappings();
 }
 
 export async function resolveTerritory(territory: string | undefined | null): Promise<ResolvedTerritory> {
@@ -331,11 +364,41 @@ async function computeRenewals(periodKey: string, target: ResolvedTerritory): Pr
   };
 }
 
-export const CURRENT_STATE_FIELD_BY_KEY: Record<string, "pipelineSourced" | "pipelineInfluenced" | "revenueClosed"> = {
-  partner_sourced_pipeline: "pipelineSourced",
-  partner_influenced_pipeline: "pipelineInfluenced",
-  closed_revenue: "revenueClosed",
+// Phase 5A: partner_sourced_pipeline / partner_influenced_pipeline are
+// current-state metrics backed by partner_opportunities.attributionType
+// (open opportunities only) -- no historical audit trail of their own, same
+// as before this table existed, just sourced differently now. closed_revenue
+// is deliberately NOT in this map any more: a won opportunity's closed_at is
+// a real per-row business date, so closed_revenue is a period-flow query
+// (computeClosedRevenue below), not a current-state snapshot dispatch.
+// Exported so the weekly snapshot writer uses this exact same mapping
+// rather than a second, potentially-drifting copy.
+export const PIPELINE_ATTRIBUTION_BY_KEY: Record<string, "partner_sourced" | "partner_influenced"> = {
+  partner_sourced_pipeline: "partner_sourced",
+  partner_influenced_pipeline: "partner_influenced",
 };
+
+// Fetches each distinct currency's USD rate at most once via services/fx.ts,
+// then lets callers convert many rows synchronously. USD itself resolves
+// instantly at rate=1 with no network call, so an all-USD row set (e.g.
+// every automated-test fixture) never touches a live provider. Currency
+// conversion for DISPLAY still only ever happens in the outer API caller
+// (see isMoneyMetric/convertMoney elsewhere in this file) -- this only
+// normalizes multi-currency deal_value rows into one comparable USD sum,
+// matching computeMetric's existing "always returns raw USD" contract.
+export async function buildUsdRateMap(currencies: Iterable<string>): Promise<Map<string, number>> {
+  const distinct = [...new Set(currencies)];
+  const rateByCurrency = new Map<string, number>();
+  for (const currency of distinct) {
+    const fx = await resolveFx(currency as SupportedCurrency);
+    rateByCurrency.set(currency, fx.usd_to_currency_rate);
+  }
+  return rateByCurrency;
+}
+
+export function usdValueOf(row: { dealValue: string; currency: string }, rateByCurrency: Map<string, number>): number {
+  return Number(row.dealValue) / (rateByCurrency.get(row.currency) ?? 1);
+}
 
 // Monday (UTC, YYYY-MM-DD) of the calendar week containing `date`. This is
 // the same week-alignment the Stage 2B snapshot writer uses for
@@ -433,52 +496,41 @@ async function previousWeekSnapshotValue(
   return row ? Number(row.currentValue) : null;
 }
 
-// partner_sourced_pipeline / partner_influenced_pipeline / closed_revenue
-// (locked semantics): current-state numeric fields with no historical audit
-// trail, restricted to accepted/pushed_to_hubspot prospects only (new/
-// rejected/deferred prospects never contribute to a commercial partner
-// total). This is the *live* value, valid only when
+// partner_sourced_pipeline / partner_influenced_pipeline (Phase 5A): current-
+// state totals with no historical audit trail of their own, restricted to
+// OPEN partner_opportunities rows only (won/lost never contribute to
+// pipeline). This is the *live* value, valid only when
 // periodState(periodKey) === "active". Last Week always comes from the
 // previous week's persisted snapshot, never computed live -- these fields
 // have no audit trail to recompute a past value from.
-// Shared eligibility rule for the 3 current-state money metrics: accepted
-// or pushed_to_hubspot only. Exported so the weekly snapshot writer uses
-// this exact same rule rather than a second, potentially-drifting copy.
-export function isEligibleForCurrentState(p: { status: string }): boolean {
-  return p.status === "accepted" || p.status === "pushed_to_hubspot";
-}
-
 async function computeCurrentStateLive(metricKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
-  const field = CURRENT_STATE_FIELD_BY_KEY[metricKey];
+  const attributionType = PIPELINE_ATTRIBUTION_BY_KEY[metricKey];
   const label = METRIC_BY_KEY.get(metricKey)!.label;
   const allTerritories = await db.select().from(territoriesTable);
-  const allProspects = await db.select().from(prospectsTable);
+  const allOpportunities = await db.select().from(partnerOpportunitiesTable);
 
-  const eligible = allProspects.filter(isEligibleForCurrentState);
-
-  const valueOf = (p: (typeof eligible)[number]) => {
-    const raw = p[field];
-    return raw !== null ? Number(raw) : 0;
-  };
+  const eligible = allOpportunities.filter((o) => o.status === "open" && o.attributionType === attributionType);
+  const rateByCurrency = await buildUsdRateMap(eligible.map((o) => o.currency));
+  const valueOf = (o: (typeof eligible)[number]) => usdValueOf(o, rateByCurrency);
 
   const byTerritory: TerritoryContribution[] = allTerritories.map((t) => ({
     territory_id: t.id,
     territory_name: t.name,
-    value: eligible.filter((p) => p.territoryId === t.id).reduce((sum, p) => sum + valueOf(p), 0),
+    value: eligible.filter((o) => o.territoryId === t.id).reduce((sum, o) => sum + valueOf(o), 0),
   }));
 
-  const scoped = target.territoryId ? eligible.filter((p) => p.territoryId === target.territoryId) : eligible;
-  const current = scoped.reduce((sum, p) => sum + valueOf(p), 0);
+  const scoped = target.territoryId ? eligible.filter((o) => o.territoryId === target.territoryId) : eligible;
+  const current = scoped.reduce((sum, o) => sum + valueOf(o), 0);
 
-  const mostRecentUpdated = scoped.reduce<Date | null>((latest, p) => {
-    const updated = new Date(p.updatedAt as unknown as string);
+  const mostRecentUpdated = scoped.reduce<Date | null>((latest, o) => {
+    const updated = new Date(o.updatedAt as unknown as string);
     return !latest || updated > latest ? updated : latest;
   }, null);
 
   const records: KpiDetailRecord[] = scoped
-    .filter((p) => valueOf(p) !== 0)
+    .filter((o) => valueOf(o) !== 0)
     .slice(0, 100)
-    .map((p) => ({ label: `Prospect ${p.id.slice(0, 8)}`, value: valueOf(p), date: null }));
+    .map((o) => ({ label: o.name, value: valueOf(o), date: o.opportunityDate }));
 
   const lastWeek = await previousWeekSnapshotValue(label, target.territoryId, mondayOf(new Date()));
 
@@ -489,24 +541,29 @@ async function computeCurrentStateLive(metricKey: string, target: ResolvedTerrit
     trend: lastWeek !== null ? trendOf(current, lastWeek) : null,
     status: null,
     data_status: "CONNECTED",
-    data_source: `Live: prospects table, accepted/pushed_to_hubspot prospects' current-state total of ${label.toLowerCase()} across ${target.territoryName} (not period-filtered -- this field has no historical audit trail)`,
+    data_source: `Live: partner_opportunities table, open ${attributionType} opportunities' current total across ${target.territoryName} (not period-filtered -- pipeline is a current-state metric; deal_value normalized to USD)`,
     last_updated: (mostRecentUpdated ?? new Date()).toISOString(),
     last_updated_is_synthetic: mostRecentUpdated === null,
     what_changed: null,
-    explanation: `Current live total for ${label} in ${target.territoryName}, as of now, across accepted/pushed-to-HubSpot partners.`,
+    explanation: `Current live open ${label.toLowerCase()} total in ${target.territoryName}, as of now.`,
     by_territory: byTerritory,
     records,
   };
 }
 
-// partner_sourced_pipeline / partner_influenced_pipeline / closed_revenue,
-// for a "past" period: the live current-state total cannot honestly be
-// labeled as that period's value, so this reads the latest weekly
-// kpi_snapshots row captured during that period instead. A territory with
-// no snapshot in range is *omitted* from by_territory entirely -- a
-// missing snapshot means unavailable, never zero. Returns NOT_CONNECTED
-// (never a fabricated number) if the selected scope itself has no
-// snapshot for that period.
+// Historical cutover note: a pre-go-live open opportunity is backfilled with
+// its true opportunityDate (which may be well before app go-live) but no
+// closedAt -- it is picked up here purely by status="open", with no date
+// filter at all, exactly like every other open opportunity. Pipeline is a
+// current-state metric, so "when was this opened" never gates inclusion.
+//
+// partner_sourced_pipeline / partner_influenced_pipeline, for a "past"
+// period: the live current-state total cannot honestly be labeled as that
+// period's value, so this reads the latest weekly kpi_snapshots row
+// captured during that period instead. A territory with no snapshot in
+// range is *omitted* from by_territory entirely -- a missing snapshot means
+// unavailable, never zero. Returns NOT_CONNECTED (never a fabricated
+// number) if the selected scope itself has no snapshot for that period.
 async function computeCurrentStateFromSnapshot(
   metricKey: string,
   periodKey: string,
@@ -548,6 +605,119 @@ async function computeCurrentStateFromSnapshot(
   };
 }
 
+// closed_revenue (Phase 5A): a period-flow metric, computed directly from
+// partner_opportunities the same way computeRenewals reads prospects -- won
+// opportunities whose real closed_at falls inside the selected period. This
+// is a REPORTING figure only, always using the true deal_value/closed_at
+// even for a historically-backfilled deal, and is NOT the same figure as
+// target attainment: attainment instead uses credit_value/credit_date when
+// present (see targetService.ts's getAnnualCascade/computeAnnualCascade), so
+// a contract can report as closed revenue in the quarter it truly closed
+// while separately crediting a different (e.g. later) target period without
+// double-reporting or falsifying closed_at.
+async function computeClosedRevenue(periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
+  const periodInfo = resolvePeriodRange(periodKey);
+  const label = METRIC_BY_KEY.get("closed_revenue")!.label;
+  const allTerritories = await db.select().from(territoriesTable);
+  const allOpportunities = await db.select().from(partnerOpportunitiesTable);
+
+  const closedDateStr = (o: (typeof allOpportunities)[number]) =>
+    o.closedAt ? new Date(o.closedAt as unknown as string).toISOString().slice(0, 10) : null;
+  const inRange = (dateStr: string | null, end: string) => dateStr !== null && dateStr >= periodInfo.start && dateStr <= end;
+
+  const won = allOpportunities.filter((o) => o.status === "won");
+  const eligible = won.filter((o) => inRange(closedDateStr(o), effectiveAsOfDateStr(periodKey)));
+
+  const rateByCurrency = await buildUsdRateMap(eligible.map((o) => o.currency));
+  const valueOf = (o: (typeof eligible)[number]) => usdValueOf(o, rateByCurrency);
+
+  const byTerritory: TerritoryContribution[] = allTerritories.map((t) => ({
+    territory_id: t.id,
+    territory_name: t.name,
+    value: eligible.filter((o) => o.territoryId === t.id).reduce((sum, o) => sum + valueOf(o), 0),
+  }));
+
+  const scoped = target.territoryId ? eligible.filter((o) => o.territoryId === target.territoryId) : eligible;
+  const current = scoped.reduce((sum, o) => sum + valueOf(o), 0);
+
+  const mostRecentUpdated = scoped.reduce<Date | null>((latest, o) => {
+    const updated = new Date(o.updatedAt as unknown as string);
+    return !latest || updated > latest ? updated : latest;
+  }, null);
+
+  const records: KpiDetailRecord[] = scoped.slice(0, 100).map((o) => ({ label: o.name, value: valueOf(o), date: closedDateStr(o) }));
+
+  const lastWeekEndStr = minDateStr(periodInfo.end, endOfPreviousCalendarWeek(new Date()).toISOString().slice(0, 10));
+  const lastWeekEligible = won.filter((o) => inRange(closedDateStr(o), lastWeekEndStr));
+  const lastWeekRateByCurrency = await buildUsdRateMap(lastWeekEligible.map((o) => o.currency));
+  const lastWeekScoped = target.territoryId ? lastWeekEligible.filter((o) => o.territoryId === target.territoryId) : lastWeekEligible;
+  const lastWeek = lastWeekScoped.reduce((sum, o) => sum + usdValueOf(o, lastWeekRateByCurrency), 0);
+
+  return {
+    current,
+    target: null,
+    last_week: lastWeek,
+    trend: trendOf(current, lastWeek),
+    status: null,
+    data_status: "CONNECTED",
+    data_source: "Live: partner_opportunities table, won opportunities with closed_at inside the selected period (period-flow; deal_value normalized to USD)",
+    last_updated: (mostRecentUpdated ?? new Date()).toISOString(),
+    last_updated_is_synthetic: mostRecentUpdated === null,
+    what_changed: null,
+    explanation: `${label} closed in ${periodInfo.label} for ${target.territoryName}, based on closed_at.`,
+    by_territory: byTerritory,
+    records,
+  };
+}
+
+// opportunities_created (Phase 5A): period-flow count of opportunity_date
+// inside the selected period, mirroring computeRenewals's style exactly
+// (just counting partner_opportunities instead of prospects). Deliberately
+// not status-filtered -- a since-lost or since-won opportunity was still
+// *created* in the period it was originally opened.
+async function computeOpportunitiesCreated(periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
+  const periodInfo = resolvePeriodRange(periodKey);
+  const allTerritories = await db.select().from(territoriesTable);
+  const allOpportunities = await db.select().from(partnerOpportunitiesTable);
+
+  const inRange = (dateStr: string | null, end: string) => dateStr !== null && dateStr >= periodInfo.start && dateStr <= end;
+  const eligible = allOpportunities.filter((o) => inRange(o.opportunityDate, effectiveAsOfDateStr(periodKey)));
+
+  const byTerritory: TerritoryContribution[] = allTerritories.map((t) => ({
+    territory_id: t.id,
+    territory_name: t.name,
+    value: eligible.filter((o) => o.territoryId === t.id).length,
+  }));
+
+  const scoped = target.territoryId ? eligible.filter((o) => o.territoryId === target.territoryId) : eligible;
+  const mostRecentUpdated = scoped.reduce<Date | null>((latest, o) => {
+    const updated = new Date(o.updatedAt as unknown as string);
+    return !latest || updated > latest ? updated : latest;
+  }, null);
+
+  const records: KpiDetailRecord[] = scoped.slice(0, 100).map((o) => ({ label: o.name, value: 1, date: o.opportunityDate }));
+
+  const lastWeekEndStr = minDateStr(periodInfo.end, endOfPreviousCalendarWeek(new Date()).toISOString().slice(0, 10));
+  const lastWeekEligible = allOpportunities.filter((o) => inRange(o.opportunityDate, lastWeekEndStr));
+  const lastWeekScoped = target.territoryId ? lastWeekEligible.filter((o) => o.territoryId === target.territoryId) : lastWeekEligible;
+
+  return {
+    current: scoped.length,
+    target: null,
+    last_week: lastWeekScoped.length,
+    trend: trendOf(scoped.length, lastWeekScoped.length),
+    status: null,
+    data_status: "CONNECTED",
+    data_source: "Live: partner_opportunities table, opportunity_date inside the selected period through the effective as-of date (count)",
+    last_updated: (mostRecentUpdated ?? new Date()).toISOString(),
+    last_updated_is_synthetic: mostRecentUpdated === null,
+    what_changed: null,
+    explanation: `${scoped.length} opportunit${scoped.length === 1 ? "y" : "ies"} created in ${periodInfo.label} for ${target.territoryName}, based on opportunity_date.`,
+    by_territory: byTerritory,
+    records,
+  };
+}
+
 async function computePartnerRadar(metricKey: string, periodKey: string, target: ResolvedTerritory, targetOverride: number | null): Promise<KpiComputation> {
   switch (metricKey) {
     case "new_partner_prospects":
@@ -556,15 +726,18 @@ async function computePartnerRadar(metricKey: string, periodKey: string, target:
       return computeSignedPartners(periodKey, target);
     case "renewals":
       return computeRenewals(periodKey, target);
+    case "opportunities_created":
+      return computeOpportunitiesCreated(periodKey, target);
+    case "closed_revenue":
+      return computeClosedRevenue(periodKey, target);
     case "partner_sourced_pipeline":
-    case "partner_influenced_pipeline":
-    case "closed_revenue": {
+    case "partner_influenced_pipeline": {
       const state = periodState(periodKey);
       if (state === "active") return computeCurrentStateLive(metricKey, target);
       if (state === "past") return computeCurrentStateFromSnapshot(metricKey, periodKey, target);
       // future
       return notConnected(
-        "This reporting period has not started. Current-state commercial totals are not projected into a future period.",
+        "This reporting period has not started. Current-state pipeline totals are not projected into a future period.",
       );
     }
     default:

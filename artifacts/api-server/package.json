@@ -34,6 +34,10 @@
     "test:discovery-budget": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryBudget.test.ts",
     "test:territory-potential": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/territoryPotential.test.ts",
     "test:discovery-engine": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryEngine.test.ts",
+    "test:annual-cascade": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/annualCascade.test.ts",
+    "test:partner-opportunities": "tsx --test tests/partnerOpportunities.test.ts",
+    "test:opportunities-authz": "tsx --test tests/opportunitiesAuthz.test.ts",
+    "test:metric-mappings-upgrade": "tsx --test tests/metricMappingsUpgrade.test.ts",
     "seed": "tsx ./src/scripts/seed.ts",
     "audit:company-duplicates": "tsx ./src/scripts/auditCompanyDuplicates.ts"
   },

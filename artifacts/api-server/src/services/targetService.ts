@@ -4,10 +4,10 @@
 // kpiService.computeMetric (the exact function Overview/exports/AI brief
 // already use).
 import { db } from "@workspace/db";
-import { metricTargetsTable, territoriesTable, usersTable, type MetricTarget } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
-import { METRIC_BY_KEY, TARGETABLE_METRIC_KEYS, isTargetableMetric, splitPeriodKey } from "./kpiRegistry";
-import { computeMetric } from "./kpiService";
+import { metricTargetsTable, territoriesTable, usersTable, partnerOpportunitiesTable, type MetricTarget } from "@workspace/db";
+import { eq, and, isNull, inArray, sql } from "drizzle-orm";
+import { METRIC_BY_KEY, TARGETABLE_METRIC_KEYS, isTargetableMetric, splitPeriodKey, joinPeriodKey, resolvePeriodRange } from "./kpiRegistry";
+import { computeMetric, buildUsdRateMap, usdValueOf } from "./kpiService";
 
 export class TargetNotTargetableError extends Error {}
 export class TargetInvalidPeriodError extends Error {}
@@ -192,4 +192,256 @@ export async function getTeamTargets(periodKey: string, scope: TeamTargetsScope 
   }
 
   return rows;
+}
+
+// ---- Phase 5A: company-wide annual target + PAM allocation cascade --------
+//
+// "annual" is a genuine third target-period value, distinct from the q1-q4
+// quarterly rows above and never overloading "ytd" (which stays a pure
+// reporting-period concept in kpiRegistry.ts/kpiService.ts -- resolving an
+// *actual* value for the whole year to date, never a *target*). An annual
+// row always has pam_user_id = territory_id = null (company-wide, Head/
+// Admin-owned) -- enforced by the DB's metric_targets_global_annual_unique
+// partial index (see lib/db/src/schema/metric_targets.ts for why the plain
+// 5-column unique index can't reliably do this for null-owner rows), not
+// just by this function only ever constructing null-owner values.
+
+export interface UpsertAnnualTargetInput {
+  metricKey: string;
+  year: number;
+  targetValue: number;
+  note: string | null;
+  actingUserId: string;
+}
+
+// Single atomic upsert, same onConflictDoUpdate convention as upsertTarget
+// above -- targetWhere is required here because the conflict target is a
+// *partial* unique index (metric_key, year) WHERE ... , not a plain
+// multi-column one; Postgres needs the same predicate repeated in the
+// ON CONFLICT clause to know which index this write is targeting.
+export async function upsertAnnualTarget(input: UpsertAnnualTargetInput): Promise<MetricTarget> {
+  if (!isTargetableMetric(input.metricKey)) {
+    throw new TargetNotTargetableError(`"${input.metricKey}" is not a targetable metric.`);
+  }
+
+  const now = new Date();
+  const values = {
+    metricKey: input.metricKey,
+    year: input.year,
+    period: "annual",
+    territoryId: null,
+    pamUserId: null,
+    targetValue: String(input.targetValue),
+    note: input.note,
+    createdByUserId: input.actingUserId,
+    updatedByUserId: input.actingUserId,
+    updatedAt: now,
+  };
+
+  const [saved] = await db
+    .insert(metricTargetsTable)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [metricTargetsTable.metricKey, metricTargetsTable.year],
+      targetWhere: sql`${metricTargetsTable.pamUserId} is null and ${metricTargetsTable.territoryId} is null and ${metricTargetsTable.period} = 'annual'`,
+      set: { targetValue: values.targetValue, note: values.note, updatedByUserId: values.updatedByUserId, updatedAt: values.updatedAt },
+    })
+    .returning();
+
+  return saved!;
+}
+
+export async function getAnnualTarget(metricKey: string, year: number): Promise<MetricTarget | null> {
+  const [row] = await db
+    .select()
+    .from(metricTargetsTable)
+    .where(
+      and(
+        eq(metricTargetsTable.metricKey, metricKey),
+        eq(metricTargetsTable.year, year),
+        eq(metricTargetsTable.period, "annual"),
+        isNull(metricTargetsTable.pamUserId),
+        isNull(metricTargetsTable.territoryId),
+      ),
+    );
+  return row ?? null;
+}
+
+export interface PamAllocation {
+  pamUserId: string;
+  pamName: string;
+  territoryId: string;
+  territoryName: string;
+  q1: number | null;
+  q2: number | null;
+  q3: number | null;
+  q4: number | null;
+}
+
+export interface QuarterlyAllocationTotals {
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+}
+
+export interface AnnualCascade {
+  metric_key: string;
+  year: number;
+  annual_target: number | null;
+  allocated_to_pams: number;
+  // null only when there's no annual_target to measure against -- never a
+  // fabricated 0. Otherwise always >= 0: any excess over target is
+  // reported via overallocated_amount instead, never a negative number
+  // here.
+  unallocated_amount: number | null;
+  overallocated_amount: number;
+  quarterly_totals: QuarterlyAllocationTotals;
+  actual: number | null;
+  attainment_percent: number | null;
+  allocations: PamAllocation[];
+}
+
+// Pure, DB-free -- the actual cascade math, unit-testable without a live
+// DB. Deliberately never divides the annual target by four (see the
+// Phase 5A brief) -- allocated_to_pams is whatever the PAMs' own q1-q4 rows
+// sum to, independent of what the annual figure is; the gap/excess between
+// the two is exactly what unallocated_amount/overallocated_amount surface.
+// A PAM's unset quarter is treated as 0 for summation (never as "no data"
+// that would otherwise skew the total), matching the existing
+// computeTargetProgress convention of never treating an absence as a
+// fabricated non-zero value.
+export function computeAnnualCascade(
+  metricKey: string,
+  year: number,
+  annualTarget: number | null,
+  allocations: ReadonlyArray<PamAllocation>,
+  actual: number | null,
+): AnnualCascade {
+  const sumOfQuarter = (q: "q1" | "q2" | "q3" | "q4") => allocations.reduce((sum, a) => sum + (a[q] ?? 0), 0);
+  const quarterly_totals: QuarterlyAllocationTotals = {
+    q1: sumOfQuarter("q1"),
+    q2: sumOfQuarter("q2"),
+    q3: sumOfQuarter("q3"),
+    q4: sumOfQuarter("q4"),
+  };
+  const allocated_to_pams = quarterly_totals.q1 + quarterly_totals.q2 + quarterly_totals.q3 + quarterly_totals.q4;
+
+  const unallocated_amount = annualTarget !== null ? Math.max(0, annualTarget - allocated_to_pams) : null;
+  const overallocated_amount = Math.max(0, allocated_to_pams - (annualTarget ?? 0));
+  const attainment_percent =
+    annualTarget !== null && annualTarget > 0 && actual !== null ? Math.round((actual / annualTarget) * 100) : null;
+
+  return {
+    metric_key: metricKey,
+    year,
+    annual_target: annualTarget,
+    allocated_to_pams,
+    unallocated_amount,
+    overallocated_amount,
+    quarterly_totals,
+    actual,
+    attainment_percent,
+    allocations: [...allocations],
+  };
+}
+
+const TARGET_QUARTER_KEYS = ["q1", "q2", "q3", "q4"] as const;
+type TargetQuarterKey = (typeof TARGET_QUARTER_KEYS)[number];
+function isTargetQuarterKey(period: string): period is TargetQuarterKey {
+  return (TARGET_QUARTER_KEYS as readonly string[]).includes(period);
+}
+
+// The "actual" figure an annual target is measured against. For every
+// metric except closed_revenue this is just the existing YTD reporting
+// computation (computeMetric) -- never recomputed here, same "never a
+// second source of truth" convention as getTeamTargets above. closed_revenue
+// is the deliberate exception: per the historical-cutover model, target
+// attainment is a credit-aware figure -- credit_value/credit_date when
+// present on a won opportunity, otherwise its true deal_value/closed_at --
+// which can legitimately differ from the closed_revenue *reporting* KPI
+// (computeClosedRevenue in kpiService.ts, which always uses the true
+// deal_value/closed_at only, never credit_value/credit_date). A 2025
+// contract validly credited to the 2026 target contributes here without
+// ever appearing as 2026 closed revenue in the KPI report, and closed_at is
+// never touched to make that happen. credit_value, when set, is assumed to
+// be denominated in that same row's own `currency` column (there is no
+// separate credit currency field) before USD normalization.
+async function computeAnnualActual(metricKey: string, year: number): Promise<number | null> {
+  if (metricKey !== "closed_revenue") {
+    const computation = await computeMetric(metricKey, joinPeriodKey(year, "ytd"), { territoryId: null, territoryName: "Global" });
+    return computation.current;
+  }
+
+  const periodInfo = resolvePeriodRange(joinPeriodKey(year, "ytd"));
+  const won = await db.select().from(partnerOpportunitiesTable).where(eq(partnerOpportunitiesTable.status, "won"));
+
+  const creditedDateStr = (o: (typeof won)[number]): string | null => {
+    if (o.creditDate) return o.creditDate;
+    return o.closedAt ? new Date(o.closedAt as unknown as string).toISOString().slice(0, 10) : null;
+  };
+  const eligible = won.filter((o) => {
+    const dateStr = creditedDateStr(o);
+    return dateStr !== null && dateStr >= periodInfo.start && dateStr <= periodInfo.end;
+  });
+
+  const rateByCurrency = await buildUsdRateMap(eligible.map((o) => o.currency));
+  const creditedValueOf = (o: (typeof eligible)[number]) =>
+    o.creditValue !== null ? Number(o.creditValue) / (rateByCurrency.get(o.currency) ?? 1) : usdValueOf(o, rateByCurrency);
+
+  return eligible.reduce((sum, o) => sum + creditedValueOf(o), 0);
+}
+
+// DB-backed orchestrator: fetches the annual target row, every PAM's q1-q4
+// allocation rows for this metric+year, and the actual company-wide
+// year-to-date performance -- then hands everything to the pure function.
+// "Actual" is always measured through the whole-year-to-date window
+// (periodKey "<year>-ytd" semantics, Global scope), matching what an annual
+// target is naturally compared against; see computeAnnualActual above for
+// the closed_revenue credit-aware exception.
+export async function getAnnualCascade(metricKey: string, year: number): Promise<AnnualCascade> {
+  if (!isTargetableMetric(metricKey)) {
+    throw new TargetNotTargetableError(`"${metricKey}" is not a targetable metric.`);
+  }
+
+  const [annualRow, quarterRows, allTerritories, allUsers, actual] = await Promise.all([
+    getAnnualTarget(metricKey, year),
+    db
+      .select()
+      .from(metricTargetsTable)
+      .where(and(eq(metricTargetsTable.metricKey, metricKey), eq(metricTargetsTable.year, year), inArray(metricTargetsTable.period, TARGET_QUARTER_KEYS))),
+    db.select().from(territoriesTable),
+    db.select().from(usersTable),
+    computeAnnualActual(metricKey, year),
+  ]);
+
+  const territoryById = new Map(allTerritories.map((t) => [t.id, t]));
+  const userById = new Map(allUsers.map((u) => [u.id, u]));
+
+  const byPamTerritory = new Map<string, PamAllocation>();
+  for (const row of quarterRows) {
+    // Only real PAM+territory rows participate in the cascade -- a
+    // malformed/legacy row missing either is excluded rather than
+    // half-attributed.
+    if (!row.pamUserId || !row.territoryId || !isTargetQuarterKey(row.period)) continue;
+    const key = `${row.pamUserId}|${row.territoryId}`;
+    let entry = byPamTerritory.get(key);
+    if (!entry) {
+      entry = {
+        pamUserId: row.pamUserId,
+        pamName: userById.get(row.pamUserId)?.name ?? "Unknown",
+        territoryId: row.territoryId,
+        territoryName: territoryById.get(row.territoryId)?.name ?? "Unknown",
+        q1: null,
+        q2: null,
+        q3: null,
+        q4: null,
+      };
+      byPamTerritory.set(key, entry);
+    }
+    entry[row.period] = Number(row.targetValue);
+  }
+
+  const annualTarget = annualRow ? Number(annualRow.targetValue) : null;
+  return computeAnnualCascade(metricKey, year, annualTarget, [...byPamTerritory.values()], actual);
 }

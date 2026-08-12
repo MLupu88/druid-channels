@@ -26,3 +26,4 @@ export * from "./partner_relationship_history";
 export * from "./partner_activities";
 export * from "./portfolio_import_batches";
 export * from "./portfolio_import_rows";
+export * from "./partner_opportunities";

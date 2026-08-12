@@ -1,7 +1,8 @@
 import { db } from "@workspace/db";
-import { territoriesTable, prospectsTable, kpiSnapshotsTable } from "@workspace/db";
+import { territoriesTable, partnerOpportunitiesTable, kpiSnapshotsTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { CURRENT_STATE_FIELD_BY_KEY, isEligibleForCurrentState, mondayOf } from "./kpiService";
+import { PIPELINE_ATTRIBUTION_BY_KEY, mondayOf } from "./kpiService";
+import { resolveFx, type SupportedCurrency } from "./fx";
 import { METRIC_BY_KEY } from "./kpiRegistry";
 
 // Sunday (UTC, YYYY-MM-DD) of the calendar week starting at `mondayStr`.
@@ -69,29 +70,38 @@ async function upsertSnapshot(write: SnapshotWrite): Promise<void> {
   }
 }
 
-// Captures this week's current-state total for the 3 money metrics that
+// Captures this week's current-state total for the 2 pipeline metrics that
 // have no historical audit trail of their own (partner_sourced_pipeline,
-// partner_influenced_pipeline, closed_revenue) -- one row per real
-// territory plus one Global row (territory_id null). Values are canonical
-// USD; this writer never applies FX conversion, which only ever happens at
-// display time in kpiService.ts. Eligibility and the metric->field mapping
-// are imported from kpiService.ts, not reimplemented, so this can never
-// drift from what the KPI overview/detail endpoints compute live.
+// partner_influenced_pipeline) -- one row per real territory plus one
+// Global row (territory_id null). Phase 5A: closed_revenue is deliberately
+// NOT captured here any more -- it became a period-flow metric computed
+// directly from partner_opportunities.closed_at (see kpiService.ts's
+// computeClosedRevenue), which can recompute any past period on demand and
+// so needs no weekly snapshot. Values are canonical USD, converted here via
+// services/fx.ts (an all-USD row set never touches a live provider); the
+// attribution mapping is imported from kpiService.ts, not reimplemented, so
+// this can never drift from what the KPI overview/detail endpoints compute
+// live.
 export async function runWeeklySnapshotWriter(): Promise<void> {
   const periodStart = mondayOf(new Date());
   const periodEnd = sundayOf(periodStart);
 
   const territories = await db.select().from(territoriesTable);
-  const allProspects = await db.select().from(prospectsTable);
-  const eligible = allProspects.filter(isEligibleForCurrentState);
+  const allOpportunities = await db.select().from(partnerOpportunitiesTable);
+  const open = allOpportunities.filter((o) => o.status === "open");
 
-  for (const metricKey of Object.keys(CURRENT_STATE_FIELD_BY_KEY)) {
-    const field = CURRENT_STATE_FIELD_BY_KEY[metricKey];
+  const distinctCurrencies = [...new Set(open.map((o) => o.currency))];
+  const rateByCurrency = new Map<string, number>();
+  for (const currency of distinctCurrencies) {
+    const fx = await resolveFx(currency as SupportedCurrency);
+    rateByCurrency.set(currency, fx.usd_to_currency_rate);
+  }
+  const valueOf = (o: (typeof open)[number]) => Number(o.dealValue) / (rateByCurrency.get(o.currency) ?? 1);
+
+  for (const metricKey of Object.keys(PIPELINE_ATTRIBUTION_BY_KEY)) {
+    const attributionType = PIPELINE_ATTRIBUTION_BY_KEY[metricKey];
     const label = METRIC_BY_KEY.get(metricKey)!.label;
-    const valueOf = (p: (typeof eligible)[number]) => {
-      const raw = p[field];
-      return raw !== null ? Number(raw) : 0;
-    };
+    const eligible = open.filter((o) => o.attributionType === attributionType);
 
     // No locked-semantics target exists for these metrics -- store null,
     // never a fabricated placeholder (the column is nullable for exactly
@@ -103,18 +113,18 @@ export async function runWeeklySnapshotWriter(): Promise<void> {
       territoryId: null,
       periodStart,
       periodEnd,
-      currentValue: eligible.reduce((sum, p) => sum + valueOf(p), 0),
+      currentValue: eligible.reduce((sum, o) => sum + valueOf(o), 0),
       targetValue,
     });
 
     for (const t of territories) {
-      const scoped = eligible.filter((p) => p.territoryId === t.id);
+      const scoped = eligible.filter((o) => o.territoryId === t.id);
       await upsertSnapshot({
         metricName: label,
         territoryId: t.id,
         periodStart,
         periodEnd,
-        currentValue: scoped.reduce((sum, p) => sum + valueOf(p), 0),
+        currentValue: scoped.reduce((sum, o) => sum + valueOf(o), 0),
         targetValue,
       });
     }

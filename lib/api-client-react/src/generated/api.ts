@@ -22,6 +22,9 @@ import type {
 import type {
   AddPartnerActivityInput,
   AiChannelBrief,
+  AnnualCascade,
+  AnnualTarget,
+  AnnualTargetInput,
   AuthLoginResponse,
   AuthLogoutResponse,
   Campaign,
@@ -42,6 +45,8 @@ import type {
   DeleteResult,
   ExportQuarterlyPptxParams,
   GetAiChannelBriefParams,
+  GetAnnualCascadeParams,
+  GetAnnualTargetParams,
   GetHeadOfChannelsKpisParams,
   GetKpiDetailsParams,
   GetPortfolioSummaryParams,
@@ -54,6 +59,7 @@ import type {
   ListChannelRadarSignalsParams,
   ListManualMetricValuesParams,
   ListMetricTargetsParams,
+  ListOpportunitiesParams,
   ListPartnersParams,
   ListPortfolioImportsParams,
   ListPortfolioParams,
@@ -70,6 +76,9 @@ import type {
   MetricMappingPreviewInput,
   MetricTarget,
   MetricTargetInput,
+  Opportunity,
+  OpportunityEditInput,
+  OpportunityInput,
   PamCopilotChatBody,
   PamCopilotChatResponse,
   Partner,
@@ -4990,6 +4999,549 @@ export const useDeleteMetricTarget = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getDeleteMetricTargetMutationOptions(options));
+    }
+
+export const getGetAnnualTargetUrl = (params: GetAnnualTargetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/metric-targets/annual?${stringifiedParams}` : `/api/metric-targets/annual`
+}
+
+/**
+ * @summary Phase 5A -- get the company-wide annual target (Irina/Head-level) for a metric/year, or null if unset. "annual" is a genuine third target-period value distinct from q1-q4; it is never the same concept as the "ytd" reporting period.
+ */
+export const getAnnualTarget = async (params: GetAnnualTargetParams, options?: Parameters<typeof customFetch>[1]): Promise<AnnualTarget | null> => {
+
+  return customFetch<AnnualTarget | null>(getGetAnnualTargetUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAnnualTargetQueryKey = (params?: GetAnnualTargetParams,) => {
+    return [
+    `/api/metric-targets/annual`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAnnualTargetQueryOptions = <TData = Awaited<ReturnType<typeof getAnnualTarget>>, TError = ErrorType<unknown>>(params: GetAnnualTargetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAnnualTarget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAnnualTargetQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAnnualTarget>>> = ({ signal }) => getAnnualTarget(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAnnualTarget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAnnualTargetQueryResult = NonNullable<Awaited<ReturnType<typeof getAnnualTarget>>>
+export type GetAnnualTargetQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Phase 5A -- get the company-wide annual target (Irina/Head-level) for a metric/year, or null if unset. "annual" is a genuine third target-period value distinct from q1-q4; it is never the same concept as the "ytd" reporting period.
+ */
+
+export function useGetAnnualTarget<TData = Awaited<ReturnType<typeof getAnnualTarget>>, TError = ErrorType<unknown>>(
+ params: GetAnnualTargetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAnnualTarget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAnnualTargetQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpsertAnnualTargetUrl = () => {
+
+
+
+
+  return `/api/metric-targets/annual`
+}
+
+/**
+ * @summary Create or update the company-wide annual target for a metric/year. Head of Channels/admin only. Deliberately does not divide the annual figure across quarters or PAMs -- PAM quarterly allocations remain separate rows written via PUT /metric-targets.
+ */
+export const upsertAnnualTarget = async (annualTargetInput: AnnualTargetInput, options?: Parameters<typeof customFetch>[1]): Promise<AnnualTarget> => {
+
+  return customFetch<AnnualTarget>(getUpsertAnnualTargetUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(annualTargetInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertAnnualTargetMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertAnnualTarget>>, TError,{data: BodyType<AnnualTargetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertAnnualTarget>>, TError,{data: BodyType<AnnualTargetInput>}, TContext> => {
+
+const mutationKey = ['upsertAnnualTarget'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertAnnualTarget>>, {data: BodyType<AnnualTargetInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertAnnualTarget(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertAnnualTargetMutationResult = NonNullable<Awaited<ReturnType<typeof upsertAnnualTarget>>>
+    export type UpsertAnnualTargetMutationBody = BodyType<AnnualTargetInput>
+    export type UpsertAnnualTargetMutationError = ErrorType<void>
+
+    /**
+ * @summary Create or update the company-wide annual target for a metric/year. Head of Channels/admin only. Deliberately does not divide the annual figure across quarters or PAMs -- PAM quarterly allocations remain separate rows written via PUT /metric-targets.
+ */
+export const useUpsertAnnualTarget = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertAnnualTarget>>, TError,{data: BodyType<AnnualTargetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertAnnualTarget>>,
+        TError,
+        {data: BodyType<AnnualTargetInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertAnnualTargetMutationOptions(options));
+    }
+
+export const getGetAnnualCascadeUrl = (params: GetAnnualCascadeParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/metric-targets/annual-cascade?${stringifiedParams}` : `/api/metric-targets/annual-cascade`
+}
+
+/**
+ * @summary Phase 5A -- the full annual target cascade for a metric/year -- Head of Channels/admin only (exposes every PAM's individual quarterly allocations, not just the caller's own). Rolls up annual_target, allocated_to_pams (never annual_target / 4 -- the two are independently derived and compared), unallocated_amount, overallocated_amount, quarterly allocation totals, actual company-wide performance, and attainment percent.
+ */
+export const getAnnualCascade = async (params: GetAnnualCascadeParams, options?: Parameters<typeof customFetch>[1]): Promise<AnnualCascade> => {
+
+  return customFetch<AnnualCascade>(getGetAnnualCascadeUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAnnualCascadeQueryKey = (params?: GetAnnualCascadeParams,) => {
+    return [
+    `/api/metric-targets/annual-cascade`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAnnualCascadeQueryOptions = <TData = Awaited<ReturnType<typeof getAnnualCascade>>, TError = ErrorType<void>>(params: GetAnnualCascadeParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAnnualCascade>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAnnualCascadeQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAnnualCascade>>> = ({ signal }) => getAnnualCascade(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAnnualCascade>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAnnualCascadeQueryResult = NonNullable<Awaited<ReturnType<typeof getAnnualCascade>>>
+export type GetAnnualCascadeQueryError = ErrorType<void>
+
+
+/**
+ * @summary Phase 5A -- the full annual target cascade for a metric/year -- Head of Channels/admin only (exposes every PAM's individual quarterly allocations, not just the caller's own). Rolls up annual_target, allocated_to_pams (never annual_target / 4 -- the two are independently derived and compared), unallocated_amount, overallocated_amount, quarterly allocation totals, actual company-wide performance, and attainment percent.
+ */
+
+export function useGetAnnualCascade<TData = Awaited<ReturnType<typeof getAnnualCascade>>, TError = ErrorType<void>>(
+ params: GetAnnualCascadeParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAnnualCascade>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAnnualCascadeQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListOpportunitiesUrl = (params?: ListOpportunitiesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/opportunities?${stringifiedParams}` : `/api/opportunities`
+}
+
+/**
+ * @summary List partner opportunities (the commercial deal ledger). A PAM sees only opportunities in their own canonical territory and assigned to themselves; Head of Channels/admin see all.
+ */
+export const listOpportunities = async (params?: ListOpportunitiesParams, options?: Parameters<typeof customFetch>[1]): Promise<Opportunity[]> => {
+
+  return customFetch<Opportunity[]>(getListOpportunitiesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOpportunitiesQueryKey = (params?: ListOpportunitiesParams,) => {
+    return [
+    `/api/opportunities`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListOpportunitiesQueryOptions = <TData = Awaited<ReturnType<typeof listOpportunities>>, TError = ErrorType<unknown>>(params?: ListOpportunitiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpportunities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOpportunitiesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOpportunities>>> = ({ signal }) => listOpportunities(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOpportunities>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListOpportunitiesQueryResult = NonNullable<Awaited<ReturnType<typeof listOpportunities>>>
+export type ListOpportunitiesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List partner opportunities (the commercial deal ledger). A PAM sees only opportunities in their own canonical territory and assigned to themselves; Head of Channels/admin see all.
+ */
+
+export function useListOpportunities<TData = Awaited<ReturnType<typeof listOpportunities>>, TError = ErrorType<unknown>>(
+ params?: ListOpportunitiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpportunities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListOpportunitiesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateOpportunityUrl = () => {
+
+
+
+
+  return `/api/opportunities`
+}
+
+/**
+ * @summary Create a new partner opportunity. A PAM may only create in their own canonical territory, assigned to themselves; Head/Admin may create for any valid PAM/territory. status=won requires closed_at.
+ */
+export const createOpportunity = async (opportunityInput: OpportunityInput, options?: Parameters<typeof customFetch>[1]): Promise<Opportunity> => {
+
+  return customFetch<Opportunity>(getCreateOpportunityUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(opportunityInput)
+  }
+);}
+
+
+
+
+
+export const getCreateOpportunityMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOpportunity>>, TError,{data: BodyType<OpportunityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createOpportunity>>, TError,{data: BodyType<OpportunityInput>}, TContext> => {
+
+const mutationKey = ['createOpportunity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createOpportunity>>, {data: BodyType<OpportunityInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createOpportunity(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateOpportunityMutationResult = NonNullable<Awaited<ReturnType<typeof createOpportunity>>>
+    export type CreateOpportunityMutationBody = BodyType<OpportunityInput>
+    export type CreateOpportunityMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a new partner opportunity. A PAM may only create in their own canonical territory, assigned to themselves; Head/Admin may create for any valid PAM/territory. status=won requires closed_at.
+ */
+export const useCreateOpportunity = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOpportunity>>, TError,{data: BodyType<OpportunityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createOpportunity>>,
+        TError,
+        {data: BodyType<OpportunityInput>},
+        TContext
+      > => {
+      return useMutation(getCreateOpportunityMutationOptions(options));
+    }
+
+export const getGetOpportunityUrl = (id: string,) => {
+
+
+
+
+  return `/api/opportunities/${id}`
+}
+
+/**
+ * @summary Get a single opportunity. A PAM may only read their own (own territory + own assignment); Head/Admin may read any.
+ */
+export const getOpportunity = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<Opportunity> => {
+
+  return customFetch<Opportunity>(getGetOpportunityUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOpportunityQueryKey = (id: string,) => {
+    return [
+    `/api/opportunities/${id}`
+    ] as const;
+    }
+
+
+export const getGetOpportunityQueryOptions = <TData = Awaited<ReturnType<typeof getOpportunity>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpportunity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOpportunityQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOpportunity>>> = ({ signal }) => getOpportunity(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOpportunity>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOpportunityQueryResult = NonNullable<Awaited<ReturnType<typeof getOpportunity>>>
+export type GetOpportunityQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a single opportunity. A PAM may only read their own (own territory + own assignment); Head/Admin may read any.
+ */
+
+export function useGetOpportunity<TData = Awaited<ReturnType<typeof getOpportunity>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpportunity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOpportunityQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateOpportunityUrl = (id: string,) => {
+
+
+
+
+  return `/api/opportunities/${id}`
+}
+
+/**
+ * @summary Edit an opportunity. A PAM may only update their own (own territory + own assignment), may never reassign it to another PAM, and may never widen its territory scope. Head/Admin may update any field for any opportunity. status=won requires closed_at (existing or provided in the same request).
+ */
+export const updateOpportunity = async (id: string,
+    opportunityEditInput: OpportunityEditInput, options?: Parameters<typeof customFetch>[1]): Promise<Opportunity> => {
+
+  return customFetch<Opportunity>(getUpdateOpportunityUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(opportunityEditInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateOpportunityMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOpportunity>>, TError,{id: string;data: BodyType<OpportunityEditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOpportunity>>, TError,{id: string;data: BodyType<OpportunityEditInput>}, TContext> => {
+
+const mutationKey = ['updateOpportunity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOpportunity>>, {id: string;data: BodyType<OpportunityEditInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateOpportunity(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOpportunityMutationResult = NonNullable<Awaited<ReturnType<typeof updateOpportunity>>>
+    export type UpdateOpportunityMutationBody = BodyType<OpportunityEditInput>
+    export type UpdateOpportunityMutationError = ErrorType<void>
+
+    /**
+ * @summary Edit an opportunity. A PAM may only update their own (own territory + own assignment), may never reassign it to another PAM, and may never widen its territory scope. Head/Admin may update any field for any opportunity. status=won requires closed_at (existing or provided in the same request).
+ */
+export const useUpdateOpportunity = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOpportunity>>, TError,{id: string;data: BodyType<OpportunityEditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOpportunity>>,
+        TError,
+        {id: string;data: BodyType<OpportunityEditInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateOpportunityMutationOptions(options));
     }
 
 export const getExportQuarterlyPptxUrl = (params?: ExportQuarterlyPptxParams,) => {

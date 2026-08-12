@@ -23,7 +23,9 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
   { key: "partner_influenced_pipeline", label: "Partner-Influenced Pipeline", views: ["partner_development"], defaultSourceType: "PARTNER_RADAR" },
   { key: "closed_revenue", label: "Closed Revenue", views: ["partner_development", "weekly_commercial"], defaultSourceType: "PARTNER_RADAR" },
   { key: "renewals", label: "Renewals", views: ["partner_development"], defaultSourceType: "PARTNER_RADAR" },
-  { key: "opportunities_created", label: "Opportunities Created", views: ["weekly_commercial"], defaultSourceType: "DEMO" },
+  // Phase 5A: now backed by partner_opportunities.opportunity_date -- was a
+  // DEMO stub before this table existed.
+  { key: "opportunities_created", label: "Opportunities Created", views: ["weekly_commercial"], defaultSourceType: "PARTNER_RADAR" },
   { key: "renewals_due", label: "Renewals Due", views: ["weekly_commercial"], defaultSourceType: "DEMO" },
   { key: "renewals_closed", label: "Renewals Closed", views: ["weekly_commercial"], defaultSourceType: "DEMO" },
   { key: "joint_campaigns", label: "Joint Campaigns", views: ["weekly_marketing"], defaultSourceType: "ACTIVITIES" },
@@ -44,7 +46,20 @@ export const METRIC_BY_KEY = new Map(METRIC_REGISTRY.map((m) => [m.key, m]));
 // declared, and the frontend (Team Targets, My Targets) only ever renders
 // whatever rows the API returns -- it carries no metric list of its own,
 // so the two can never drift.
-export const TARGETABLE_METRIC_KEYS = ["new_partner_prospects", "signed_partners"] as const;
+//
+// Phase 5A: the 3 commercial metrics join this list now that they're
+// backed by a real ledger (partner_opportunities) instead of unpopulated
+// prospect fields -- the same generic targeting framework (metric_targets,
+// this list, getTeamTargets/upsertTarget) applies to them with no new
+// framework. Adding a future commercial KPI here is the only step required
+// to make it targetable too.
+export const TARGETABLE_METRIC_KEYS = [
+  "new_partner_prospects",
+  "signed_partners",
+  "partner_sourced_pipeline",
+  "partner_influenced_pipeline",
+  "closed_revenue",
+] as const;
 export type TargetableMetricKey = (typeof TARGETABLE_METRIC_KEYS)[number];
 
 export function isTargetableMetric(metricKey: string): metricKey is TargetableMetricKey {

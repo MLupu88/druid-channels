@@ -1847,6 +1847,83 @@ export interface TeamTargetRow {
   status: TeamTargetStatus;
 }
 
+export interface AnnualTarget {
+  id: string;
+  metric_key: string;
+  year: number;
+  target_value: number;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  created_by_name: string | null;
+  /** @nullable */
+  updated_by_name: string | null;
+  updated_at: string;
+}
+
+export interface AnnualTargetInput {
+  /** Must be one of the curated targetable metrics (see TARGETABLE_METRIC_KEYS) -- 404 otherwise. */
+  metric_key: string;
+  year: number;
+  /**
+     * The company-wide annual figure. Never automatically divided by four -- PAM quarterly allocations are separate rows, compared against this via GET /metric-targets/annual-cascade.
+     * @minimum 0
+     */
+  target_value: number;
+  /** @nullable */
+  note?: string | null;
+}
+
+export interface PamAllocation {
+  pam_user_id: string;
+  pam_name: string;
+  territory_id: string;
+  territory_name: string;
+  /** @nullable */
+  q1: number | null;
+  /** @nullable */
+  q2: number | null;
+  /** @nullable */
+  q3: number | null;
+  /** @nullable */
+  q4: number | null;
+}
+
+export interface QuarterlyAllocationTotals {
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+}
+
+export interface AnnualCascade {
+  metric_key: string;
+  year: number;
+  /** @nullable */
+  annual_target: number | null;
+  /** Sum of every PAM's own q1-q4 allocation rows -- never derived by dividing annual_target by four. */
+  allocated_to_pams: number;
+  /**
+     * max(0, annual_target - allocated_to_pams). Null only when there is no annual_target to measure against.
+     * @nullable
+     */
+  unallocated_amount: number | null;
+  /** max(0, allocated_to_pams - annual_target). Zero whenever allocations do not exceed the annual target. */
+  overallocated_amount: number;
+  quarterly_totals: QuarterlyAllocationTotals;
+  /**
+     * Company-wide actual performance for the year to date. For closed_revenue this is the credit-aware figure (credit_value/credit_date when present on a won opportunity, otherwise deal_value/closed_at) -- it can differ from the closed_revenue reporting KPI.
+     * @nullable
+     */
+  actual: number | null;
+  /**
+     * round(actual / annual_target * 100). Null when there is no annual_target to measure against.
+     * @nullable
+     */
+  attainment_percent: number | null;
+  allocations: PamAllocation[];
+}
+
 /**
  * Current cached-brief state. ready/stale are derived by comparing the cached generation-input hash with the current eligible-data hash; never_generated means no cached brief exists despite eligible data; insufficient_data means no cached brief exists and there is currently no eligible data.
  */
@@ -2048,6 +2125,190 @@ export interface CampaignEditInput {
   partner_referrals?: number;
   /** @nullable */
   notes?: string | null;
+}
+
+export type OpportunityAttributionType = typeof OpportunityAttributionType[keyof typeof OpportunityAttributionType];
+
+
+export const OpportunityAttributionType = {
+  partner_sourced: 'partner_sourced',
+  partner_influenced: 'partner_influenced',
+} as const;
+
+export type OpportunityStatus = typeof OpportunityStatus[keyof typeof OpportunityStatus];
+
+
+export const OpportunityStatus = {
+  open: 'open',
+  won: 'won',
+  lost: 'lost',
+} as const;
+
+/**
+ * Source-neutral identity, added ahead of the actual HubSpot integration (not yet implemented -- no HubSpot API calls exist anywhere in this app). "manual" is a PAM-entered row (the default); "import" is reserved for a future bulk backfill; "hubspot" is reserved for a future live sync.
+ */
+export type OpportunitySourceSystem = typeof OpportunitySourceSystem[keyof typeof OpportunitySourceSystem];
+
+
+export const OpportunitySourceSystem = {
+  manual: 'manual',
+  import: 'import',
+  hubspot: 'hubspot',
+} as const;
+
+export type OpportunityCurrency = typeof OpportunityCurrency[keyof typeof OpportunityCurrency];
+
+
+export const OpportunityCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
+export interface Opportunity {
+  id: string;
+  name: string;
+  company_id: string;
+  company_name: string;
+  territory_id: string;
+  territory_name: string;
+  assigned_user_id: string;
+  assigned_user_name: string;
+  attribution_type: OpportunityAttributionType;
+  status: OpportunityStatus;
+  deal_value: number;
+  currency: OpportunityCurrency;
+  /** The real business date the opportunity was opened -- never the same as created_at. May be well before app go-live for a backfilled historical record. */
+  opportunity_date: string;
+  /** @nullable */
+  expected_close_date: string | null;
+  /**
+     * The true business/CRM close date. Required whenever status=won. Never falsified to make a historical deal appear to close inside a later target period -- see credit_date for that.
+     * @nullable
+     */
+  closed_at: string | null;
+  /**
+     * Target-attainment override. When set, this amount (denominated in this row's own currency) is credited to the target period identified by credit_date instead of deal_value. Independent of the closed_revenue reporting figure, which always uses deal_value/closed_at only.
+     * @nullable
+     */
+  credit_value: number | null;
+  /**
+     * Target-attainment override date. When set, this opportunity's credited value lands in the target period containing credit_date instead of closed_at. closed_at is never edited to achieve this.
+     * @nullable
+     */
+  credit_date: string | null;
+  /** @nullable */
+  customer_name: string | null;
+  /** @nullable */
+  note: string | null;
+  source_system: OpportunitySourceSystem;
+  /**
+     * Foreign record id once an import or future HubSpot sync populates this row. Null for every manually-created row.
+     * @nullable
+     */
+  external_id: string | null;
+  /** @nullable */
+  source_updated_at: string | null;
+  /** @nullable */
+  last_synced_at: string | null;
+  /** @nullable */
+  created_by_user_id: string | null;
+  /** @nullable */
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type OpportunityInputCurrency = typeof OpportunityInputCurrency[keyof typeof OpportunityInputCurrency];
+
+
+export const OpportunityInputCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
+export interface OpportunityInput {
+  /** @minLength 1 */
+  name: string;
+  company_id: string;
+  territory_id: string;
+  assigned_user_id: string;
+  attribution_type: OpportunityAttributionType;
+  /** Defaults to "open". status=won requires closed_at to be set in the same request. */
+  status?: OpportunityStatus;
+  /** @exclusiveMinimum 0 */
+  deal_value: number;
+  currency?: OpportunityInputCurrency;
+  /** The real business date the opportunity was opened. Must be set honestly even for a backfilled historical record -- never defaulted to today. */
+  opportunity_date: string;
+  /** @nullable */
+  expected_close_date?: string | null;
+  /**
+     * Required when status=won.
+     * @nullable
+     */
+  closed_at?: string | null;
+  /**
+     * Must be positive when present.
+     * @nullable
+     */
+  credit_value?: number | null;
+  /** @nullable */
+  credit_date?: string | null;
+  /** @nullable */
+  customer_name?: string | null;
+  /** @nullable */
+  note?: string | null;
+  /** Defaults to "manual". */
+  source_system?: OpportunitySourceSystem;
+  /** @nullable */
+  external_id?: string | null;
+  /** @nullable */
+  source_updated_at?: string | null;
+}
+
+export type OpportunityEditInputCurrency = typeof OpportunityEditInputCurrency[keyof typeof OpportunityEditInputCurrency];
+
+
+export const OpportunityEditInputCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
+export interface OpportunityEditInput {
+  /** @minLength 1 */
+  name?: string;
+  company_id?: string;
+  /** A PAM may never change this away from their own canonical territory (cannot widen scope). */
+  territory_id?: string;
+  /** A PAM may never change this to a different PAM (no reassignment). */
+  assigned_user_id?: string;
+  attribution_type?: OpportunityAttributionType;
+  /** status=won requires closed_at (existing or provided in the same request). */
+  status?: OpportunityStatus;
+  /** @exclusiveMinimum 0 */
+  deal_value?: number;
+  currency?: OpportunityEditInputCurrency;
+  opportunity_date?: string;
+  /** @nullable */
+  expected_close_date?: string | null;
+  /** @nullable */
+  closed_at?: string | null;
+  /** @nullable */
+  credit_value?: number | null;
+  /** @nullable */
+  credit_date?: string | null;
+  /** @nullable */
+  customer_name?: string | null;
+  /** @nullable */
+  note?: string | null;
+  source_system?: OpportunitySourceSystem;
+  /** @nullable */
+  external_id?: string | null;
+  /** @nullable */
+  source_updated_at?: string | null;
 }
 
 export type PartnerResearchItemCategory = typeof PartnerResearchItemCategory[keyof typeof PartnerResearchItemCategory];
@@ -2480,6 +2741,49 @@ export type ListMetricTargetsParams = {
  */
 metric_key?: string | null;
 };
+
+export type GetAnnualTargetParams = {
+metric_key: string;
+year: number;
+};
+
+export type GetAnnualCascadeParams = {
+metric_key: string;
+year: number;
+};
+
+export type ListOpportunitiesParams = {
+/**
+ * @nullable
+ */
+status?: ListOpportunitiesStatus;
+/**
+ * @nullable
+ */
+attribution_type?: ListOpportunitiesAttributionType;
+/**
+ * Head/Admin only (id or name) -- ignored for a PAM caller, who is always forced to their own territory.
+ * @nullable
+ */
+territory?: string | null;
+};
+
+export type ListOpportunitiesStatus = typeof ListOpportunitiesStatus[keyof typeof ListOpportunitiesStatus] | null;
+
+
+export const ListOpportunitiesStatus = {
+  open: 'open',
+  won: 'won',
+  lost: 'lost',
+} as const;
+
+export type ListOpportunitiesAttributionType = typeof ListOpportunitiesAttributionType[keyof typeof ListOpportunitiesAttributionType] | null;
+
+
+export const ListOpportunitiesAttributionType = {
+  partner_sourced: 'partner_sourced',
+  partner_influenced: 'partner_influenced',
+} as const;
 
 export type ExportQuarterlyPptxParams = {
 /**
