@@ -32,6 +32,21 @@ export function formatMetricValue(value: number | null | undefined, metricKey: s
   return isMoneyMetric(metricKey) ? formatMoney(value, currency) : formatCount(value);
 }
 
+// Phase 5B-1 currency-semantics fix: GET /metric-targets/annual-cascade and
+// GET /team-targets return figures (annual_target, allocated_to_pams,
+// unallocated/overallocated amounts, quarterly allocations, a PAM's own
+// quarter target) that are USD by the same established convention
+// buildHeadOfChannelsData/getKpiDetails already use for a money metric's
+// target_value (see the API server's kpiService.ts) -- but with NO currency
+// query param and NO FX conversion applied, unlike weekly_commercial's
+// current/target. Always format these specific figures with this helper
+// (never formatMoney(value, currency) using the page's selected display
+// currency, and never a bare unlabeled number) -- see
+// components/commercial-performance.tsx for where this applies.
+export function formatUsd(value: number | null | undefined): string {
+  return formatMoney(value, 'USD');
+}
+
 export function formatTrendLabel(trend: string | null | undefined): string {
   if (!trend) return '--';
   return trend.charAt(0).toUpperCase() + trend.slice(1);

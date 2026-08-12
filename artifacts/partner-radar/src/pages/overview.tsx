@@ -58,9 +58,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { type Currency, formatMetricValue, formatTrendLabel, formatStatusLabel } from '@/lib/kpi-format';
 import { findExistingTarget } from '@/lib/metric-target-selection';
-import { getDefaultPeriodKey } from '@/lib/period';
+import { getDefaultPeriodKey, splitPeriodKey, getCurrentYear } from '@/lib/period';
 import { PeriodSelector } from '@/components/period-selector';
 import { PamActionQueue } from '@/components/pam-action-queue';
+import { CommercialPerformanceHead, CommercialPerformancePam } from '@/components/commercial-performance';
 import type { KpiPeriod } from '@workspace/api-client-react';
 
 function StatusBadge({ status }: { status: string | null }) {
@@ -640,6 +641,18 @@ export default function Overview() {
         {/* Phase 4: PAM-only action queue, prominent at the top of the PAM's
             own Overview -- the Head of Channels Overview is unchanged. */}
         {!isGlobalUser && <PamActionQueue />}
+
+        {/* Phase 5B-1: Irina annual target -> quarterly PAM allocations ->
+            partner opportunities -> pipeline/closed revenue/attainment.
+            Head/Admin get the full cascade + allocation management; a PAM
+            gets a compact read-only block scoped to their own quarter (see
+            components/commercial-performance.tsx for why each role reads
+            from a different, already-role-scoped backend endpoint). */}
+        {isGlobalUser ? (
+          <CommercialPerformanceHead weeklyCommercial={kpis?.weekly_commercial} year={splitPeriodKey(period)?.year ?? getCurrentYear()} currency={currency} />
+        ) : (
+          <CommercialPerformancePam weeklyCommercial={kpis?.weekly_commercial} currency={currency} />
+        )}
 
         {canViewTeamData && <PamLocalTimeSection users={teamUsers} />}
 
