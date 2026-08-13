@@ -82,6 +82,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { sortConnectionsByDisplayOrder, getConnectionTone, isErrorTone } from '@/lib/connection-display';
+import { parseMultiValueInput, formatMultiValueInput, parseLineDelimitedInput, formatLineDelimitedInput } from '@/lib/multi-value-input';
 import {
   Pencil, Save, Database, Sparkles, Unplug, CheckCircle2, Search, Bot, Loader2, XCircle, Eye,
   Plus, MoreHorizontal, KeyRound, UserX, UserCheck, Copy,
@@ -661,6 +662,14 @@ function WhatToLookForTab() {
   const [pendingTerritoryId, setPendingTerritoryId] = useState<string | null>(null);
   const [localConfig, setLocalConfig] = useState<any>(null);
   const [localCountries, setLocalCountries] = useState<string>('');
+  // Raw text for each comma/line-delimited field -- kept separate from
+  // localConfig so typing never round-trips through split/trim/filter
+  // until save (see src/lib/multi-value-input.ts).
+  const [localPartnerTypes, setLocalPartnerTypes] = useState<string>('');
+  const [localIndustries, setLocalIndustries] = useState<string>('');
+  const [localTechnologies, setLocalTechnologies] = useState<string>('');
+  const [localExcludedDomains, setLocalExcludedDomains] = useState<string>('');
+  const [localSearchQueries, setLocalSearchQueries] = useState<string>('');
 
   const { data: detail, isLoading: isDetailLoading } = useGetScanConfig(
     selectedId || '',
@@ -715,6 +724,11 @@ function WhatToLookForTab() {
   useEffect(() => {
     if (detail) {
       setLocalConfig(JSON.parse(JSON.stringify(detail)));
+      setLocalPartnerTypes(formatMultiValueInput(detail.partner_types));
+      setLocalIndustries(formatMultiValueInput(detail.industries));
+      setLocalTechnologies(formatMultiValueInput(detail.technologies));
+      setLocalExcludedDomains(formatMultiValueInput(detail.excluded_domains));
+      setLocalSearchQueries(formatLineDelimitedInput(detail.search_queries));
     }
   }, [detail]);
 
@@ -733,12 +747,12 @@ function WhatToLookForTab() {
       await updateMutation.mutateAsync({
         id: selectedId,
         data: {
-          partner_types: localConfig.partner_types,
-          industries: localConfig.industries,
-          technologies: localConfig.technologies,
-          excluded_domains: localConfig.excluded_domains,
+          partner_types: parseMultiValueInput(localPartnerTypes),
+          industries: parseMultiValueInput(localIndustries),
+          technologies: parseMultiValueInput(localTechnologies),
+          excluded_domains: parseMultiValueInput(localExcludedDomains),
           target_signals: localConfig.target_signals,
-          search_queries: localConfig.search_queries,
+          search_queries: parseLineDelimitedInput(localSearchQueries),
           max_results: localConfig.max_results,
           min_checks_required: localConfig.min_checks_required,
           recency_window_days: localConfig.recency_window_days,
@@ -770,23 +784,6 @@ function WhatToLookForTab() {
     }
 
     toast({ title: 'Partner search criteria saved' });
-  };
-
-  const handleArrayChange = (field: string, val: string) => {
-    setLocalConfig((prev: any) => ({
-      ...prev,
-      [field]: val.split(',').map(s => s.trim()).filter(Boolean)
-    }));
-  };
-
-  // Search queries can legitimately contain commas/quotes (e.g. `"Genesys
-  // partner" + banking`), so these are one-per-line rather than comma
-  // separated like the other array fields above.
-  const handleQueriesChange = (val: string) => {
-    setLocalConfig((prev: any) => ({
-      ...prev,
-      search_queries: val.split('\n').map((s) => s.trim()).filter(Boolean),
-    }));
   };
 
   return (
@@ -901,16 +898,16 @@ function WhatToLookForTab() {
                   <div className="space-y-2">
                     <Label>Partner types (comma separated)</Label>
                     <Input
-                      value={localConfig.partner_types?.join(', ') || ''}
-                      onChange={e => handleArrayChange('partner_types', e.target.value)}
+                      value={localPartnerTypes}
+                      onChange={e => setLocalPartnerTypes(e.target.value)}
                       placeholder="e.g. SI, VAR, Consulting"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Industries (comma separated)</Label>
                     <Input
-                      value={localConfig.industries?.join(', ') || ''}
-                      onChange={e => handleArrayChange('industries', e.target.value)}
+                      value={localIndustries}
+                      onChange={e => setLocalIndustries(e.target.value)}
                       placeholder="e.g. Finance, Healthcare, Retail"
                     />
                   </div>
@@ -918,16 +915,16 @@ function WhatToLookForTab() {
                 <div className="space-y-2">
                   <Label>Technologies / adjacencies (comma separated)</Label>
                   <Input
-                    value={localConfig.technologies?.join(', ') || ''}
-                    onChange={e => handleArrayChange('technologies', e.target.value)}
+                    value={localTechnologies}
+                    onChange={e => setLocalTechnologies(e.target.value)}
                     placeholder="e.g. Microsoft 365, Azure, SAP"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Excluded domains (comma separated)</Label>
                   <Input
-                    value={localConfig.excluded_domains?.join(', ') || ''}
-                    onChange={e => handleArrayChange('excluded_domains', e.target.value)}
+                    value={localExcludedDomains}
+                    onChange={e => setLocalExcludedDomains(e.target.value)}
                     placeholder="e.g. microsoft.com, amazon.com"
                   />
                 </div>
@@ -959,13 +956,13 @@ function WhatToLookForTab() {
                 <div className="space-y-2">
                   <Label>Search queries / search intent (one per line, optional)</Label>
                   <Textarea
-                    value={(localConfig.search_queries || []).join('\n')}
-                    onChange={e => handleQueriesChange(e.target.value)}
+                    value={localSearchQueries}
+                    onChange={e => setLocalSearchQueries(e.target.value)}
                     placeholder={'"Genesys partner" + banking\n"launched an AI practice" + Germany'}
                     className="min-h-[100px] font-mono text-sm"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Leave empty to derive search queries automatically from industries and technologies above.
+                    When set, these queries completely replace automatic query planning -- Discovery searches only what's listed here. Leave empty to plan automatically from the effective criteria above: partner types, technologies/ecosystems, industries, territory geography, and target signals (below) where configured.
                   </p>
                 </div>
               </CardContent>
@@ -1337,6 +1334,8 @@ function ChannelRadarTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingTerritoryId, setPendingTerritoryId] = useState<string | null>(null);
   const [localConfig, setLocalConfig] = useState<any>(null);
+  // Raw text kept separate from localConfig -- see multi-value-input.ts.
+  const [localMonitoredEntities, setLocalMonitoredEntities] = useState<string>('');
 
   const { data: detail, isLoading: isDetailLoading } = useGetChannelRadarConfig(
     selectedId || '',
@@ -1380,6 +1379,7 @@ function ChannelRadarTab() {
   useEffect(() => {
     if (detail) {
       setLocalConfig(JSON.parse(JSON.stringify(detail)));
+      setLocalMonitoredEntities(formatMultiValueInput(detail.monitored_entities));
     }
   }, [detail]);
 
@@ -1388,15 +1388,11 @@ function ChannelRadarTab() {
     updateMutation.mutate({
       id: selectedId,
       data: {
-        monitored_entities: localConfig.monitored_entities,
+        monitored_entities: parseMultiValueInput(localMonitoredEntities),
         enabled_signal_types: localConfig.enabled_signal_types,
         lookback_days: localConfig.lookback_days,
       },
     });
-  };
-
-  const handleEntitiesChange = (val: string) => {
-    setLocalConfig((prev: any) => ({ ...prev, monitored_entities: val.split(',').map((s) => s.trim()).filter(Boolean) }));
   };
 
   return (
@@ -1476,8 +1472,8 @@ function ChannelRadarTab() {
                 <CardContent className="p-5 space-y-2">
                   <Label>Company names (comma separated)</Label>
                   <Input
-                    value={localConfig.monitored_entities?.join(', ') || ''}
-                    onChange={(e) => handleEntitiesChange(e.target.value)}
+                    value={localMonitoredEntities}
+                    onChange={(e) => setLocalMonitoredEntities(e.target.value)}
                     placeholder="e.g. Microsoft, UiPath, Kore.ai, Cognigy, ServiceNow"
                   />
                 </CardContent>

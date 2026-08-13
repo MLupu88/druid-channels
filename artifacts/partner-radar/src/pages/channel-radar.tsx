@@ -33,6 +33,7 @@ import { X, ExternalLink, Loader2, Satellite } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
+import { computeRunRadarButtonState } from '@/lib/channel-radar-run';
 
 const SIGNAL_TYPE_LABELS: Record<string, string> = {
   acquisition: 'Acquisition',
@@ -165,6 +166,12 @@ export default function ChannelRadar() {
       runMutation.mutate({ data: { territory_id: runTargetTerritoryId } });
     }
   };
+  const runRadarButton = computeRunRadarButtonState({
+    isGlobalUser,
+    territory,
+    runTargetTerritoryId,
+    isPending: runMutation.isPending,
+  });
 
   return (
     <div className="flex h-full w-full relative">
@@ -176,16 +183,21 @@ export default function ChannelRadar() {
               Competitive and ecosystem intelligence -- what changed, why it matters, and what to do about it.
             </p>
           </div>
-          {(!isGlobalUser || territory !== 'all') && (
-            <Button
-              variant="outline"
-              onClick={handleRunRadar}
-              disabled={runMutation.isPending || !runTargetTerritoryId}
-              title={!runTargetTerritoryId ? 'Select a territory to run Radar' : undefined}
-            >
-              {runMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Satellite className="h-4 w-4 mr-2" />}
-              {runMutation.isPending ? 'Running…' : 'Run Radar'}
-            </Button>
+          {runRadarButton.visible && (
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                variant="outline"
+                onClick={handleRunRadar}
+                disabled={runRadarButton.disabled}
+                title={runRadarButton.title}
+              >
+                {runMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Satellite className="h-4 w-4 mr-2" />}
+                {runMutation.isPending ? 'Running…' : 'Run Radar'}
+              </Button>
+              {runRadarButton.disabled && runRadarButton.title && (
+                <p className="text-xs text-muted-foreground">{runRadarButton.title}</p>
+              )}
+            </div>
           )}
         </div>
 
@@ -217,10 +229,14 @@ export default function ChannelRadar() {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
+          <p className="text-xs text-muted-foreground w-full">
+            The filters below only narrow the signals already discovered -- they don't run new research. Use Run Radar above for that.
+          </p>
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search entity or headline..."
+            placeholder="Filter entity or headline..."
+            title="Filters the signals already discovered below -- it does not run new Radar research. Use Run Radar for that."
             className="w-[220px] h-8 bg-background border-border/60"
           />
           {isGlobalUser && (

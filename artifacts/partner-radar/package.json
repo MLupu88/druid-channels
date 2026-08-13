@@ -13,7 +13,9 @@
     "test:discovery-progress": "tsx --test tests/discoveryProgress.test.ts",
     "test:commercial-cascade": "tsx --test tests/commercialCascade.test.ts",
     "test:commercial-performance-role-scope": "tsx --test tests/commercialPerformanceRoleScope.test.ts",
-    "test:commercial-currency-display": "tsx --test tests/commercialCurrencyDisplay.test.ts"
+    "test:commercial-currency-display": "tsx --test tests/commercialCurrencyDisplay.test.ts",
+    "test:multi-value-input": "tsx --test tests/multiValueInput.test.ts",
+    "test:channel-radar-run": "tsx --test tests/channelRadarRun.test.ts"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

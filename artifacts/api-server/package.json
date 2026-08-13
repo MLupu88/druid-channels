@@ -20,6 +20,8 @@
     "test:discovery-providers": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryProviders.test.ts",
     "test:discovery-identity": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryIdentity.test.ts",
     "test:discovery-target-signals": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryTargetSignals.test.ts",
+    "test:discovery-query-planner": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryQueryPlanner.test.ts",
+    "test:discovery-resilience": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryResilience.test.ts",
     "test:recruitment-transitions": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/partnerRecruitmentTransitions.test.ts",
     "test:channel-radar-qualification": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/channelRadarQualification.test.ts",
     "test:channel-radar-engine": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/channelRadarEngine.test.ts",

@@ -547,24 +547,36 @@ export function mapTargetSignalsToTypes(targetSignals: string[]): SignalType[] {
 const MAX_AUTOMATIC_QUERIES = 12;
 
 // Builds the automatic (non-explicit) query set from the full Partner
-// Search Criteria profile -- not just technologies x industries. Balanced
-// across whichever dimensions are actually configured: a rich zip pass so
-// every present dimension (including partner type) shows up starting at
-// query #1, then a round-robin fill across pairwise families so no single
-// Cartesian family can consume the whole budget before others get a turn.
-// Countries rotate via index, never cross-multiplied. Deduplicated, capped
-// at MAX_AUTOMATIC_QUERIES, and never padded when the profile is narrow.
+// Search Criteria profile as a bounded MIX of query shapes, never a hard
+// implicit AND across every configured criterion (5B-R hotfix -- the prior
+// version zipped technologies+partnerType+industries into one combined
+// query per step, so a fully-configured profile could spend its entire
+// budget on queries requiring all three at once, crowding out simpler,
+// higher-recall shapes). Each "family" below is one bounded, independent
+// query shape:
+//   A. broad discovery      -- partner type + geography
+//   B. ecosystem-focused    -- technology/ecosystem (+ partner type) + geography
+//   C. industry-focused     -- industry (+ partner type) + geography
+//   D. signal-focused       -- a configured target signal (+ partner type) + geography
+// No family ever requires all of partner type + technology + industry +
+// target signal + geography together. Families round-robin so no single
+// shape can consume the whole budget before the others get a turn, and
+// signals (D) are just one family among however many are present -- never
+// a majority of the automatic query set on their own. Each family combines
+// at most two configured dimensions plus geography (index-linked rotation,
+// never a nested/cross-product loop), so there is no Cartesian explosion
+// even with a rich profile. Deduplicated and capped at
+// MAX_AUTOMATIC_QUERIES; returns [] only when nothing at all is configured.
 export function buildAutomaticQueries(config: ScanConfig, territory: Territory): string[] {
   const industries = (config.industries as string[]) ?? [];
   const technologies = (config.technologies as string[]) ?? [];
   const countries = (territory.countries as string[]) ?? [];
+  // Unknown/custom partner type strings pass through partnerTypeSearchVariants
+  // literally (see its fallback below), so custom types keep showing up here.
   const partnerTypeTerms = ((config.partnerTypes as string[]) ?? []).flatMap(partnerTypeSearchVariants);
   const geoSuffix = (i: number) => (countries.length > 0 ? ` ${countries[i % countries.length]}` : "");
-  // Rotated the same way as geoSuffix -- every configured target signal
-  // gets represented across the query set without multiplying query count
-  // (no extra search calls per signal).
   const signalTerms = ((config.targetSignals as string[]) ?? []).map((s) => TARGET_SIGNAL_SEARCH_TERMS[s]).filter((t): t is string => !!t);
-  const signalSuffix = (i: number) => (signalTerms.length > 0 ? ` ${signalTerms[i % signalTerms.length]}` : "");
+  const partnerTypeAt = (i: number) => (partnerTypeTerms.length > 0 ? partnerTypeTerms[i % partnerTypeTerms.length] : null);
 
   const queries: string[] = [];
   const seen = new Set<string>();
@@ -576,58 +588,65 @@ export function buildAutomaticQueries(config: ScanConfig, territory: Territory):
     }
   };
 
-  const presentDims = [technologies.length > 0, partnerTypeTerms.length > 0, industries.length > 0].filter(Boolean).length;
-  if (presentDims >= 2) {
-    const steps = Math.max(technologies.length, partnerTypeTerms.length, industries.length);
-    for (let i = 0; i < steps && queries.length < MAX_AUTOMATIC_QUERIES; i++) {
-      const parts: string[] = [];
-      if (technologies.length > 0) parts.push(`"${technologies[i % technologies.length]}"`);
-      if (partnerTypeTerms.length > 0) parts.push(`"${partnerTypeTerms[i % partnerTypeTerms.length]}"`);
-      if (industries.length > 0) parts.push(industries[i % industries.length]);
-      push(`${parts.join(" ")}${signalSuffix(i)}${geoSuffix(i)}`);
-    }
+  const families: Array<() => string> = [];
+
+  // A. broad discovery: partner type + geography.
+  if (partnerTypeTerms.length > 0) {
+    let i = 0;
+    families.push(() => `"${partnerTypeAt(i)}"${geoSuffix(i++)}`);
   }
 
-  const families: Array<() => string> = [];
-  if (technologies.length > 0 && industries.length > 0) {
-    let a = 0;
-    families.push(() => `"${technologies[a % technologies.length]} partner" ${industries[a++ % industries.length]}`);
+  // B. ecosystem-focused: technology/ecosystem (+ partner type, if
+  // configured) + geography. Never requires industry or a target signal.
+  if (technologies.length > 0) {
+    let i = 0;
+    families.push(() => {
+      const pt = partnerTypeAt(i);
+      const q = `"${technologies[i % technologies.length]}"${pt ? ` "${pt}"` : ""}${geoSuffix(i)}`;
+      i++;
+      return q;
+    });
   }
-  if (technologies.length > 0 && partnerTypeTerms.length > 0) {
-    let a = 0;
-    families.push(() => `"${technologies[a % technologies.length]}" "${partnerTypeTerms[a++ % partnerTypeTerms.length]}"`);
+
+  // C. industry-focused: industry (+ partner type, if configured) +
+  // geography. Never requires technology or a target signal.
+  if (industries.length > 0) {
+    let i = 0;
+    families.push(() => {
+      const pt = partnerTypeAt(i);
+      const q = `${pt ? `"${pt}" ` : ""}${industries[i % industries.length]}${geoSuffix(i)}`;
+      i++;
+      return q;
+    });
   }
-  if (partnerTypeTerms.length > 0 && industries.length > 0) {
-    let a = 0;
-    families.push(() => `"${partnerTypeTerms[a % partnerTypeTerms.length]}" ${industries[a++ % industries.length]}`);
+
+  // D. signal-focused: a configured target signal (+ partner type, if
+  // configured) + geography. One family among however many are present --
+  // round-robin below keeps this from ever dominating the budget.
+  if (signalTerms.length > 0) {
+    let i = 0;
+    families.push(() => {
+      const pt = partnerTypeAt(i);
+      const q = `"${signalTerms[i % signalTerms.length]}"${pt ? ` "${pt}"` : ""}${geoSuffix(i)}`;
+      i++;
+      return q;
+    });
   }
-  for (let round = 0; round < MAX_AUTOMATIC_QUERIES * 3 && queries.length < MAX_AUTOMATIC_QUERIES && families.length > 0; round++) {
+
+  const MAX_ROUNDS = MAX_AUTOMATIC_QUERIES * 3;
+  for (let round = 0; round < MAX_ROUNDS && queries.length < MAX_AUTOMATIC_QUERIES && families.length > 0; round++) {
     for (const family of families) {
       if (queries.length >= MAX_AUTOMATIC_QUERIES) break;
-      push(`${family()}${signalSuffix(round)}${geoSuffix(round)}`);
+      push(family());
     }
-  }
-
-  // At most one dimension was ever configured (e.g. only industries) --
-  // the passes above intentionally produce nothing for that case, so
-  // search still gets *something* rather than an empty query list.
-  if (queries.length === 0) {
-    for (const tech of technologies) push(`"${tech} partner"${signalSuffix(queries.length)}${geoSuffix(queries.length)}`);
-    for (const pt of partnerTypeTerms) push(`"${pt}"${signalSuffix(queries.length)}${geoSuffix(queries.length)}`);
-    for (const ind of industries) push(`${ind} technology partner${signalSuffix(queries.length)}${geoSuffix(queries.length)}`);
-  }
-
-  // Only target_signals were ever configured (no technologies, partner
-  // types, or industries at all) -- give search something signal-shaped
-  // to work with rather than an empty query list.
-  if (queries.length === 0 && signalTerms.length > 0) {
-    for (const term of signalTerms) push(`"${term}"${geoSuffix(queries.length)}`);
   }
 
   return queries;
 }
 
-function buildSearchQueries(config: ScanConfig, territory: Territory): string[] {
+// Exported for testing -- confirms explicit search_queries fully override
+// automatic planning, never merge with it.
+export function buildSearchQueries(config: ScanConfig, territory: Territory): string[] {
   const explicit = (config.searchQueries as string[]) ?? [];
   return explicit.length > 0 ? explicit : buildAutomaticQueries(config, territory);
 }
@@ -767,6 +786,32 @@ async function writeScanRunProgress(
   await db.update(scanRunsTable).set(patch).where(eq(scanRunsTable.id, runId));
 }
 
+// Exported for testing -- pure pre-qualification dedupe decision, no DB or
+// network. 5B-R hotfix: only a literal repeated URL is ever a skip reason
+// here. A repeated evidence *domain* is deliberately never sufficient on
+// its own -- see the seenUrls comment in attemptLiveDiscovery below for why
+// (third-party publisher domains legitimately carry evidence about many
+// different companies).
+export function shouldSkipBeforeQualification(seenUrls: ReadonlySet<string>, url: string): boolean {
+  return seenUrls.has(url);
+}
+
+// Exported for testing. 5B-R hotfix: classifies which AiProviderError codes
+// are candidate-level (this one piece of evidence produced an unusable AI
+// response -- log it, skip only this candidate, keep scanning the rest)
+// versus scan-level (the provider itself is unavailable/misbehaving -- still
+// fails the whole run). A single malformed/empty/truncated/schema-invalid
+// response is a property of one AI call's output, not evidence the provider
+// is down. timeout/network_error/http_error/oversized_response remain
+// scan-level/fatal, same as classifyDiscoveryFailure already reports them --
+// a real provider outage or rate limit must never be silently swallowed.
+export const CANDIDATE_LEVEL_AI_ERROR_CODES: ReadonlySet<string> = new Set([
+  "malformed_json",
+  "empty_response",
+  "truncated",
+  "schema_invalid",
+]);
+
 // Stage 6.5 Cost-Aware Adaptive Discovery: bounded initial batch -> evaluate
 // new-candidate yield -> optional bounded expansion -> stop on a hard cap or
 // sustained poor yield (see discoveryBudget.ts's decideNextBatch). Territory
@@ -794,16 +839,22 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
     // Cross-query dedup: the same URL can legitimately surface from more
     // than one query variant (see buildAutomaticQueries) -- only qualify it
     // once, both to avoid duplicate prospects and to avoid spending a
-    // second AI call on evidence already assessed.
+    // second AI call on evidence already assessed. This is deliberately the
+    // *only* pre-qualification dedupe keyed on the result itself (5B-R
+    // hotfix -- a prior version also dropped any later result whose
+    // evidence *domain* repeated, e.g. a second reuters.com URL, on the
+    // assumption a repeated domain meant a repeated company. That's false
+    // for third-party sources: wire services, PR distributors, and analyst
+    // sites legitimately carry evidence about many different companies, and
+    // the real subject company isn't known until after qualification +
+    // identity resolution below -- so domain-only suppression here could
+    // silently drop a real, distinct company before it was ever evaluated.
+    // Company-level dedupe still happens, just at the right point: by the
+    // *resolved* company domain, after identity resolution, in
+    // resolveOrCreateCanonicalCompany/persistCandidate below; and
+    // knownDomainRecords just below still avoids a second AI call for
+    // evidence whose domain is already a known company's own domain.)
     const seenUrls = new Set<string>();
-    // Cost control A/C (company-level dedupe + evidence dedupe before
-    // DeepSeek): domains already seen earlier in *this* run never get a
-    // second AI call. Honest limitation: this only catches first-party
-    // evidence (evidenceDomain === the candidate's own domain) pre-call --
-    // third-party evidence's real subject company isn't known until after
-    // qualification, so it's still deduped, just at persistence time
-    // (upsertCompanyOrSkip) rather than before spending on it.
-    const seenDomainsThisRun = new Set<string>();
 
     // Cost control B (evaluation cache): one query for every already-known
     // company's domain + its most recent prospect's freshness fields.
@@ -857,21 +908,14 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
         const results = await searchProvider.search(query, { maxResults: config.maxResults });
         for (const result of results) {
           batchRaw++;
-          if (seenUrls.has(result.url)) {
+          if (shouldSkipBeforeQualification(seenUrls, result.url)) {
             duplicatesRemoved++;
             continue;
           }
           seenUrls.add(result.url);
+          batchUnique++;
 
           const evidenceDomain = extractDomain(result.url);
-
-          if (seenDomainsThisRun.has(evidenceDomain)) {
-            duplicatesRemoved++;
-            batchUnique++;
-            continue;
-          }
-          seenDomainsThisRun.add(evidenceDomain);
-          batchUnique++;
 
           const isKnownDomain = knownDomainRecords.has(evidenceDomain);
           if (isKnownDomain) {
@@ -906,12 +950,33 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
           // sent, and that fact is already durable.
           candidatesSentToLlm++;
           await writeScanRunProgress(runId, { candidatesSentToLlm });
-          const qualification = await aiProvider.qualify({
-            companyName: result.title,
-            domain: evidenceDomain,
-            evidence: [{ url: result.url, text: page.text }],
-            criteria,
-          });
+          let qualification: aiProvider.AiQualificationOutput;
+          try {
+            qualification = await aiProvider.qualify({
+              companyName: result.title,
+              domain: evidenceDomain,
+              evidence: [{ url: result.url, text: page.text }],
+              criteria,
+            });
+          } catch (err) {
+            // 5B-R hotfix: a candidate-level unusable AI response (malformed/
+            // empty/truncated/schema-invalid -- see CANDIDATE_LEVEL_AI_ERROR_CODES)
+            // must never fail the whole scan over one piece of evidence. Only
+            // the bounded, non-sensitive error code is logged, never a raw
+            // provider message/body. Provider-wide failures (timeout,
+            // network_error, http_error, oversized_response, or anything not
+            // an AiProviderError at all) fall through to the rethrow below,
+            // preserving the existing scan-abort + classifyDiscoveryFailure
+            // behavior for genuine outages/auth/rate-limit conditions.
+            if (err instanceof aiProvider.AiProviderError && CANDIDATE_LEVEL_AI_ERROR_CODES.has(err.code)) {
+              logger.warn(
+                { scanConfigId: config.id, evidenceUrl: result.url, code: err.code },
+                "Discovery: AI qualification returned an unusable response for this candidate; skipped, scan continuing",
+              );
+              continue;
+            }
+            throw err;
+          }
 
           const checks: FiveChecks = {
             enterpriseAccess: qualification.enterpriseAccess,
