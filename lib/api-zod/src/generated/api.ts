@@ -2003,6 +2003,107 @@ export const GetKpiDetailsResponse = zod.object({
 
 
 /**
+ * @summary Bounded, leadership-level factual snapshot for the Aniri/Channel Chief agent to interpret. Global/company-wide scope only -- never a PAM-scoped view. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN (see channelChiefAuth middleware), a separate service-token auth path from human session login. Reuses the same canonical KPI/recruitment/portfolio/discovery computations as the rest of the app; never a second implementation of any business rule.
+ */
+export const GetChannelChiefSnapshotQueryParams = zod.object({
+  "period": zod.coerce.string().nullish().describe('Composite period key, e.g. \"2026-q3\" or \"2026-ytd\". Defaults to the current quarter when omitted.')
+})
+
+export const GetChannelChiefSnapshotResponse = zod.object({
+  "period": zod.string(),
+  "period_key": zod.string(),
+  "generated_at": zod.string(),
+  "performance": zod.object({
+  "partner_development": zod.array(zod.object({
+  "metric_key": zod.string(),
+  "metric": zod.string(),
+  "current": zod.number().nullable(),
+  "target": zod.number().nullable(),
+  "status": zod.union([zod.literal('green'),zod.literal('amber'),zod.literal('red'),zod.literal('on_track'),zod.literal(null)]).nullable(),
+  "what_changed": zod.string().nullish(),
+  "explanation": zod.string().nullish(),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED'])
+})),
+  "weekly_commercial": zod.array(zod.object({
+  "metric_key": zod.string(),
+  "metric": zod.string(),
+  "current": zod.number().nullable(),
+  "last_week": zod.number().nullable(),
+  "target": zod.number().nullable(),
+  "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullable(),
+  "explanation": zod.string().nullish(),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED'])
+})),
+  "weekly_marketing": zod.array(zod.object({
+  "metric_key": zod.string(),
+  "metric": zod.string(),
+  "this_week": zod.number().nullable(),
+  "last_week": zod.number().nullish(),
+  "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullable(),
+  "explanation": zod.string().nullish(),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED'])
+}))
+}).describe('The exact same canonical KPI computation the Head of Channels view uses (kpiService.buildHeadOfChannelsData), at Global\/company-wide scope. Targets are always null here: metric_targets are configured per PAM\/territory only, never company-wide -- see data_quality_notes for the explicit note.'),
+  "recruitment": zod.object({
+  "active_count": zod.number().int(),
+  "stalled_count": zod.number().int(),
+  "top_stalled": zod.array(zod.object({
+  "recruitment_id": zod.string(),
+  "company_name": zod.string(),
+  "territory_name": zod.string(),
+  "stage": zod.string(),
+  "days_in_stage": zod.number().int(),
+  "is_stalled": zod.boolean(),
+  "next_step": zod.string().nullable(),
+  "follow_up_date": zod.string().nullable()
+})).describe('Bounded top-N, stalled-first then longest-in-stage first -- never a full-table dump.')
+}),
+  "portfolio": zod.object({
+  "active_partner_count": zod.number().int(),
+  "needs_attention_count": zod.number().int(),
+  "top_needs_attention": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_name": zod.string(),
+  "territory_name": zod.string(),
+  "status": zod.string(),
+  "last_interaction_at": zod.string().nullable(),
+  "next_action": zod.string().nullable()
+})).describe('Bounded top-N, oldest\/never-contacted first -- never a full-table dump.')
+}),
+  "discovery": zod.object({
+  "total_prospect_count": zod.number().int().describe('All prospects ever persisted across every territory (persistence already implies passing the qualification bar).'),
+  "available_prospect_count": zod.number().int().describe('Prospects still in status=new -- not yet decided either way.'),
+  "accepted_prospect_count": zod.number().int(),
+  "top_priority_prospects": zod.array(zod.object({
+  "company_name": zod.string(),
+  "territory_name": zod.string(),
+  "priority": zod.enum(['A', 'B']),
+  "status": zod.string(),
+  "why_it_fits": zod.string().nullable()
+})).describe('Bounded top-N of new\/accepted prospects, priority A first then newest -- never a full-table dump. Leadership scope, so unlike the PAM Copilot this is never filtered by assigned_user_id.')
+}),
+  "activity": zod.object({
+  "recent": zod.array(zod.object({
+  "name": zod.string(),
+  "type": zod.string(),
+  "status": zod.string(),
+  "territory": zod.string(),
+  "activity_date": zod.string().nullable(),
+  "mqls": zod.number().int(),
+  "partner_referrals": zod.number().int()
+})).describe('Bounded most-recent-N activities across every territory -- never a full-table dump.')
+}),
+  "data_quality_notes": zod.array(zod.string()).describe('Deterministic notes about missing\/incomplete\/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as \"unknown\".')
+})
+
+
+/**
  * @summary List configured integration connections (HubSpot, web search, web reader, AI) with live status
  */
 export const ListConnectionsResponseItem = zod.object({
