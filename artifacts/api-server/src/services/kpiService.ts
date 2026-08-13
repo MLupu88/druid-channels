@@ -1141,7 +1141,10 @@ function computeVariance(current: number | null, targetToDateValue: number | nul
   return current - targetToDateValue;
 }
 
-function convertMoney(value: number | null, rate: number): number | null {
+// Exported so other read-time money-display code (e.g.
+// services/campaignService.ts's linked pipeline/closed-revenue) reuses this
+// exact USD->display-currency step instead of re-deriving it.
+export function convertMoney(value: number | null, rate: number): number | null {
   return value === null ? null : value * rate;
 }
 

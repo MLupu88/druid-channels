@@ -6,11 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CampaignEditInputStatus } from './campaignEditInputStatus';
-import type { CampaignEditInputType } from './campaignEditInputType';
+import type { CampaignType } from './campaignType';
 
 export interface CampaignEditInput {
   name?: string;
-  type?: CampaignEditInputType;
+  type?: CampaignType;
   territory?: string;
   owner_user_id?: string;
   /** @nullable */
@@ -24,4 +24,9 @@ export interface CampaignEditInput {
   partner_referrals?: number;
   /** @nullable */
   notes?: string | null;
+  /**
+     * When present, replaces the full set of linked opportunities (same constraints as on create). Omit this field entirely to leave existing links untouched.
+     * @nullable
+     */
+  opportunity_ids?: string[] | null;
 }

@@ -2016,6 +2016,9 @@ export interface RegenerateAiChannelBriefInput {
   currency?: RegenerateAiChannelBriefInputCurrency;
 }
 
+/**
+ * Training & Enablement is a single type, not two. The first three values predate Phase 6 and are the only ones existing KPI/PPTX/Channel Chief consumers currently name explicitly.
+ */
 export type CampaignType = typeof CampaignType[keyof typeof CampaignType];
 
 
@@ -2023,7 +2026,28 @@ export const CampaignType = {
   joint_campaign: 'joint_campaign',
   event: 'event',
   webinar: 'webinar',
+  training_enablement: 'training_enablement',
+  co_selling: 'co_selling',
+  executive_roundtable: 'executive_roundtable',
+  other: 'other',
 } as const;
+
+export type CampaignMoneyAmountCurrency = typeof CampaignMoneyAmountCurrency[keyof typeof CampaignMoneyAmountCurrency];
+
+
+export const CampaignMoneyAmountCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
+/**
+ * A single already-converted amount in the requested display currency -- never a naive sum of mixed-currency deal_value rows. See services/fx.ts (the same USD<->EUR/GBP contract kpis/exports/ai-channel-brief already use).
+ */
+export interface CampaignMoneyAmount {
+  amount: number;
+  currency: CampaignMoneyAmountCurrency;
+}
 
 export type CampaignStatus = typeof CampaignStatus[keyof typeof CampaignStatus];
 
@@ -2041,7 +2065,10 @@ export interface Campaign {
   territory: string;
   owner_user_id: string;
   owner_name: string;
-  /** @nullable */
+  /**
+     * Nullable at the schema level for backward compatibility with pre-Phase-6 rows. Required by application validation (not by this schema) when creating a new activity.
+     * @nullable
+     */
   partner_company_id?: string | null;
   /** @nullable */
   partner_company_name?: string | null;
@@ -2055,16 +2082,15 @@ export interface Campaign {
   /** @nullable */
   notes?: string | null;
   created_at: string;
+  /** IDs of opportunities linked to this activity that the caller is authorized to see. A PAM never sees another PAM's opportunity IDs here, even if a Head/Admin created the link. */
+  linked_opportunity_ids: string[];
+  /** Count of linked_opportunity_ids -- i.e. only opportunities the caller can see. Not a count of every row in the join table. */
+  linked_opportunity_count: number;
+  /** Sum of deal_value (real, not credit_value) for linked opportunities with status=open, visible to the caller only, converted to the requested display currency. Null when there is nothing to sum (zero visible open-linked opportunities) -- never a fabricated 0 that looks like a real zero-pipeline activity. */
+  linked_open_pipeline: CampaignMoneyAmount | null;
+  /** Sum of deal_value (real, not credit_value) for linked opportunities with status=won, visible to the caller only, converted to the requested display currency. closed_at is never read or altered here -- it stays the opportunity's own historical truth. Null when there is nothing to sum. */
+  linked_closed_revenue: CampaignMoneyAmount | null;
 }
-
-export type CampaignInputType = typeof CampaignInputType[keyof typeof CampaignInputType];
-
-
-export const CampaignInputType = {
-  joint_campaign: 'joint_campaign',
-  event: 'event',
-  webinar: 'webinar',
-} as const;
 
 export type CampaignInputStatus = typeof CampaignInputStatus[keyof typeof CampaignInputStatus];
 
@@ -2077,10 +2103,13 @@ export const CampaignInputStatus = {
 
 export interface CampaignInput {
   name: string;
-  type: CampaignInputType;
+  type: CampaignType;
   territory: string;
   owner_user_id: string;
-  /** @nullable */
+  /**
+     * Nullable in the schema for backward compatibility, but application validation requires a non-null value when creating a new activity.
+     * @nullable
+     */
   partner_company_id?: string | null;
   /** @nullable */
   activity_date?: string | null;
@@ -2089,16 +2118,12 @@ export interface CampaignInput {
   hubspot_link?: string | null;
   /** @nullable */
   notes?: string | null;
+  /**
+     * Optional zero-to-many opportunities to link at creation time. Each must belong to partner_company_id and be one the caller is authorized to access.
+     * @nullable
+     */
+  opportunity_ids?: string[] | null;
 }
-
-export type CampaignEditInputType = typeof CampaignEditInputType[keyof typeof CampaignEditInputType];
-
-
-export const CampaignEditInputType = {
-  joint_campaign: 'joint_campaign',
-  event: 'event',
-  webinar: 'webinar',
-} as const;
 
 export type CampaignEditInputStatus = typeof CampaignEditInputStatus[keyof typeof CampaignEditInputStatus];
 
@@ -2111,7 +2136,7 @@ export const CampaignEditInputStatus = {
 
 export interface CampaignEditInput {
   name?: string;
-  type?: CampaignEditInputType;
+  type?: CampaignType;
   territory?: string;
   owner_user_id?: string;
   /** @nullable */
@@ -2125,6 +2150,16 @@ export interface CampaignEditInput {
   partner_referrals?: number;
   /** @nullable */
   notes?: string | null;
+  /**
+     * When present, replaces the full set of linked opportunities (same constraints as on create). Omit this field entirely to leave existing links untouched.
+     * @nullable
+     */
+  opportunity_ids?: string[] | null;
+}
+
+export interface SetCampaignOpportunitiesInput {
+  /** The complete desired set of linked opportunity IDs (replaces, does not append). An empty array unlinks everything. */
+  opportunity_ids: string[];
 }
 
 export type OpportunityAttributionType = typeof OpportunityAttributionType[keyof typeof OpportunityAttributionType];
@@ -2877,6 +2912,11 @@ attribution_type?: ListOpportunitiesAttributionType;
  * @nullable
  */
 territory?: string | null;
+/**
+ * Filter to opportunities for a single partner company. Used by the Marketing Activities opportunity-link picker to scope choices to the activity's selected partner. Applied on top of (never widening) the existing territory/assignment scoping.
+ * @nullable
+ */
+company_id?: string | null;
 };
 
 export type ListOpportunitiesStatus = typeof ListOpportunitiesStatus[keyof typeof ListOpportunitiesStatus] | null;
@@ -2933,6 +2973,61 @@ export type GetAiChannelBriefCurrency = typeof GetAiChannelBriefCurrency[keyof t
 
 
 export const GetAiChannelBriefCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
+export type ListCampaignsParams = {
+/**
+ * @nullable
+ */
+partner_company_id?: string | null;
+/**
+ * @nullable
+ */
+type?: ListCampaignsType;
+/**
+ * @nullable
+ */
+status?: ListCampaignsStatus;
+/**
+ * Head/Admin only -- scopes the list to one owner (e.g. a PAM workspace drill-down). Ignored for a PAM caller, who is always forced to their own activities regardless of this value.
+ * @nullable
+ */
+owner_user_id?: string | null;
+/**
+ * Display currency for linked_open_pipeline/linked_closed_revenue. Each linked opportunity's real deal_value is converted through the existing FX contract (services/fx.ts) -- never summed across currencies without conversion.
+ */
+currency?: ListCampaignsCurrency;
+};
+
+export type ListCampaignsType = typeof ListCampaignsType[keyof typeof ListCampaignsType] | null;
+
+
+export const ListCampaignsType = {
+  joint_campaign: 'joint_campaign',
+  event: 'event',
+  webinar: 'webinar',
+  training_enablement: 'training_enablement',
+  co_selling: 'co_selling',
+  executive_roundtable: 'executive_roundtable',
+  other: 'other',
+} as const;
+
+export type ListCampaignsStatus = typeof ListCampaignsStatus[keyof typeof ListCampaignsStatus] | null;
+
+
+export const ListCampaignsStatus = {
+  planned: 'planned',
+  live: 'live',
+  completed: 'completed',
+} as const;
+
+export type ListCampaignsCurrency = typeof ListCampaignsCurrency[keyof typeof ListCampaignsCurrency];
+
+
+export const ListCampaignsCurrency = {
   USD: 'USD',
   EUR: 'EUR',
   GBP: 'GBP',

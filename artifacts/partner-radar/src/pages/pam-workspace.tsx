@@ -30,9 +30,15 @@ export function PamWorkspace({ territoryId, pamName, pamUserId }: { territoryId?
   const territoryName = territoryId ? territories?.find((t) => t.id === territoryId)?.name : undefined;
 
   const scopeParam = territoryId ? { territory: territoryId } : {};
+  // owner_user_id is Head/Admin-only server-side (routes/campaigns.ts) and is
+  // ignored for a PAM caller, who is always forced to their own activities
+  // regardless of this value -- so this never widens a PAM's own access, it
+  // only lets a Head/Admin drill-down correctly scope to the PAM being
+  // viewed instead of seeing every activity in the company.
+  const campaignsParam = pamUserId ? { owner_user_id: pamUserId } : {};
 
   const { data: prospects, isLoading: prospectsLoading } = useListProspects(scopeParam);
-  const { data: campaigns, isLoading: campaignsLoading } = useListCampaigns();
+  const { data: campaigns, isLoading: campaignsLoading, isError: campaignsError } = useListCampaigns(campaignsParam);
   const { data: territoryPotential } = useGetTerritoryPotential(scopeParam);
   const ownPotential = territoryPotential?.[0] ?? null;
 
@@ -178,6 +184,8 @@ export function PamWorkspace({ territoryId, pamName, pamUserId }: { territoryId?
                 <TableBody>
                   {campaignsLoading ? (
                     <TableRow><TableCell colSpan={3}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
+                  ) : campaignsError ? (
+                    <TableRow><TableCell colSpan={3} className="text-center py-8 text-muted-foreground">Could not load activities.</TableCell></TableRow>
                   ) : campaigns?.length ? (
                     campaigns.map((c) => (
                       <TableRow key={c.id}>

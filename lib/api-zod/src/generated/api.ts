@@ -2511,7 +2511,8 @@ export const GetAnnualCascadeResponse = zod.object({
 export const ListOpportunitiesQueryParams = zod.object({
   "status": zod.union([zod.literal('open'),zod.literal('won'),zod.literal('lost'),zod.literal(null)]).nullish(),
   "attribution_type": zod.union([zod.literal('partner_sourced'),zod.literal('partner_influenced'),zod.literal(null)]).nullish(),
-  "territory": zod.coerce.string().nullish()
+  "territory": zod.coerce.string().nullish(),
+  "company_id": zod.coerce.string().nullish()
 })
 
 export const ListOpportunitiesResponseItem = zod.object({
@@ -2856,16 +2857,26 @@ export const RegenerateAiChannelBriefResponse = zod.object({
 
 
 /**
- * @summary List campaign lists
+ * @summary List marketing activities (campaigns). A PAM sees only activities they own; Head of Channels/admin see all, and may filter to a specific owner (e.g. drilling into one PAM's workspace).
  */
+export const listCampaignsQueryCurrencyDefault = `USD`;
+
+export const ListCampaignsQueryParams = zod.object({
+  "partner_company_id": zod.coerce.string().nullish(),
+  "type": zod.union([zod.literal('joint_campaign'),zod.literal('event'),zod.literal('webinar'),zod.literal('training_enablement'),zod.literal('co_selling'),zod.literal('executive_roundtable'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "status": zod.union([zod.literal('planned'),zod.literal('live'),zod.literal('completed'),zod.literal(null)]).nullish(),
+  "owner_user_id": zod.coerce.string().nullish(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']).default(listCampaignsQueryCurrencyDefault)
+})
+
 export const ListCampaignsResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
-  "type": zod.enum(['joint_campaign', 'event', 'webinar']),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar', 'training_enablement', 'co_selling', 'executive_roundtable', 'other']).describe('Training & Enablement is a single type, not two. The first three values predate Phase 6 and are the only ones existing KPI\/PPTX\/Channel Chief consumers currently name explicitly.'),
   "territory": zod.string(),
   "owner_user_id": zod.string(),
   "owner_name": zod.string(),
-  "partner_company_id": zod.string().nullish(),
+  "partner_company_id": zod.string().nullish().describe('Nullable at the schema level for backward compatibility with pre-Phase-6 rows. Required by application validation (not by this schema) when creating a new activity.'),
   "partner_company_name": zod.string().nullish(),
   "activity_date": zod.string().nullish(),
   "status": zod.enum(['planned', 'live', 'completed']),
@@ -2873,34 +2884,45 @@ export const ListCampaignsResponseItem = zod.object({
   "mqls": zod.number(),
   "partner_referrals": zod.number(),
   "notes": zod.string().nullish(),
-  "created_at": zod.string()
+  "created_at": zod.string(),
+  "linked_opportunity_ids": zod.array(zod.string()).describe('IDs of opportunities linked to this activity that the caller is authorized to see. A PAM never sees another PAM\'s opportunity IDs here, even if a Head\/Admin created the link.'),
+  "linked_opportunity_count": zod.number().int().describe('Count of linked_opportunity_ids -- i.e. only opportunities the caller can see. Not a count of every row in the join table.'),
+  "linked_open_pipeline": zod.union([zod.object({
+  "amount": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP'])
+}).describe('A single already-converted amount in the requested display currency -- never a naive sum of mixed-currency deal_value rows. See services\/fx.ts (the same USD<->EUR\/GBP contract kpis\/exports\/ai-channel-brief already use).'),zod.null()]).describe('Sum of deal_value (real, not credit_value) for linked opportunities with status=open, visible to the caller only, converted to the requested display currency. Null when there is nothing to sum (zero visible open-linked opportunities) -- never a fabricated 0 that looks like a real zero-pipeline activity.'),
+  "linked_closed_revenue": zod.union([zod.object({
+  "amount": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP'])
+}).describe('A single already-converted amount in the requested display currency -- never a naive sum of mixed-currency deal_value rows. See services\/fx.ts (the same USD<->EUR\/GBP contract kpis\/exports\/ai-channel-brief already use).'),zod.null()]).describe('Sum of deal_value (real, not credit_value) for linked opportunities with status=won, visible to the caller only, converted to the requested display currency. closed_at is never read or altered here -- it stays the opportunity\'s own historical truth. Null when there is nothing to sum.')
 })
 export const ListCampaignsResponse = zod.array(ListCampaignsResponseItem)
 
 
 /**
- * @summary Create a new campaign list
+ * @summary Create a new marketing activity. partner_company_id is required by application validation for new activities (kept nullable in the schema only so existing legacy null-partner rows remain representable). opportunity_ids, if given, must belong to the same partner and must each be an opportunity the caller is authorized to access.
  */
 export const CreateCampaignBody = zod.object({
   "name": zod.string(),
-  "type": zod.enum(['joint_campaign', 'event', 'webinar']),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar', 'training_enablement', 'co_selling', 'executive_roundtable', 'other']).describe('Training & Enablement is a single type, not two. The first three values predate Phase 6 and are the only ones existing KPI\/PPTX\/Channel Chief consumers currently name explicitly.'),
   "territory": zod.string(),
   "owner_user_id": zod.string(),
-  "partner_company_id": zod.string().nullish(),
+  "partner_company_id": zod.string().nullish().describe('Nullable in the schema for backward compatibility, but application validation requires a non-null value when creating a new activity.'),
   "activity_date": zod.string().nullish(),
   "status": zod.enum(['planned', 'live', 'completed']).optional(),
   "hubspot_link": zod.string().nullish(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "opportunity_ids": zod.array(zod.string()).nullish().describe('Optional zero-to-many opportunities to link at creation time. Each must belong to partner_company_id and be one the caller is authorized to access.')
 })
 
 export const CreateCampaignResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
-  "type": zod.enum(['joint_campaign', 'event', 'webinar']),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar', 'training_enablement', 'co_selling', 'executive_roundtable', 'other']).describe('Training & Enablement is a single type, not two. The first three values predate Phase 6 and are the only ones existing KPI\/PPTX\/Channel Chief consumers currently name explicitly.'),
   "territory": zod.string(),
   "owner_user_id": zod.string(),
   "owner_name": zod.string(),
-  "partner_company_id": zod.string().nullish(),
+  "partner_company_id": zod.string().nullish().describe('Nullable at the schema level for backward compatibility with pre-Phase-6 rows. Required by application validation (not by this schema) when creating a new activity.'),
   "partner_company_name": zod.string().nullish(),
   "activity_date": zod.string().nullish(),
   "status": zod.enum(['planned', 'live', 'completed']),
@@ -2908,12 +2930,22 @@ export const CreateCampaignResponse = zod.object({
   "mqls": zod.number(),
   "partner_referrals": zod.number(),
   "notes": zod.string().nullish(),
-  "created_at": zod.string()
+  "created_at": zod.string(),
+  "linked_opportunity_ids": zod.array(zod.string()).describe('IDs of opportunities linked to this activity that the caller is authorized to see. A PAM never sees another PAM\'s opportunity IDs here, even if a Head\/Admin created the link.'),
+  "linked_opportunity_count": zod.number().int().describe('Count of linked_opportunity_ids -- i.e. only opportunities the caller can see. Not a count of every row in the join table.'),
+  "linked_open_pipeline": zod.union([zod.object({
+  "amount": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP'])
+}).describe('A single already-converted amount in the requested display currency -- never a naive sum of mixed-currency deal_value rows. See services\/fx.ts (the same USD<->EUR\/GBP contract kpis\/exports\/ai-channel-brief already use).'),zod.null()]).describe('Sum of deal_value (real, not credit_value) for linked opportunities with status=open, visible to the caller only, converted to the requested display currency. Null when there is nothing to sum (zero visible open-linked opportunities) -- never a fabricated 0 that looks like a real zero-pipeline activity.'),
+  "linked_closed_revenue": zod.union([zod.object({
+  "amount": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP'])
+}).describe('A single already-converted amount in the requested display currency -- never a naive sum of mixed-currency deal_value rows. See services\/fx.ts (the same USD<->EUR\/GBP contract kpis\/exports\/ai-channel-brief already use).'),zod.null()]).describe('Sum of deal_value (real, not credit_value) for linked opportunities with status=won, visible to the caller only, converted to the requested display currency. closed_at is never read or altered here -- it stays the opportunity\'s own historical truth. Null when there is nothing to sum.')
 })
 
 
 /**
- * @summary Edit a campaign
+ * @summary Edit a marketing activity. Legacy activities with no partner remain fully editable. Changing partner_company_id while opportunities are linked is rejected unless the new partner still matches every linked opportunity's company.
  */
 export const UpdateCampaignParams = zod.object({
   "id": zod.coerce.string()
@@ -2921,7 +2953,7 @@ export const UpdateCampaignParams = zod.object({
 
 export const UpdateCampaignBody = zod.object({
   "name": zod.string().optional(),
-  "type": zod.enum(['joint_campaign', 'event', 'webinar']).optional(),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar', 'training_enablement', 'co_selling', 'executive_roundtable', 'other']).optional().describe('Training & Enablement is a single type, not two. The first three values predate Phase 6 and are the only ones existing KPI\/PPTX\/Channel Chief consumers currently name explicitly.'),
   "territory": zod.string().optional(),
   "owner_user_id": zod.string().optional(),
   "partner_company_id": zod.string().nullish(),
@@ -2930,17 +2962,18 @@ export const UpdateCampaignBody = zod.object({
   "hubspot_link": zod.string().nullish(),
   "mqls": zod.number().optional(),
   "partner_referrals": zod.number().optional(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "opportunity_ids": zod.array(zod.string()).nullish().describe('When present, replaces the full set of linked opportunities (same constraints as on create). Omit this field entirely to leave existing links untouched.')
 })
 
 export const UpdateCampaignResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
-  "type": zod.enum(['joint_campaign', 'event', 'webinar']),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar', 'training_enablement', 'co_selling', 'executive_roundtable', 'other']).describe('Training & Enablement is a single type, not two. The first three values predate Phase 6 and are the only ones existing KPI\/PPTX\/Channel Chief consumers currently name explicitly.'),
   "territory": zod.string(),
   "owner_user_id": zod.string(),
   "owner_name": zod.string(),
-  "partner_company_id": zod.string().nullish(),
+  "partner_company_id": zod.string().nullish().describe('Nullable at the schema level for backward compatibility with pre-Phase-6 rows. Required by application validation (not by this schema) when creating a new activity.'),
   "partner_company_name": zod.string().nullish(),
   "activity_date": zod.string().nullish(),
   "status": zod.enum(['planned', 'live', 'completed']),
@@ -2948,7 +2981,17 @@ export const UpdateCampaignResponse = zod.object({
   "mqls": zod.number(),
   "partner_referrals": zod.number(),
   "notes": zod.string().nullish(),
-  "created_at": zod.string()
+  "created_at": zod.string(),
+  "linked_opportunity_ids": zod.array(zod.string()).describe('IDs of opportunities linked to this activity that the caller is authorized to see. A PAM never sees another PAM\'s opportunity IDs here, even if a Head\/Admin created the link.'),
+  "linked_opportunity_count": zod.number().int().describe('Count of linked_opportunity_ids -- i.e. only opportunities the caller can see. Not a count of every row in the join table.'),
+  "linked_open_pipeline": zod.union([zod.object({
+  "amount": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP'])
+}).describe('A single already-converted amount in the requested display currency -- never a naive sum of mixed-currency deal_value rows. See services\/fx.ts (the same USD<->EUR\/GBP contract kpis\/exports\/ai-channel-brief already use).'),zod.null()]).describe('Sum of deal_value (real, not credit_value) for linked opportunities with status=open, visible to the caller only, converted to the requested display currency. Null when there is nothing to sum (zero visible open-linked opportunities) -- never a fabricated 0 that looks like a real zero-pipeline activity.'),
+  "linked_closed_revenue": zod.union([zod.object({
+  "amount": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP'])
+}).describe('A single already-converted amount in the requested display currency -- never a naive sum of mixed-currency deal_value rows. See services\/fx.ts (the same USD<->EUR\/GBP contract kpis\/exports\/ai-channel-brief already use).'),zod.null()]).describe('Sum of deal_value (real, not credit_value) for linked opportunities with status=won, visible to the caller only, converted to the requested display currency. closed_at is never read or altered here -- it stays the opportunity\'s own historical truth. Null when there is nothing to sum.')
 })
 
 
@@ -2962,6 +3005,46 @@ export const DeleteCampaignParams = zod.object({
 export const DeleteCampaignResponse = zod.object({
   "id": zod.string(),
   "deleted": zod.boolean()
+})
+
+
+/**
+ * @summary Replace the full set of opportunities linked to a marketing activity (zero-to-many). Never mutates any field on the linked opportunities themselves (attribution_type, deal_value, closed_at, credit_value, credit_date all stay untouched) -- this only writes rows in the campaign_opportunities join table. Every requested opportunity must belong to the activity's partner_company_id and must be one the caller is authorized to access; a PAM can never link an opportunity assigned to another PAM.
+ */
+export const SetCampaignOpportunitiesParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const SetCampaignOpportunitiesBody = zod.object({
+  "opportunity_ids": zod.array(zod.string()).describe('The complete desired set of linked opportunity IDs (replaces, does not append). An empty array unlinks everything.')
+})
+
+export const SetCampaignOpportunitiesResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "type": zod.enum(['joint_campaign', 'event', 'webinar', 'training_enablement', 'co_selling', 'executive_roundtable', 'other']).describe('Training & Enablement is a single type, not two. The first three values predate Phase 6 and are the only ones existing KPI\/PPTX\/Channel Chief consumers currently name explicitly.'),
+  "territory": zod.string(),
+  "owner_user_id": zod.string(),
+  "owner_name": zod.string(),
+  "partner_company_id": zod.string().nullish().describe('Nullable at the schema level for backward compatibility with pre-Phase-6 rows. Required by application validation (not by this schema) when creating a new activity.'),
+  "partner_company_name": zod.string().nullish(),
+  "activity_date": zod.string().nullish(),
+  "status": zod.enum(['planned', 'live', 'completed']),
+  "hubspot_link": zod.string().nullish(),
+  "mqls": zod.number(),
+  "partner_referrals": zod.number(),
+  "notes": zod.string().nullish(),
+  "created_at": zod.string(),
+  "linked_opportunity_ids": zod.array(zod.string()).describe('IDs of opportunities linked to this activity that the caller is authorized to see. A PAM never sees another PAM\'s opportunity IDs here, even if a Head\/Admin created the link.'),
+  "linked_opportunity_count": zod.number().int().describe('Count of linked_opportunity_ids -- i.e. only opportunities the caller can see. Not a count of every row in the join table.'),
+  "linked_open_pipeline": zod.union([zod.object({
+  "amount": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP'])
+}).describe('A single already-converted amount in the requested display currency -- never a naive sum of mixed-currency deal_value rows. See services\/fx.ts (the same USD<->EUR\/GBP contract kpis\/exports\/ai-channel-brief already use).'),zod.null()]).describe('Sum of deal_value (real, not credit_value) for linked opportunities with status=open, visible to the caller only, converted to the requested display currency. Null when there is nothing to sum (zero visible open-linked opportunities) -- never a fabricated 0 that looks like a real zero-pipeline activity.'),
+  "linked_closed_revenue": zod.union([zod.object({
+  "amount": zod.number(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP'])
+}).describe('A single already-converted amount in the requested display currency -- never a naive sum of mixed-currency deal_value rows. See services\/fx.ts (the same USD<->EUR\/GBP contract kpis\/exports\/ai-channel-brief already use).'),zod.null()]).describe('Sum of deal_value (real, not credit_value) for linked opportunities with status=won, visible to the caller only, converted to the requested display currency. closed_at is never read or altered here -- it stays the opportunity\'s own historical truth. Null when there is nothing to sum.')
 })
 
 

@@ -141,6 +141,11 @@ router.get("/opportunities", requireAuth, async (req, res): Promise<void> => {
   if (scopedTerritory.territoryId) filters.push(eq(partnerOpportunitiesTable.territoryId, scopedTerritory.territoryId));
   if (parsedQuery.data.status) filters.push(eq(partnerOpportunitiesTable.status, parsedQuery.data.status));
   if (parsedQuery.data.attribution_type) filters.push(eq(partnerOpportunitiesTable.attributionType, parsedQuery.data.attribution_type));
+  // Additive Phase 6 filter for the Marketing Activities opportunity-link
+  // picker (scope choices to the activity's selected partner). Applied on
+  // top of, never in place of, the existing territory/assignment scoping
+  // below -- a PAM filtering by company_id still only ever sees their own.
+  if (parsedQuery.data.company_id) filters.push(eq(partnerOpportunitiesTable.companyId, parsedQuery.data.company_id));
   if (!isGlobalUser(actingUser)) filters.push(eq(partnerOpportunitiesTable.assignedUserId, actingUser.id));
 
   const rows = filters.length

@@ -5,6 +5,7 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { CampaignMoneyAmount } from './campaignMoneyAmount';
 import type { CampaignStatus } from './campaignStatus';
 import type { CampaignType } from './campaignType';
 
@@ -15,7 +16,10 @@ export interface Campaign {
   territory: string;
   owner_user_id: string;
   owner_name: string;
-  /** @nullable */
+  /**
+     * Nullable at the schema level for backward compatibility with pre-Phase-6 rows. Required by application validation (not by this schema) when creating a new activity.
+     * @nullable
+     */
   partner_company_id?: string | null;
   /** @nullable */
   partner_company_name?: string | null;
@@ -29,4 +33,12 @@ export interface Campaign {
   /** @nullable */
   notes?: string | null;
   created_at: string;
+  /** IDs of opportunities linked to this activity that the caller is authorized to see. A PAM never sees another PAM's opportunity IDs here, even if a Head/Admin created the link. */
+  linked_opportunity_ids: string[];
+  /** Count of linked_opportunity_ids -- i.e. only opportunities the caller can see. Not a count of every row in the join table. */
+  linked_opportunity_count: number;
+  /** Sum of deal_value (real, not credit_value) for linked opportunities with status=open, visible to the caller only, converted to the requested display currency. Null when there is nothing to sum (zero visible open-linked opportunities) -- never a fabricated 0 that looks like a real zero-pipeline activity. */
+  linked_open_pipeline: CampaignMoneyAmount | null;
+  /** Sum of deal_value (real, not credit_value) for linked opportunities with status=won, visible to the caller only, converted to the requested display currency. closed_at is never read or altered here -- it stays the opportunity's own historical truth. Null when there is nothing to sum. */
+  linked_closed_revenue: CampaignMoneyAmount | null;
 }

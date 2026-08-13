@@ -6,14 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CampaignInputStatus } from './campaignInputStatus';
-import type { CampaignInputType } from './campaignInputType';
+import type { CampaignType } from './campaignType';
 
 export interface CampaignInput {
   name: string;
-  type: CampaignInputType;
+  type: CampaignType;
   territory: string;
   owner_user_id: string;
-  /** @nullable */
+  /**
+     * Nullable in the schema for backward compatibility, but application validation requires a non-null value when creating a new activity.
+     * @nullable
+     */
   partner_company_id?: string | null;
   /** @nullable */
   activity_date?: string | null;
@@ -22,4 +25,9 @@ export interface CampaignInput {
   hubspot_link?: string | null;
   /** @nullable */
   notes?: string | null;
+  /**
+     * Optional zero-to-many opportunities to link at creation time. Each must belong to partner_company_id and be one the caller is authorized to access.
+     * @nullable
+     */
+  opportunity_ids?: string[] | null;
 }

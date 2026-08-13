@@ -58,6 +58,7 @@ import type {
   HelpNeededInput,
   HubspotPushResult,
   KpiDetail,
+  ListCampaignsParams,
   ListChannelRadarSignalsParams,
   ListManualMetricValuesParams,
   ListMetricTargetsParams,
@@ -112,6 +113,7 @@ import type {
   SearchCompaniesParams,
   SearchParams,
   SearchResult,
+  SetCampaignOpportunitiesInput,
   TeamTargetRow,
   Territory,
   TerritoryEditInput,
@@ -5869,20 +5871,27 @@ export const useRegenerateAiChannelBrief = <TError = ErrorType<void>,
       return useMutation(getRegenerateAiChannelBriefMutationOptions(options));
     }
 
-export const getListCampaignsUrl = () => {
+export const getListCampaignsUrl = (params?: ListCampaignsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/campaigns`
+  return stringifiedParams.length > 0 ? `/api/campaigns?${stringifiedParams}` : `/api/campaigns`
 }
 
 /**
- * @summary List campaign lists
+ * @summary List marketing activities (campaigns). A PAM sees only activities they own; Head of Channels/admin see all, and may filter to a specific owner (e.g. drilling into one PAM's workspace).
  */
-export const listCampaigns = async ( options?: Parameters<typeof customFetch>[1]): Promise<Campaign[]> => {
+export const listCampaigns = async (params?: ListCampaignsParams, options?: Parameters<typeof customFetch>[1]): Promise<Campaign[]> => {
 
-  return customFetch<Campaign[]>(getListCampaignsUrl(),
+  return customFetch<Campaign[]>(getListCampaignsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -5895,23 +5904,23 @@ export const listCampaigns = async ( options?: Parameters<typeof customFetch>[1]
 
 
 
-export const getListCampaignsQueryKey = () => {
+export const getListCampaignsQueryKey = (params?: ListCampaignsParams,) => {
     return [
-    `/api/campaigns`
+    `/api/campaigns`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListCampaignsQueryOptions = <TData = Awaited<ReturnType<typeof listCampaigns>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCampaigns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListCampaignsQueryOptions = <TData = Awaited<ReturnType<typeof listCampaigns>>, TError = ErrorType<void>>(params?: ListCampaignsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCampaigns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListCampaignsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListCampaignsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCampaigns>>> = ({ signal }) => listCampaigns({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCampaigns>>> = ({ signal }) => listCampaigns(params, { signal, ...requestOptions });
 
 
 
@@ -5921,19 +5930,19 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type ListCampaignsQueryResult = NonNullable<Awaited<ReturnType<typeof listCampaigns>>>
-export type ListCampaignsQueryError = ErrorType<unknown>
+export type ListCampaignsQueryError = ErrorType<void>
 
 
 /**
- * @summary List campaign lists
+ * @summary List marketing activities (campaigns). A PAM sees only activities they own; Head of Channels/admin see all, and may filter to a specific owner (e.g. drilling into one PAM's workspace).
  */
 
-export function useListCampaigns<TData = Awaited<ReturnType<typeof listCampaigns>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCampaigns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useListCampaigns<TData = Awaited<ReturnType<typeof listCampaigns>>, TError = ErrorType<void>>(
+ params?: ListCampaignsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCampaigns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListCampaignsQueryOptions(options)
+  const queryOptions = getListCampaignsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -5955,7 +5964,7 @@ export const getCreateCampaignUrl = () => {
 }
 
 /**
- * @summary Create a new campaign list
+ * @summary Create a new marketing activity. partner_company_id is required by application validation for new activities (kept nullable in the schema only so existing legacy null-partner rows remain representable). opportunity_ids, if given, must belong to the same partner and must each be an opportunity the caller is authorized to access.
  */
 export const createCampaign = async (campaignInput: CampaignInput, options?: Parameters<typeof customFetch>[1]): Promise<Campaign> => {
 
@@ -5972,7 +5981,7 @@ export const createCampaign = async (campaignInput: CampaignInput, options?: Par
 
 
 
-export const getCreateCampaignMutationOptions = <TError = ErrorType<unknown>,
+export const getCreateCampaignMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCampaign>>, TError,{data: BodyType<CampaignInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createCampaign>>, TError,{data: BodyType<CampaignInput>}, TContext> => {
 
@@ -6001,12 +6010,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateCampaignMutationResult = NonNullable<Awaited<ReturnType<typeof createCampaign>>>
     export type CreateCampaignMutationBody = BodyType<CampaignInput>
-    export type CreateCampaignMutationError = ErrorType<unknown>
+    export type CreateCampaignMutationError = ErrorType<void>
 
     /**
- * @summary Create a new campaign list
+ * @summary Create a new marketing activity. partner_company_id is required by application validation for new activities (kept nullable in the schema only so existing legacy null-partner rows remain representable). opportunity_ids, if given, must belong to the same partner and must each be an opportunity the caller is authorized to access.
  */
-export const useCreateCampaign = <TError = ErrorType<unknown>,
+export const useCreateCampaign = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCampaign>>, TError,{data: BodyType<CampaignInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createCampaign>>,
@@ -6026,7 +6035,7 @@ export const getUpdateCampaignUrl = (id: string,) => {
 }
 
 /**
- * @summary Edit a campaign
+ * @summary Edit a marketing activity. Legacy activities with no partner remain fully editable. Changing partner_company_id while opportunities are linked is rejected unless the new partner still matches every linked opportunity's company.
  */
 export const updateCampaign = async (id: string,
     campaignEditInput: CampaignEditInput, options?: Parameters<typeof customFetch>[1]): Promise<Campaign> => {
@@ -6076,7 +6085,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateCampaignMutationError = ErrorType<void>
 
     /**
- * @summary Edit a campaign
+ * @summary Edit a marketing activity. Legacy activities with no partner remain fully editable. Changing partner_company_id while opportunities are linked is rejected unless the new partner still matches every linked opportunity's company.
  */
 export const useUpdateCampaign = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCampaign>>, TError,{id: string;data: BodyType<CampaignEditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -6158,6 +6167,78 @@ export const useDeleteCampaign = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getDeleteCampaignMutationOptions(options));
+    }
+
+export const getSetCampaignOpportunitiesUrl = (id: string,) => {
+
+
+
+
+  return `/api/campaigns/${id}/opportunities`
+}
+
+/**
+ * @summary Replace the full set of opportunities linked to a marketing activity (zero-to-many). Never mutates any field on the linked opportunities themselves (attribution_type, deal_value, closed_at, credit_value, credit_date all stay untouched) -- this only writes rows in the campaign_opportunities join table. Every requested opportunity must belong to the activity's partner_company_id and must be one the caller is authorized to access; a PAM can never link an opportunity assigned to another PAM.
+ */
+export const setCampaignOpportunities = async (id: string,
+    setCampaignOpportunitiesInput: SetCampaignOpportunitiesInput, options?: Parameters<typeof customFetch>[1]): Promise<Campaign> => {
+
+  return customFetch<Campaign>(getSetCampaignOpportunitiesUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setCampaignOpportunitiesInput)
+  }
+);}
+
+
+
+
+
+export const getSetCampaignOpportunitiesMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setCampaignOpportunities>>, TError,{id: string;data: BodyType<SetCampaignOpportunitiesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setCampaignOpportunities>>, TError,{id: string;data: BodyType<SetCampaignOpportunitiesInput>}, TContext> => {
+
+const mutationKey = ['setCampaignOpportunities'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setCampaignOpportunities>>, {id: string;data: BodyType<SetCampaignOpportunitiesInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  setCampaignOpportunities(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetCampaignOpportunitiesMutationResult = NonNullable<Awaited<ReturnType<typeof setCampaignOpportunities>>>
+    export type SetCampaignOpportunitiesMutationBody = BodyType<SetCampaignOpportunitiesInput>
+    export type SetCampaignOpportunitiesMutationError = ErrorType<void>
+
+    /**
+ * @summary Replace the full set of opportunities linked to a marketing activity (zero-to-many). Never mutates any field on the linked opportunities themselves (attribution_type, deal_value, closed_at, credit_value, credit_date all stay untouched) -- this only writes rows in the campaign_opportunities join table. Every requested opportunity must belong to the activity's partner_company_id and must be one the caller is authorized to access; a PAM can never link an opportunity assigned to another PAM.
+ */
+export const useSetCampaignOpportunities = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setCampaignOpportunities>>, TError,{id: string;data: BodyType<SetCampaignOpportunitiesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setCampaignOpportunities>>,
+        TError,
+        {id: string;data: BodyType<SetCampaignOpportunitiesInput>},
+        TContext
+      > => {
+      return useMutation(getSetCampaignOpportunitiesMutationOptions(options));
     }
 
 export const getUpdateUserUrl = (id: string,) => {

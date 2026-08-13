@@ -1704,6 +1704,11 @@ paths:
           schema:
             type: ["string", "null"]
             description: Head/Admin only (id or name) -- ignored for a PAM caller, who is always forced to their own territory.
+        - name: company_id
+          in: query
+          schema:
+            type: ["string", "null"]
+            description: Filter to opportunities for a single partner company. Used by the Marketing Activities opportunity-link picker to scope choices to the activity's selected partner. Applied on top of (never widening) the existing territory/assignment scoping.
       responses:
         "200":
           description: List of opportunities
@@ -1881,7 +1886,34 @@ paths:
     get:
       operationId: listCampaigns
       tags: [campaigns]
-      summary: List campaign lists
+      summary: List marketing activities (campaigns). A PAM sees only activities they own; Head of Channels/admin see all, and may filter to a specific owner (e.g. drilling into one PAM's workspace).
+      parameters:
+        - name: partner_company_id
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: type
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum: [joint_campaign, event, webinar, training_enablement, co_selling, executive_roundtable, other, null]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum: [planned, live, completed, null]
+        - name: owner_user_id
+          in: query
+          schema:
+            type: ["string", "null"]
+            description: Head/Admin only -- scopes the list to one owner (e.g. a PAM workspace drill-down). Ignored for a PAM caller, who is always forced to their own activities regardless of this value.
+        - name: currency
+          in: query
+          schema:
+            type: string
+            enum: [USD, EUR, GBP]
+            default: USD
+            description: Display currency for linked_open_pipeline/linked_closed_revenue. Each linked opportunity's real deal_value is converted through the existing FX contract (services/fx.ts) -- never summed across currencies without conversion.
       responses:
         "200":
           description: List of campaigns
@@ -1891,10 +1923,14 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Campaign"
+        "400":
+          description: Invalid currency
+        "503":
+          description: FX rate unavailable for the requested currency
     post:
       operationId: createCampaign
       tags: [campaigns]
-      summary: Create a new campaign list
+      summary: Create a new marketing activity. partner_company_id is required by application validation for new activities (kept nullable in the schema only so existing legacy null-partner rows remain representable). opportunity_ids, if given, must belong to the same partner and must each be an opportunity the caller is authorized to access.
       requestBody:
         required: true
         content:
@@ -1908,12 +1944,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Campaign"
+        "400":
+          description: Missing partner_company_id, or an opportunity_id that does not belong to the selected partner
+        "403":
+          description: Caller is not authorized to link one of the requested opportunities, or attempted to set an owner other than themselves
 
   /campaigns/{id}:
     patch:
       operationId: updateCampaign
       tags: [campaigns]
-      summary: Edit a campaign
+      summary: Edit a marketing activity. Legacy activities with no partner remain fully editable. Changing partner_company_id while opportunities are linked is rejected unless the new partner still matches every linked opportunity's company.
       parameters:
         - name: id
           in: path
@@ -1933,6 +1973,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Campaign"
+        "400":
+          description: Invalid input, e.g. a partner change that no longer matches its linked opportunities
+        "403":
+          description: Caller does not own this activity, or is not authorized to link one of the requested opportunities
         "404":
           description: Not found
     delete:
@@ -1952,6 +1996,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteResult"
+        "404":
+          description: Not found
+
+  /campaigns/{id}/opportunities:
+    put:
+      operationId: setCampaignOpportunities
+      tags: [campaigns]
+      summary: Replace the full set of opportunities linked to a marketing activity (zero-to-many). Never mutates any field on the linked opportunities themselves (attribution_type, deal_value, closed_at, credit_value, credit_date all stay untouched) -- this only writes rows in the campaign_opportunities join table. Every requested opportunity must belong to the activity's partner_company_id and must be one the caller is authorized to access; a PAM can never link an opportunity assigned to another PAM.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetCampaignOpportunitiesInput"
+      responses:
+        "200":
+          description: Updated campaign, including the new linked-opportunity set and recomputed commercial impact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "400":
+          description: The activity has no partner, or one of the requested opportunities does not belong to its partner
+        "403":
+          description: Caller does not own this activity, or is not authorized to link one of the requested opportunities
         "404":
           description: Not found
 
@@ -4409,17 +4484,32 @@ components:
           enum: [USD, EUR, GBP]
           default: USD
 
+    CampaignType:
+      type: string
+      enum: [joint_campaign, event, webinar, training_enablement, co_selling, executive_roundtable, other]
+      description: Training & Enablement is a single type, not two. The first three values predate Phase 6 and are the only ones existing KPI/PPTX/Channel Chief consumers currently name explicitly.
+
+    CampaignMoneyAmount:
+      type: object
+      required: [amount, currency]
+      description: A single already-converted amount in the requested display currency -- never a naive sum of mixed-currency deal_value rows. See services/fx.ts (the same USD<->EUR/GBP contract kpis/exports/ai-channel-brief already use).
+      properties:
+        amount:
+          type: number
+        currency:
+          type: string
+          enum: [USD, EUR, GBP]
+
     Campaign:
       type: object
-      required: [id, name, type, territory, owner_user_id, owner_name, status, mqls, partner_referrals, created_at]
+      required: [id, name, type, territory, owner_user_id, owner_name, status, mqls, partner_referrals, created_at, linked_opportunity_ids, linked_opportunity_count, linked_open_pipeline, linked_closed_revenue]
       properties:
         id:
           type: string
         name:
           type: string
         type:
-          type: string
-          enum: [joint_campaign, event, webinar]
+          $ref: "#/components/schemas/CampaignType"
         territory:
           type: string
         owner_user_id:
@@ -4428,6 +4518,7 @@ components:
           type: string
         partner_company_id:
           type: ["string", "null"]
+          description: Nullable at the schema level for backward compatibility with pre-Phase-6 rows. Required by application validation (not by this schema) when creating a new activity.
         partner_company_name:
           type: ["string", "null"]
         activity_date:
@@ -4445,6 +4536,24 @@ components:
           type: ["string", "null"]
         created_at:
           type: string
+        linked_opportunity_ids:
+          type: array
+          items:
+            type: string
+          description: IDs of opportunities linked to this activity that the caller is authorized to see. A PAM never sees another PAM's opportunity IDs here, even if a Head/Admin created the link.
+        linked_opportunity_count:
+          type: integer
+          description: Count of linked_opportunity_ids -- i.e. only opportunities the caller can see. Not a count of every row in the join table.
+        linked_open_pipeline:
+          oneOf:
+            - $ref: "#/components/schemas/CampaignMoneyAmount"
+            - type: "null"
+          description: Sum of deal_value (real, not credit_value) for linked opportunities with status=open, visible to the caller only, converted to the requested display currency. Null when there is nothing to sum (zero visible open-linked opportunities) -- never a fabricated 0 that looks like a real zero-pipeline activity.
+        linked_closed_revenue:
+          oneOf:
+            - $ref: "#/components/schemas/CampaignMoneyAmount"
+            - type: "null"
+          description: Sum of deal_value (real, not credit_value) for linked opportunities with status=won, visible to the caller only, converted to the requested display currency. closed_at is never read or altered here -- it stays the opportunity's own historical truth. Null when there is nothing to sum.
 
     CampaignInput:
       type: object
@@ -4453,14 +4562,14 @@ components:
         name:
           type: string
         type:
-          type: string
-          enum: [joint_campaign, event, webinar]
+          $ref: "#/components/schemas/CampaignType"
         territory:
           type: string
         owner_user_id:
           type: string
         partner_company_id:
           type: ["string", "null"]
+          description: Nullable in the schema for backward compatibility, but application validation requires a non-null value when creating a new activity.
         activity_date:
           type: ["string", "null"]
         status:
@@ -4470,6 +4579,11 @@ components:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
+        opportunity_ids:
+          type: ["array", "null"]
+          items:
+            type: string
+          description: Optional zero-to-many opportunities to link at creation time. Each must belong to partner_company_id and be one the caller is authorized to access.
 
     CampaignEditInput:
       type: object
@@ -4477,8 +4591,7 @@ components:
         name:
           type: string
         type:
-          type: string
-          enum: [joint_campaign, event, webinar]
+          $ref: "#/components/schemas/CampaignType"
         territory:
           type: string
         owner_user_id:
@@ -4498,6 +4611,21 @@ components:
           type: number
         notes:
           type: ["string", "null"]
+        opportunity_ids:
+          type: ["array", "null"]
+          items:
+            type: string
+          description: When present, replaces the full set of linked opportunities (same constraints as on create). Omit this field entirely to leave existing links untouched.
+
+    SetCampaignOpportunitiesInput:
+      type: object
+      required: [opportunity_ids]
+      properties:
+        opportunity_ids:
+          type: array
+          items:
+            type: string
+          description: The complete desired set of linked opportunity IDs (replaces, does not append). An empty array unlinks everything.
 
     OpportunityAttributionType:
       type: string

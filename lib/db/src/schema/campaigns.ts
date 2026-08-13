@@ -4,13 +4,28 @@ import { z } from "zod/v4";
 import { usersTable } from "./users";
 import { companiesTable } from "./companies";
 
-// "Activities" in the UI (Joint Campaigns / Events / Webinars) — a lightweight
+// "Activities" in the UI (Joint Campaigns / Events / Webinars / Training &
+// Enablement / Co-selling / Executive Roundtable / Other) — a lightweight
 // log, not marketing automation. Table name kept as `campaigns` to avoid a
-// disruptive rename of the underlying entity.
+// disruptive rename of the underlying entity. Phase 6 added the last four
+// values plus optional opportunity linkage (see campaignOpportunitiesTable
+// below) -- the original three values and every existing row/consumer
+// (kpiService.computeActivities, channelChiefContextService) keep working
+// unchanged.
+export const CAMPAIGN_TYPES = [
+  "joint_campaign",
+  "event",
+  "webinar",
+  "training_enablement",
+  "co_selling",
+  "executive_roundtable",
+  "other",
+] as const;
+
 export const campaignsTable = pgTable("campaigns", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
-  type: text("type", { enum: ["joint_campaign", "event", "webinar"] }).notNull().default("joint_campaign"),
+  type: text("type", { enum: CAMPAIGN_TYPES }).notNull().default("joint_campaign"),
   territory: text("territory").notNull(),
   ownerUserId: uuid("owner_user_id").notNull().references(() => usersTable.id),
   partnerCompanyId: uuid("partner_company_id").references(() => companiesTable.id, { onDelete: "set null" }),

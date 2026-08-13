@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Training & Enablement is a single type, not two. The first three values predate Phase 6 and are the only ones existing KPI/PPTX/Channel Chief consumers currently name explicitly.
+ */
 export type CampaignType = typeof CampaignType[keyof typeof CampaignType];
 
 
@@ -13,4 +16,8 @@ export const CampaignType = {
   joint_campaign: 'joint_campaign',
   event: 'event',
   webinar: 'webinar',
+  training_enablement: 'training_enablement',
+  co_selling: 'co_selling',
+  executive_roundtable: 'executive_roundtable',
+  other: 'other',
 } as const;

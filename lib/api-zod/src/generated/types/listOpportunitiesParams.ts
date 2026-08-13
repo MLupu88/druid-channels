@@ -22,4 +22,9 @@ attribution_type?: ListOpportunitiesAttributionType;
  * @nullable
  */
 territory?: string | null;
+/**
+ * Filter to opportunities for a single partner company. Used by the Marketing Activities opportunity-link picker to scope choices to the activity's selected partner. Applied on top of (never widening) the existing territory/assignment scoping.
+ * @nullable
+ */
+company_id?: string | null;
 };
