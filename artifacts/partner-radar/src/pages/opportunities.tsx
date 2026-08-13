@@ -9,7 +9,14 @@ import {
   useSearchCompanies,
   getSearchCompaniesQueryKey,
 } from '@workspace/api-client-react';
-import type { Opportunity, OpportunityInput, OpportunityEditInput } from '@workspace/api-client-react';
+import type {
+  Opportunity,
+  OpportunityInput,
+  OpportunityEditInput,
+  OpportunityStatus,
+  OpportunityAttributionType,
+  ListOpportunitiesParams,
+} from '@workspace/api-client-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -72,8 +79,8 @@ export default function Opportunities() {
   // their own records, so no per-row scope check is needed beyond this.
   const canMutate = !isGlobalUser;
 
-  const [status, setStatus] = useState<string>('all');
-  const [attributionType, setAttributionType] = useState<string>('all');
+  const [status, setStatus] = useState<'all' | OpportunityStatus>('all');
+  const [attributionType, setAttributionType] = useState<'all' | OpportunityAttributionType>('all');
   const [territoryFilter, setTerritoryFilter] = useState<string>('all');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Opportunity | null>(null);
@@ -85,13 +92,13 @@ export default function Opportunities() {
   const deepLinkCompanyId = new URLSearchParams(locationSearch).get('company');
   const [companyFilter, setCompanyFilter] = useState<string | null>(deepLinkCompanyId);
 
-  const listParams = {
+  const listParams: ListOpportunitiesParams = {
     ...(status !== 'all' ? { status } : {}),
     ...(attributionType !== 'all' ? { attribution_type: attributionType } : {}),
     ...(isGlobalUser && territoryFilter !== 'all' ? { territory: territoryFilter } : {}),
   };
-  const { data: opportunities, isLoading, isError } = useListOpportunities(listParams as any, {
-    query: { enabled: !pamHasNoTerritory },
+  const { data: opportunities, isLoading, isError } = useListOpportunities(listParams, {
+    query: { enabled: !pamHasNoTerritory, queryKey: getListOpportunitiesQueryKey(listParams) },
   });
 
   const rows = useMemo(() => {
@@ -135,7 +142,7 @@ export default function Opportunities() {
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <Select value={status} onValueChange={setStatus}>
+        <Select value={status} onValueChange={(v) => setStatus(v as 'all' | OpportunityStatus)}>
           <SelectTrigger className="w-[140px] h-8 bg-background border-border/60" data-testid="select-status-filter">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -144,7 +151,7 @@ export default function Opportunities() {
             {Object.entries(STATUS_LABELS).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={attributionType} onValueChange={setAttributionType}>
+        <Select value={attributionType} onValueChange={(v) => setAttributionType(v as 'all' | OpportunityAttributionType)}>
           <SelectTrigger className="w-[180px] h-8 bg-background border-border/60" data-testid="select-attribution-filter">
             <SelectValue placeholder="Attribution" />
           </SelectTrigger>
@@ -214,7 +221,11 @@ export default function Opportunities() {
                   </TableRow>
                 ))
               ) : (
-                <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">No opportunities yet. Add the partner-sourced or partner-influenced deals you're actively working.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                  {canMutate
+                    ? "No opportunities yet. Add the partner-sourced or partner-influenced deals you're actively working."
+                    : 'No opportunities yet. Partner-sourced and partner-influenced deals created by PAMs will appear here.'}
+                </TableCell></TableRow>
               )}
             </TableBody>
           </Table>
@@ -367,7 +378,7 @@ function OpportunityFormDialog({
 
           <div>
             <Label className="text-xs mb-1.5 block">Attribution</Label>
-            <Select value={attributionType} onValueChange={setAttributionType}>
+            <Select value={attributionType} onValueChange={(v) => setAttributionType(v as OpportunityAttributionType)}>
               <SelectTrigger data-testid="select-attribution-type"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {Object.entries(ATTRIBUTION_LABELS).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
@@ -404,7 +415,7 @@ function OpportunityFormDialog({
 
           <div>
             <Label className="text-xs mb-1.5 block">Status</Label>
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={status} onValueChange={(v) => setStatus(v as OpportunityStatus)}>
               <SelectTrigger data-testid="select-opportunity-status"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {Object.entries(STATUS_LABELS).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}

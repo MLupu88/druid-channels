@@ -27,6 +27,23 @@ test("opportunities.tsx defines OpportunityFormDialog as a distinct section of t
 const listSection = source.slice(0, dialogStart);
 const dialogSection = source.slice(dialogStart);
 
+// This file's `//`-comments legitimately discuss the *absence* of
+// reassignment/PAM-picker/territory-picker controls (explaining a design
+// decision, e.g. "no complex reassignment UI"), which makes a loose
+// word-match over the raw source brittle -- it flags prose right alongside
+// actual controls. Assertions that check "this concept must never appear"
+// run against the comment-stripped code instead, so they only fire on a
+// real hook call, JSX element, or identifier -- never on a comment
+// explaining why one doesn't exist. Precise code-shape assertions
+// elsewhere in this file (e.g. matching "createMutation.mutate(") already
+// run against the untouched source, since those exact strings can't appear
+// in a comment by coincidence.
+function stripLineComments(code: string): string {
+  return code.replace(/\/\/.*$/gm, "");
+}
+const sourceCode = stripLineComments(source);
+const dialogSectionCode = stripLineComments(dialogSection);
+
 test("PAM/Head mutation gate is a single boolean derived from role, never a per-record check", () => {
   assert.ok(source.includes("const canMutate = !isGlobalUser"), "expected canMutate to be derived directly from !isGlobalUser");
 });
@@ -43,15 +60,15 @@ test("row click-to-edit and the form dialog itself are both gated behind canMuta
   assert.ok(listSection.includes("{canMutate && formOpen && ("), "the create/edit dialog must only mount when canMutate is true");
 });
 
-test("the list view never references a PAM roster or reassignment hook (Head is view-only in this slice)", () => {
-  assert.ok(!source.includes("useListUsers"), "opportunities.tsx must not fetch the PAM roster -- no reassignment UI in this slice");
-  assert.ok(!/reassign/i.test(source), "opportunities.tsx must not implement opportunity reassignment");
+test("no reassignment hook, handler, or control is ever wired into actual code (Head is view-only in this slice)", () => {
+  assert.ok(!sourceCode.includes("useListUsers"), "opportunities.tsx must not fetch the PAM roster -- no reassignment UI in this slice");
+  assert.ok(!/reassign/i.test(sourceCode), "opportunities.tsx must not call, define, or render any reassignment hook/handler/control in code (comments may still explain why one doesn't exist)");
 });
 
-test("the create/edit dialog never renders a territory or assignee picker (PAM scope comes from props, not user input)", () => {
-  assert.ok(!dialogSection.includes("Territory"), "OpportunityFormDialog must not expose a territory picker");
-  assert.ok(!dialogSection.includes("Assigned"), "OpportunityFormDialog must not expose an assignee picker");
-  assert.ok(!dialogSection.includes("PAM"), "OpportunityFormDialog must not expose a PAM/user picker");
+test("the create/edit dialog never renders a territory or assignee picker in actual JSX/code (PAM scope comes from props, not user input)", () => {
+  assert.ok(!dialogSectionCode.includes("Territory"), "OpportunityFormDialog must not expose a territory picker");
+  assert.ok(!dialogSectionCode.includes("Assigned"), "OpportunityFormDialog must not expose an assignee picker");
+  assert.ok(!dialogSectionCode.includes("PAM"), "OpportunityFormDialog must not expose a PAM/user picker (comments may still reference PAMs to explain design intent)");
 });
 
 test("territory_id/assigned_user_id are only ever taken from props on create, never from dialog-local state", () => {
@@ -94,10 +111,24 @@ test("opportunity values render in their own native currency, never a fixed or c
   assert.ok(!/convertMoney|usd_to_currency_rate/i.test(source), "opportunities.tsx must never convert deal_value -- that is Overview's job, not this ledger's");
 });
 
-test("list view handles loading, error, and the exact specified empty state", () => {
+test("list view handles loading and error states", () => {
   assert.ok(listSection.includes("isLoading ?"));
   assert.ok(listSection.includes("isError ?"));
-  assert.ok(listSection.includes("No opportunities yet. Add the partner-sourced or partner-influenced deals you're actively working."));
+});
+
+test("the empty state is role-aware: PAM sees an add-oriented message, Head/Admin sees a read-only message", () => {
+  const emptyStateIndex = listSection.indexOf("No opportunities yet.");
+  assert.notEqual(emptyStateIndex, -1, "expected an empty-state message");
+  const emptyStateBlock = listSection.slice(Math.max(0, emptyStateIndex - 150), emptyStateIndex + 300);
+  assert.ok(emptyStateBlock.includes("canMutate"), "the empty-state text must branch on canMutate, not render one fixed string for both roles");
+  assert.ok(
+    emptyStateBlock.includes("No opportunities yet. Add the partner-sourced or partner-influenced deals you're actively working."),
+    "PAM (canMutate) empty state must keep the exact specified add-oriented copy",
+  );
+  assert.ok(
+    emptyStateBlock.includes('No opportunities yet. Partner-sourced and partner-influenced deals created by PAMs will appear here.'),
+    "Head/Admin (view-only) empty state must not tell a read-only user to add an opportunity",
+  );
 });
 
 test("a PAM with no canonical territory is blocked before any list request, matching Portfolio's guard", () => {
