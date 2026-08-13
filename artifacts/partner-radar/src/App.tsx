@@ -14,6 +14,7 @@ import Recruitment from '@/pages/recruitment';
 import ChannelRadar from '@/pages/channel-radar';
 import Portfolio from '@/pages/portfolio';
 import PortfolioImport from '@/pages/portfolio-import';
+import Opportunities from '@/pages/opportunities';
 import TeamTargets from '@/pages/team-targets';
 import Pams from '@/pages/pams';
 import MyWorkspace from '@/pages/pam-workspace';
@@ -57,6 +58,7 @@ function AuthenticatedApp() {
         </Route>
         <Route path="/portfolio" component={Portfolio} />
         <Route path="/portfolio/import" component={PortfolioImport} />
+        <Route path="/opportunities" component={Opportunities} />
         <Route path="/pams">
           <Guarded allow={isGlobalUser}><Pams /></Guarded>
         </Route>

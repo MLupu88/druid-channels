@@ -323,6 +323,10 @@ export function PortfolioView({ territoryId, pamUserId }: { territoryId?: string
                     )}
                   </div>
 
+                  <Link href={`/opportunities?company=${detail.company.id}`} className="text-xs text-primary hover:underline inline-block">
+                    View opportunities for {detail.company.name} →
+                  </Link>
+
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-md border border-border/60 p-3">
                       <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Territory</p>

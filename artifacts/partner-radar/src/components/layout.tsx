@@ -28,7 +28,8 @@ import {
   UserCircle,
   Building2,
   Target,
-  ListChecks
+  ListChecks,
+  DollarSign
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -62,6 +63,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/new-partners', label: 'Discovery', icon: Radio },
         { href: '/recruitment', label: 'Recruitment', icon: Handshake },
         { href: '/portfolio', label: 'Portfolio', icon: Building2 },
+        { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
         { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
         { href: '/team-targets', label: 'Team Targets', icon: Target },
         { href: '/pams', label: 'PAMs', icon: Users },
@@ -77,6 +79,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/new-partners', label: 'My Prospects', icon: ListChecks },
         { href: '/recruitment', label: 'Recruitment', icon: Handshake },
         { href: '/portfolio', label: 'Portfolio', icon: Building2 },
+        { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
         { href: '/my-workspace', label: 'My workspace', icon: Briefcase },
         { href: '/activities', label: 'Marketing Activities', icon: ListOrdered },
       ];
