@@ -56,6 +56,8 @@ tags:
     description: Stage 6.5 Territory Potential -- deterministic, count-based Discovery capacity/saturation summary per territory. Context for target setting, never target automation.
   - name: opportunities
     description: Phase 5A -- the commercial deal ledger (partner_opportunities). Backs pipeline, closed revenue, and opportunities-created reporting, and the credit-aware annual target attainment cascade.
+  - name: channel-chief
+    description: Machine-to-machine, read-only leadership snapshot for the Aniri/Channel Chief agent. Service-token authenticated only -- never a human session, never direct DB access, never an LLM call.
 
 paths:
   /auth/login:
@@ -1325,6 +1327,29 @@ paths:
                 $ref: "#/components/schemas/KpiDetail"
         "404":
           description: Unknown metric_key
+
+  /channel-chief/snapshot:
+    get:
+      operationId: getChannelChiefSnapshot
+      tags: [channel-chief]
+      summary: Bounded, leadership-level factual snapshot for the Aniri/Channel Chief agent to interpret. Global/company-wide scope only -- never a PAM-scoped view. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN (see channelChiefAuth middleware), a separate service-token auth path from human session login. Reuses the same canonical KPI/recruitment/portfolio/discovery computations as the rest of the app; never a second implementation of any business rule.
+      parameters:
+        - name: period
+          in: query
+          description: Composite period key, e.g. "2026-q3" or "2026-ytd". Defaults to the current quarter when omitted.
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Bounded leadership snapshot (fixed-size top-N lists, never a full-table dump)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelChiefSnapshot"
+        "400":
+          description: Invalid period
+        "401":
+          description: Missing or invalid Authorization Bearer service token, or the Channel Chief API is not configured
 
   /connections:
     get:
@@ -4881,3 +4906,181 @@ components:
             type: number
         week_over_week:
           type: number
+
+    ChannelChiefPerformance:
+      type: object
+      required: [partner_development, weekly_commercial, weekly_marketing]
+      description: >-
+        The exact same canonical KPI computation the Head of Channels view
+        uses (kpiService.buildHeadOfChannelsData), at Global/company-wide
+        scope. Targets are always null here: metric_targets are configured
+        per PAM/territory only, never company-wide -- see
+        data_quality_notes for the explicit note.
+      properties:
+        partner_development:
+          type: array
+          items:
+            $ref: "#/components/schemas/KpiRow"
+        weekly_commercial:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyKpiRow"
+        weekly_marketing:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketingKpiRow"
+
+    ChannelChiefRecruitmentItem:
+      type: object
+      required: [recruitment_id, company_name, territory_name, stage, days_in_stage, is_stalled, next_step, follow_up_date]
+      properties:
+        recruitment_id:
+          type: string
+        company_name:
+          type: string
+        territory_name:
+          type: string
+        stage:
+          type: string
+        days_in_stage:
+          type: integer
+        is_stalled:
+          type: boolean
+        next_step:
+          type: ["string", "null"]
+        follow_up_date:
+          type: ["string", "null"]
+
+    ChannelChiefRecruitmentSummary:
+      type: object
+      required: [active_count, stalled_count, top_stalled]
+      properties:
+        active_count:
+          type: integer
+        stalled_count:
+          type: integer
+        top_stalled:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChannelChiefRecruitmentItem"
+          description: Bounded top-N, stalled-first then longest-in-stage first -- never a full-table dump.
+
+    ChannelChiefPortfolioItem:
+      type: object
+      required: [relationship_id, company_name, territory_name, status, last_interaction_at, next_action]
+      properties:
+        relationship_id:
+          type: string
+        company_name:
+          type: string
+        territory_name:
+          type: string
+        status:
+          type: string
+        last_interaction_at:
+          type: ["string", "null"]
+        next_action:
+          type: ["string", "null"]
+
+    ChannelChiefPortfolioSummary:
+      type: object
+      required: [active_partner_count, needs_attention_count, top_needs_attention]
+      properties:
+        active_partner_count:
+          type: integer
+        needs_attention_count:
+          type: integer
+        top_needs_attention:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChannelChiefPortfolioItem"
+          description: Bounded top-N, oldest/never-contacted first -- never a full-table dump.
+
+    ChannelChiefDiscoveryItem:
+      type: object
+      required: [company_name, territory_name, priority, status, why_it_fits]
+      properties:
+        company_name:
+          type: string
+        territory_name:
+          type: string
+        priority:
+          type: string
+          enum: [A, B]
+        status:
+          type: string
+        why_it_fits:
+          type: ["string", "null"]
+
+    ChannelChiefDiscoverySummary:
+      type: object
+      required: [total_prospect_count, available_prospect_count, accepted_prospect_count, top_priority_prospects]
+      properties:
+        total_prospect_count:
+          type: integer
+          description: All prospects ever persisted across every territory (persistence already implies passing the qualification bar).
+        available_prospect_count:
+          type: integer
+          description: Prospects still in status=new -- not yet decided either way.
+        accepted_prospect_count:
+          type: integer
+        top_priority_prospects:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChannelChiefDiscoveryItem"
+          description: Bounded top-N of new/accepted prospects, priority A first then newest -- never a full-table dump. Leadership scope, so unlike the PAM Copilot this is never filtered by assigned_user_id.
+
+    ChannelChiefActivityItem:
+      type: object
+      required: [name, type, status, territory, activity_date, mqls, partner_referrals]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        territory:
+          type: string
+        activity_date:
+          type: ["string", "null"]
+        mqls:
+          type: integer
+        partner_referrals:
+          type: integer
+
+    ChannelChiefActivitySummary:
+      type: object
+      required: [recent]
+      properties:
+        recent:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChannelChiefActivityItem"
+          description: Bounded most-recent-N activities across every territory -- never a full-table dump.
+
+    ChannelChiefSnapshot:
+      type: object
+      required: [period, period_key, generated_at, performance, recruitment, portfolio, discovery, activity, data_quality_notes]
+      properties:
+        period:
+          type: string
+        period_key:
+          type: string
+        generated_at:
+          type: string
+        performance:
+          $ref: "#/components/schemas/ChannelChiefPerformance"
+        recruitment:
+          $ref: "#/components/schemas/ChannelChiefRecruitmentSummary"
+        portfolio:
+          $ref: "#/components/schemas/ChannelChiefPortfolioSummary"
+        discovery:
+          $ref: "#/components/schemas/ChannelChiefDiscoverySummary"
+        activity:
+          $ref: "#/components/schemas/ChannelChiefActivitySummary"
+        data_quality_notes:
+          type: array
+          items:
+            type: string
+          description: Deterministic notes about missing/incomplete/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as "unknown".

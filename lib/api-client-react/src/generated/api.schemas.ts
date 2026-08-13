@@ -2515,6 +2515,109 @@ export interface ProspectStats {
   week_over_week: number;
 }
 
+/**
+ * The exact same canonical KPI computation the Head of Channels view uses (kpiService.buildHeadOfChannelsData), at Global/company-wide scope. Targets are always null here: metric_targets are configured per PAM/territory only, never company-wide -- see data_quality_notes for the explicit note.
+ */
+export interface ChannelChiefPerformance {
+  partner_development: KpiRow[];
+  weekly_commercial: WeeklyKpiRow[];
+  weekly_marketing: MarketingKpiRow[];
+}
+
+export interface ChannelChiefRecruitmentItem {
+  recruitment_id: string;
+  company_name: string;
+  territory_name: string;
+  stage: string;
+  days_in_stage: number;
+  is_stalled: boolean;
+  /** @nullable */
+  next_step: string | null;
+  /** @nullable */
+  follow_up_date: string | null;
+}
+
+export interface ChannelChiefRecruitmentSummary {
+  active_count: number;
+  stalled_count: number;
+  /** Bounded top-N, stalled-first then longest-in-stage first -- never a full-table dump. */
+  top_stalled: ChannelChiefRecruitmentItem[];
+}
+
+export interface ChannelChiefPortfolioItem {
+  relationship_id: string;
+  company_name: string;
+  territory_name: string;
+  status: string;
+  /** @nullable */
+  last_interaction_at: string | null;
+  /** @nullable */
+  next_action: string | null;
+}
+
+export interface ChannelChiefPortfolioSummary {
+  active_partner_count: number;
+  needs_attention_count: number;
+  /** Bounded top-N, oldest/never-contacted first -- never a full-table dump. */
+  top_needs_attention: ChannelChiefPortfolioItem[];
+}
+
+export type ChannelChiefDiscoveryItemPriority = typeof ChannelChiefDiscoveryItemPriority[keyof typeof ChannelChiefDiscoveryItemPriority];
+
+
+export const ChannelChiefDiscoveryItemPriority = {
+  A: 'A',
+  B: 'B',
+} as const;
+
+export interface ChannelChiefDiscoveryItem {
+  company_name: string;
+  territory_name: string;
+  priority: ChannelChiefDiscoveryItemPriority;
+  status: string;
+  /** @nullable */
+  why_it_fits: string | null;
+}
+
+export interface ChannelChiefDiscoverySummary {
+  /** All prospects ever persisted across every territory (persistence already implies passing the qualification bar). */
+  total_prospect_count: number;
+  /** Prospects still in status=new -- not yet decided either way. */
+  available_prospect_count: number;
+  accepted_prospect_count: number;
+  /** Bounded top-N of new/accepted prospects, priority A first then newest -- never a full-table dump. Leadership scope, so unlike the PAM Copilot this is never filtered by assigned_user_id. */
+  top_priority_prospects: ChannelChiefDiscoveryItem[];
+}
+
+export interface ChannelChiefActivityItem {
+  name: string;
+  type: string;
+  status: string;
+  territory: string;
+  /** @nullable */
+  activity_date: string | null;
+  mqls: number;
+  partner_referrals: number;
+}
+
+export interface ChannelChiefActivitySummary {
+  /** Bounded most-recent-N activities across every territory -- never a full-table dump. */
+  recent: ChannelChiefActivityItem[];
+}
+
+export interface ChannelChiefSnapshot {
+  period: string;
+  period_key: string;
+  generated_at: string;
+  performance: ChannelChiefPerformance;
+  recruitment: ChannelChiefRecruitmentSummary;
+  portfolio: ChannelChiefPortfolioSummary;
+  discovery: ChannelChiefDiscoverySummary;
+  activity: ChannelChiefActivitySummary;
+  /** Deterministic notes about missing/incomplete/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as "unknown". */
+  data_quality_notes: string[];
+}
+
 export type ListProspectsParams = {
 /**
  * @nullable
@@ -2710,6 +2813,14 @@ export const GetKpiDetailsCurrency = {
   EUR: 'EUR',
   GBP: 'GBP',
 } as const;
+
+export type GetChannelChiefSnapshotParams = {
+/**
+ * Composite period key, e.g. "2026-q3" or "2026-ytd". Defaults to the current quarter when omitted.
+ * @nullable
+ */
+period?: string | null;
+};
 
 export type ListManualMetricValuesParams = {
 /**

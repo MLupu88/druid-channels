@@ -40,6 +40,9 @@
     "test:partner-opportunities": "tsx --test tests/partnerOpportunities.test.ts",
     "test:opportunities-authz": "tsx --test tests/opportunitiesAuthz.test.ts",
     "test:metric-mappings-upgrade": "tsx --test tests/metricMappingsUpgrade.test.ts",
+    "test:channel-chief-auth": "tsx --test tests/channelChiefAuth.test.ts",
+    "test:channel-chief-snapshot": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/channelChiefSnapshot.test.ts",
+    "test:channel-chief": "tsx --test tests/channelChief.test.ts",
     "seed": "tsx ./src/scripts/seed.ts",
     "audit:company-duplicates": "tsx ./src/scripts/auditCompanyDuplicates.ts"
   },

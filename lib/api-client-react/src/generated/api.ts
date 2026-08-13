@@ -30,6 +30,7 @@ import type {
   Campaign,
   CampaignEditInput,
   CampaignInput,
+  ChannelChiefSnapshot,
   ChannelRadarConfig,
   ChannelRadarSignal,
   CompanyRef,
@@ -47,6 +48,7 @@ import type {
   GetAiChannelBriefParams,
   GetAnnualCascadeParams,
   GetAnnualTargetParams,
+  GetChannelChiefSnapshotParams,
   GetHeadOfChannelsKpisParams,
   GetKpiDetailsParams,
   GetPortfolioSummaryParams,
@@ -4083,6 +4085,90 @@ export function useGetKpiDetails<TData = Awaited<ReturnType<typeof getKpiDetails
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetKpiDetailsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetChannelChiefSnapshotUrl = (params?: GetChannelChiefSnapshotParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/channel-chief/snapshot?${stringifiedParams}` : `/api/channel-chief/snapshot`
+}
+
+/**
+ * @summary Bounded, leadership-level factual snapshot for the Aniri/Channel Chief agent to interpret. Global/company-wide scope only -- never a PAM-scoped view. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN (see channelChiefAuth middleware), a separate service-token auth path from human session login. Reuses the same canonical KPI/recruitment/portfolio/discovery computations as the rest of the app; never a second implementation of any business rule.
+ */
+export const getChannelChiefSnapshot = async (params?: GetChannelChiefSnapshotParams, options?: Parameters<typeof customFetch>[1]): Promise<ChannelChiefSnapshot> => {
+
+  return customFetch<ChannelChiefSnapshot>(getGetChannelChiefSnapshotUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChannelChiefSnapshotQueryKey = (params?: GetChannelChiefSnapshotParams,) => {
+    return [
+    `/api/channel-chief/snapshot`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetChannelChiefSnapshotQueryOptions = <TData = Awaited<ReturnType<typeof getChannelChiefSnapshot>>, TError = ErrorType<void>>(params?: GetChannelChiefSnapshotParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelChiefSnapshot>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChannelChiefSnapshotQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannelChiefSnapshot>>> = ({ signal }) => getChannelChiefSnapshot(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChannelChiefSnapshot>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChannelChiefSnapshotQueryResult = NonNullable<Awaited<ReturnType<typeof getChannelChiefSnapshot>>>
+export type GetChannelChiefSnapshotQueryError = ErrorType<void>
+
+
+/**
+ * @summary Bounded, leadership-level factual snapshot for the Aniri/Channel Chief agent to interpret. Global/company-wide scope only -- never a PAM-scoped view. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN (see channelChiefAuth middleware), a separate service-token auth path from human session login. Reuses the same canonical KPI/recruitment/portfolio/discovery computations as the rest of the app; never a second implementation of any business rule.
+ */
+
+export function useGetChannelChiefSnapshot<TData = Awaited<ReturnType<typeof getChannelChiefSnapshot>>, TError = ErrorType<void>>(
+ params?: GetChannelChiefSnapshotParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelChiefSnapshot>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChannelChiefSnapshotQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
