@@ -24,6 +24,26 @@ import {
 
 const router: IRouter = Router();
 
+// The exact index name declared in schema/partner_opportunities.ts's
+// partner_opportunities_source_external_unique.
+const SOURCE_EXTERNAL_UNIQUE_CONSTRAINT = "partner_opportunities_source_external_unique";
+
+// drizzle-orm (node-postgres driver) wraps the real Postgres error in a
+// "Failed query: ..." wrapper, attaching the actual `pg` DatabaseError as
+// `.cause` -- same shape documented in tests/migrationInvariants.test.ts's
+// isUniqueViolation helper. That DatabaseError exposes the violated
+// index/constraint name STRUCTURALLY as `.constraint` (parsed from the
+// Postgres wire protocol's ErrorResponse "n" field), so this checks that
+// field directly rather than substring-matching the error message text.
+// Scoped to this exact constraint name -- any OTHER 23505 on this table
+// (or elsewhere) must rethrow unchanged rather than being mislabeled as an
+// imported-opportunity duplicate. Exported so the narrowing behavior itself
+// is unit-testable without needing a second live unique constraint.
+export function isSourceExternalUniqueViolation(err: unknown): boolean {
+  const cause = (err as { cause?: { code?: string; constraint?: string } } | undefined)?.cause;
+  return cause?.code === "23505" && cause?.constraint === SOURCE_EXTERNAL_UNIQUE_CONSTRAINT;
+}
+
 // Batch-fetched company/territory/user name lookups -- same pattern as
 // routes/metric_targets.ts's shapeRows.
 async function shapeRows(rows: (typeof partnerOpportunitiesTable.$inferSelect)[]) {
@@ -183,30 +203,47 @@ router.post("/opportunities", requireAuth, async (req, res): Promise<void> => {
     throw err;
   }
 
-  const [created] = await db
-    .insert(partnerOpportunitiesTable)
-    .values({
-      name: data.name,
-      companyId: data.company_id,
-      territoryId: data.territory_id,
-      assignedUserId: data.assigned_user_id,
-      attributionType: data.attribution_type,
-      status: data.status ?? "open",
-      dealValue: String(data.deal_value),
-      currency: data.currency,
-      opportunityDate: data.opportunity_date,
-      expectedCloseDate: data.expected_close_date ?? null,
-      closedAt: data.closed_at ? new Date(data.closed_at) : null,
-      creditValue: data.credit_value !== null && data.credit_value !== undefined ? String(data.credit_value) : null,
-      creditDate: data.credit_date ?? null,
-      customerName: data.customer_name ?? null,
-      note: data.note ?? null,
-      sourceSystem: data.source_system ?? "manual",
-      externalId: data.external_id ?? null,
-      sourceUpdatedAt: data.source_updated_at ? new Date(data.source_updated_at) : null,
-      createdByUserId: actingUser.id,
-    })
-    .returning();
+  let created: typeof partnerOpportunitiesTable.$inferSelect;
+  try {
+    [created] = await db
+      .insert(partnerOpportunitiesTable)
+      .values({
+        name: data.name,
+        companyId: data.company_id,
+        territoryId: data.territory_id,
+        assignedUserId: data.assigned_user_id,
+        attributionType: data.attribution_type,
+        status: data.status ?? "open",
+        dealValue: String(data.deal_value),
+        currency: data.currency,
+        opportunityDate: data.opportunity_date,
+        expectedCloseDate: data.expected_close_date ?? null,
+        closedAt: data.closed_at ? new Date(data.closed_at) : null,
+        creditValue: data.credit_value !== null && data.credit_value !== undefined ? String(data.credit_value) : null,
+        creditDate: data.credit_date ?? null,
+        customerName: data.customer_name ?? null,
+        note: data.note ?? null,
+        sourceSystem: data.source_system ?? "manual",
+        externalId: data.external_id ?? null,
+        sourceUpdatedAt: data.source_updated_at ? new Date(data.source_updated_at) : null,
+        createdByUserId: actingUser.id,
+      })
+      .returning()
+      .then((rows) => rows as [typeof partnerOpportunitiesTable.$inferSelect]);
+  } catch (err) {
+    // Guards partner_opportunities_source_external_unique specifically (see
+    // schema): a repeat import upload for the same source_system+external_id
+    // must surface as an explicit, distinguishable conflict -- never a raw
+    // 500 -- so the historical-cutover importer (Phase 5B-3) can report it
+    // as a skipped duplicate instead of a mysterious failure. Any OTHER
+    // 23505 (a different unique constraint, now or in the future) is
+    // deliberately NOT caught here -- see isSourceExternalUniqueViolation.
+    if (isSourceExternalUniqueViolation(err)) {
+      res.status(409).json({ error: "An opportunity with this source_system and external_id already exists." });
+      return;
+    }
+    throw err;
+  }
 
   res.status(201).json(CreateOpportunityResponse.parse((await shapeRows([created]))[0]));
 });

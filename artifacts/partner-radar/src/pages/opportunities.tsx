@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useSearch } from 'wouter';
+import { useSearch, Link } from 'wouter';
 import {
   useListOpportunities,
   getListOpportunitiesQueryKey,
@@ -28,7 +28,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, ChevronDown, X } from 'lucide-react';
+import { Plus, ChevronDown, X, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
@@ -134,11 +134,20 @@ export default function Opportunities() {
             {isGlobalUser ? 'Partner-sourced and partner-influenced deals across the team.' : 'Partner-sourced and partner-influenced deals you’re actively working.'}
           </p>
         </div>
-        {canMutate && (
-          <Button size="sm" className="gap-1.5" data-testid="button-add-opportunity" onClick={() => { setEditing(null); setFormOpen(true); }}>
-            <Plus className="h-4 w-4" /> Add opportunity
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {isGlobalUser && (
+            <Link href="/opportunities/import">
+              <Button size="sm" variant="outline" className="gap-1.5" data-testid="button-import-opportunities">
+                <Upload className="h-4 w-4" /> Import historical opportunities
+              </Button>
+            </Link>
+          )}
+          {canMutate && (
+            <Button size="sm" className="gap-1.5" data-testid="button-add-opportunity" onClick={() => { setEditing(null); setFormOpen(true); }}>
+              <Plus className="h-4 w-4" /> Add opportunity
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">

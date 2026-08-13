@@ -15,6 +15,7 @@ import ChannelRadar from '@/pages/channel-radar';
 import Portfolio from '@/pages/portfolio';
 import PortfolioImport from '@/pages/portfolio-import';
 import Opportunities from '@/pages/opportunities';
+import OpportunitiesImport from '@/pages/opportunities-import';
 import TeamTargets from '@/pages/team-targets';
 import Pams from '@/pages/pams';
 import MyWorkspace from '@/pages/pam-workspace';
@@ -59,6 +60,11 @@ function AuthenticatedApp() {
         <Route path="/portfolio" component={Portfolio} />
         <Route path="/portfolio/import" component={PortfolioImport} />
         <Route path="/opportunities" component={Opportunities} />
+        {/* Phase 5B-3: historical cutover import is Head/Admin-only -- a
+            PAM must never reach this route, even by direct navigation. */}
+        <Route path="/opportunities/import">
+          <Guarded allow={isGlobalUser}><OpportunitiesImport /></Guarded>
+        </Route>
         <Route path="/pams">
           <Guarded allow={isGlobalUser}><Pams /></Guarded>
         </Route>

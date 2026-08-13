@@ -16,7 +16,9 @@
     "test:commercial-currency-display": "tsx --test tests/commercialCurrencyDisplay.test.ts",
     "test:multi-value-input": "tsx --test tests/multiValueInput.test.ts",
     "test:channel-radar-run": "tsx --test tests/channelRadarRun.test.ts",
-    "test:opportunities-ui-scope": "tsx --test tests/opportunitiesUiScope.test.ts"
+    "test:opportunities-ui-scope": "tsx --test tests/opportunitiesUiScope.test.ts",
+    "test:opportunity-import": "tsx --test tests/opportunityImport.test.ts",
+    "test:opportunities-import-ui-scope": "tsx --test tests/opportunitiesImportUiScope.test.ts"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

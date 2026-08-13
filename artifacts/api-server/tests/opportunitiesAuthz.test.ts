@@ -144,6 +144,31 @@ test("POST /opportunities: Head/Admin can create for any valid PAM/territory", a
   createdOpportunityIds.push(body.id);
 });
 
+// Phase 5B-3: the historical-cutover CSV importer relies on
+// source_system+external_id uniqueness (see partnerOpportunities.test.ts's
+// partner_opportunities_source_external_unique) to make a repeat file
+// upload safe. That DB constraint already rejected a duplicate insert
+// before this phase; what changed here is the route now catches the 23505
+// unique-violation on EXACTLY that constraint (checked structurally via the
+// underlying pg DatabaseError's `.constraint` field, not message-text
+// matching -- see routes/opportunities.ts's isSourceExternalUniqueViolation)
+// and reports it as a clean 409, so the importer can surface it as "already
+// imported" instead of a raw 500. This end-to-end test exercises the real
+// constraint; the narrowing itself (any OTHER 23505 must rethrow unchanged,
+// never get mislabeled as an import duplicate) is unit-tested in isolation
+// in tests/opportunitiesImportDuplicateDetection.test.ts, since this table
+// has no second live unique constraint to trigger that case against here.
+test("POST /opportunities: a repeat source_system+external_id is rejected with 409, not a raw 500", async () => {
+  const externalId = `import-dup-${Date.now()}`;
+  const first = await post("/opportunities", tokens.irina, opportunityInput({ source_system: "import", external_id: externalId }));
+  assert.equal(first.status, 201, `expected 201, got ${first.status}: ${JSON.stringify(first.body)}`);
+  createdOpportunityIds.push(first.body.id);
+
+  const second = await post("/opportunities", tokens.irina, opportunityInput({ source_system: "import", external_id: externalId, name: "Different name, same external_id" }));
+  assert.equal(second.status, 409, `expected 409, got ${second.status}: ${JSON.stringify(second.body)}`);
+  assert.ok(second.body?.error, "expected a clear error message on the 409 response");
+});
+
 // ---- Read ----------------------------------------------------------------
 
 test("GET /opportunities/:id: PAM can read their own opportunity", async () => {
