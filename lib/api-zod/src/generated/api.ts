@@ -789,10 +789,14 @@ export const UpdateChannelRadarConfigResponse = zod.object({
 export const ListChannelRadarSignalsQueryParams = zod.object({
   "territory": zod.coerce.string().nullish(),
   "signal_type": zod.coerce.string().nullish(),
+  "entity_type": zod.coerce.string().nullish(),
   "implication": zod.coerce.string().nullish(),
   "impact": zod.coerce.string().nullish(),
   "status": zod.coerce.string().nullish(),
-  "search": zod.coerce.string().nullish()
+  "requires_validation": zod.coerce.string().nullish().describe('\'true\' or \'false\' -- filters on the requires_validation flag.'),
+  "search": zod.coerce.string().nullish(),
+  "limit": zod.coerce.number().nullish().describe('Max rows to return (default 50, max 200).'),
+  "offset": zod.coerce.number().nullish()
 })
 
 export const ListChannelRadarSignalsResponseItem = zod.object({
@@ -810,14 +814,15 @@ export const ListChannelRadarSignalsResponseItem = zod.object({
   "active": zod.boolean()
 }),zod.null()]).optional(),
   "entity_name": zod.string(),
-  "entity_type": zod.enum(['competitor', 'partner', 'ecosystem', 'other']),
-  "signal_type": zod.enum(['acquisition', 'partnership', 'reseller_distributor', 'regional_expansion', 'leadership_hire', 'funding', 'customer_win', 'product_gtm', 'marketplace_listing', 'event', 'other']),
+  "entity_type": zod.enum(['competitor', 'partner', 'ecosystem', 'technology_vendor', 'other']),
+  "signal_type": zod.enum(['acquisition', 'partnership', 'reseller_distributor', 'regional_expansion', 'leadership_hire', 'funding', 'customer_win', 'product_gtm', 'marketplace_listing', 'event', 'partner_program', 'tender_rfp', 'other']),
   "headline": zod.string(),
   "summary": zod.string(),
   "why_it_matters": zod.string(),
-  "implication": zod.enum(['opportunity', 'threat', 'neutral']),
+  "implication": zod.enum(['opportunity', 'threat', 'watch', 'neutral']).describe('watch = strategically relevant but not enough evidence\/urgency yet to call opportunity or threat. Distinct from confidence (evidence quality), which is a separate axis.'),
   "impact": zod.enum(['high', 'medium', 'low']),
   "recommended_action": zod.string(),
+  "druid_partner_motion": zod.string().nullish().describe('Relevant DRUID partner motion\/capability, kept separate from recommended_action.'),
   "confidence": zod.enum(['high', 'medium', 'low']),
   "source_title": zod.string(),
   "source_url": zod.string(),
@@ -825,9 +830,30 @@ export const ListChannelRadarSignalsResponseItem = zod.object({
   "source_published_at": zod.string().nullish().describe('Nullable -- never fabricated when the source provider gave no publish date.'),
   "discovered_at": zod.string(),
   "status": zod.enum(['new', 'reviewed', 'dismissed']),
-  "created_at": zod.string(),
-  "updated_at": zod.string(),
+  "requires_validation": zod.boolean().describe('Set at write time from independent factors (ambiguous entity\/counterparty identity, uncertain regional applicability, low confidence) -- never simply confidence==\'low\'.'),
+  "related_entity_name": zod.string().nullish(),
+  "related_entity_type": zod.union([zod.enum(['competitor', 'partner', 'ecosystem', 'technology_vendor', 'other']),zod.null()]).optional(),
+  "relationship_label": zod.string().nullish().describe('Short evidence-grounded descriptor of the relationship to related_entity_name (e.g. \"reseller\", \"acquirer of\"), not a taxonomy.'),
+  "last_evidence_at": zod.string().describe('Bumped when corroborating evidence attaches; never implies the classification changed.'),
+  "evidence_count": zod.number(),
+  "evidence": zod.array(zod.object({
+  "id": zod.string(),
+  "source_title": zod.string(),
+  "source_url": zod.string(),
+  "source_domain": zod.string().nullish(),
+  "source_published_at": zod.string().nullish(),
+  "discovered_at": zod.string(),
+  "is_primary": zod.boolean()
+})).optional().describe('Present only on the single-signal detail response (GET \/channel-radar\/{id}), omitted on list responses.'),
   "existing_partner_context": zod.object({
+  "relationship": zod.union([zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user_name": zod.string().nullish()
+}),zod.null()]).optional()
+}).optional().describe('Read-only Stage 6 Portfolio context surfaced on Recruitment\/Radar detail views when the underlying company is known. Never used to auto-create or auto-reopen anything.'),
+  "related_entity_context": zod.object({
   "relationship": zod.union([zod.object({
   "id": zod.string(),
   "status": zod.string(),
@@ -837,6 +863,42 @@ export const ListChannelRadarSignalsResponseItem = zod.object({
 }).optional().describe('Read-only Stage 6 Portfolio context surfaced on Recruitment\/Radar detail views when the underlying company is known. Never used to auto-create or auto-reopen anything.')
 })
 export const ListChannelRadarSignalsResponse = zod.array(ListChannelRadarSignalsResponseItem)
+
+
+/**
+ * @summary Server-side aggregate counts for the signals visible to the caller, under the SAME filters and territory scoping as GET /channel-radar (never limit/offset -- summary is never paginated).
+ */
+export const GetChannelRadarSummaryQueryParams = zod.object({
+  "territory": zod.coerce.string().nullish(),
+  "signal_type": zod.coerce.string().nullish(),
+  "entity_type": zod.coerce.string().nullish(),
+  "implication": zod.coerce.string().nullish(),
+  "impact": zod.coerce.string().nullish(),
+  "status": zod.coerce.string().nullish(),
+  "requires_validation": zod.coerce.string().nullish().describe('\'true\' or \'false\' -- filters on the requires_validation flag.'),
+  "search": zod.coerce.string().nullish()
+})
+
+export const GetChannelRadarSummaryResponse = zod.object({
+  "total": zod.number(),
+  "by_implication": zod.object({
+  "opportunity": zod.number(),
+  "threat": zod.number(),
+  "watch": zod.number(),
+  "neutral": zod.number()
+}),
+  "by_impact": zod.object({
+  "high": zod.number(),
+  "medium": zod.number(),
+  "low": zod.number()
+}),
+  "by_status": zod.object({
+  "new": zod.number(),
+  "reviewed": zod.number(),
+  "dismissed": zod.number()
+}),
+  "requires_validation_count": zod.number()
+})
 
 
 /**
@@ -861,14 +923,15 @@ export const GetChannelRadarSignalResponse = zod.object({
   "active": zod.boolean()
 }),zod.null()]).optional(),
   "entity_name": zod.string(),
-  "entity_type": zod.enum(['competitor', 'partner', 'ecosystem', 'other']),
-  "signal_type": zod.enum(['acquisition', 'partnership', 'reseller_distributor', 'regional_expansion', 'leadership_hire', 'funding', 'customer_win', 'product_gtm', 'marketplace_listing', 'event', 'other']),
+  "entity_type": zod.enum(['competitor', 'partner', 'ecosystem', 'technology_vendor', 'other']),
+  "signal_type": zod.enum(['acquisition', 'partnership', 'reseller_distributor', 'regional_expansion', 'leadership_hire', 'funding', 'customer_win', 'product_gtm', 'marketplace_listing', 'event', 'partner_program', 'tender_rfp', 'other']),
   "headline": zod.string(),
   "summary": zod.string(),
   "why_it_matters": zod.string(),
-  "implication": zod.enum(['opportunity', 'threat', 'neutral']),
+  "implication": zod.enum(['opportunity', 'threat', 'watch', 'neutral']).describe('watch = strategically relevant but not enough evidence\/urgency yet to call opportunity or threat. Distinct from confidence (evidence quality), which is a separate axis.'),
   "impact": zod.enum(['high', 'medium', 'low']),
   "recommended_action": zod.string(),
+  "druid_partner_motion": zod.string().nullish().describe('Relevant DRUID partner motion\/capability, kept separate from recommended_action.'),
   "confidence": zod.enum(['high', 'medium', 'low']),
   "source_title": zod.string(),
   "source_url": zod.string(),
@@ -876,9 +939,30 @@ export const GetChannelRadarSignalResponse = zod.object({
   "source_published_at": zod.string().nullish().describe('Nullable -- never fabricated when the source provider gave no publish date.'),
   "discovered_at": zod.string(),
   "status": zod.enum(['new', 'reviewed', 'dismissed']),
-  "created_at": zod.string(),
-  "updated_at": zod.string(),
+  "requires_validation": zod.boolean().describe('Set at write time from independent factors (ambiguous entity\/counterparty identity, uncertain regional applicability, low confidence) -- never simply confidence==\'low\'.'),
+  "related_entity_name": zod.string().nullish(),
+  "related_entity_type": zod.union([zod.enum(['competitor', 'partner', 'ecosystem', 'technology_vendor', 'other']),zod.null()]).optional(),
+  "relationship_label": zod.string().nullish().describe('Short evidence-grounded descriptor of the relationship to related_entity_name (e.g. \"reseller\", \"acquirer of\"), not a taxonomy.'),
+  "last_evidence_at": zod.string().describe('Bumped when corroborating evidence attaches; never implies the classification changed.'),
+  "evidence_count": zod.number(),
+  "evidence": zod.array(zod.object({
+  "id": zod.string(),
+  "source_title": zod.string(),
+  "source_url": zod.string(),
+  "source_domain": zod.string().nullish(),
+  "source_published_at": zod.string().nullish(),
+  "discovered_at": zod.string(),
+  "is_primary": zod.boolean()
+})).optional().describe('Present only on the single-signal detail response (GET \/channel-radar\/{id}), omitted on list responses.'),
   "existing_partner_context": zod.object({
+  "relationship": zod.union([zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user_name": zod.string().nullish()
+}),zod.null()]).optional()
+}).optional().describe('Read-only Stage 6 Portfolio context surfaced on Recruitment\/Radar detail views when the underlying company is known. Never used to auto-create or auto-reopen anything.'),
+  "related_entity_context": zod.object({
   "relationship": zod.union([zod.object({
   "id": zod.string(),
   "status": zod.string(),
@@ -915,14 +999,15 @@ export const UpdateChannelRadarSignalResponse = zod.object({
   "active": zod.boolean()
 }),zod.null()]).optional(),
   "entity_name": zod.string(),
-  "entity_type": zod.enum(['competitor', 'partner', 'ecosystem', 'other']),
-  "signal_type": zod.enum(['acquisition', 'partnership', 'reseller_distributor', 'regional_expansion', 'leadership_hire', 'funding', 'customer_win', 'product_gtm', 'marketplace_listing', 'event', 'other']),
+  "entity_type": zod.enum(['competitor', 'partner', 'ecosystem', 'technology_vendor', 'other']),
+  "signal_type": zod.enum(['acquisition', 'partnership', 'reseller_distributor', 'regional_expansion', 'leadership_hire', 'funding', 'customer_win', 'product_gtm', 'marketplace_listing', 'event', 'partner_program', 'tender_rfp', 'other']),
   "headline": zod.string(),
   "summary": zod.string(),
   "why_it_matters": zod.string(),
-  "implication": zod.enum(['opportunity', 'threat', 'neutral']),
+  "implication": zod.enum(['opportunity', 'threat', 'watch', 'neutral']).describe('watch = strategically relevant but not enough evidence\/urgency yet to call opportunity or threat. Distinct from confidence (evidence quality), which is a separate axis.'),
   "impact": zod.enum(['high', 'medium', 'low']),
   "recommended_action": zod.string(),
+  "druid_partner_motion": zod.string().nullish().describe('Relevant DRUID partner motion\/capability, kept separate from recommended_action.'),
   "confidence": zod.enum(['high', 'medium', 'low']),
   "source_title": zod.string(),
   "source_url": zod.string(),
@@ -930,9 +1015,30 @@ export const UpdateChannelRadarSignalResponse = zod.object({
   "source_published_at": zod.string().nullish().describe('Nullable -- never fabricated when the source provider gave no publish date.'),
   "discovered_at": zod.string(),
   "status": zod.enum(['new', 'reviewed', 'dismissed']),
-  "created_at": zod.string(),
-  "updated_at": zod.string(),
+  "requires_validation": zod.boolean().describe('Set at write time from independent factors (ambiguous entity\/counterparty identity, uncertain regional applicability, low confidence) -- never simply confidence==\'low\'.'),
+  "related_entity_name": zod.string().nullish(),
+  "related_entity_type": zod.union([zod.enum(['competitor', 'partner', 'ecosystem', 'technology_vendor', 'other']),zod.null()]).optional(),
+  "relationship_label": zod.string().nullish().describe('Short evidence-grounded descriptor of the relationship to related_entity_name (e.g. \"reseller\", \"acquirer of\"), not a taxonomy.'),
+  "last_evidence_at": zod.string().describe('Bumped when corroborating evidence attaches; never implies the classification changed.'),
+  "evidence_count": zod.number(),
+  "evidence": zod.array(zod.object({
+  "id": zod.string(),
+  "source_title": zod.string(),
+  "source_url": zod.string(),
+  "source_domain": zod.string().nullish(),
+  "source_published_at": zod.string().nullish(),
+  "discovered_at": zod.string(),
+  "is_primary": zod.boolean()
+})).optional().describe('Present only on the single-signal detail response (GET \/channel-radar\/{id}), omitted on list responses.'),
   "existing_partner_context": zod.object({
+  "relationship": zod.union([zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "territory_name": zod.string().nullish(),
+  "assigned_user_name": zod.string().nullish()
+}),zod.null()]).optional()
+}).optional().describe('Read-only Stage 6 Portfolio context surfaced on Recruitment\/Radar detail views when the underlying company is known. Never used to auto-create or auto-reopen anything.'),
+  "related_entity_context": zod.object({
   "relationship": zod.union([zod.object({
   "id": zod.string(),
   "status": zod.string(),

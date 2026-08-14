@@ -33,6 +33,7 @@ import type {
   ChannelChiefSnapshot,
   ChannelRadarConfig,
   ChannelRadarSignal,
+  ChannelRadarSummary,
   CompanyRef,
   ConfirmPortfolioImportReadyResult,
   Connection,
@@ -49,6 +50,7 @@ import type {
   GetAnnualCascadeParams,
   GetAnnualTargetParams,
   GetChannelChiefSnapshotParams,
+  GetChannelRadarSummaryParams,
   GetHeadOfChannelsKpisParams,
   GetKpiDetailsParams,
   GetPortfolioSummaryParams,
@@ -1870,6 +1872,90 @@ export function useListChannelRadarSignals<TData = Awaited<ReturnType<typeof lis
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListChannelRadarSignalsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetChannelRadarSummaryUrl = (params?: GetChannelRadarSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/channel-radar/summary?${stringifiedParams}` : `/api/channel-radar/summary`
+}
+
+/**
+ * @summary Server-side aggregate counts for the signals visible to the caller, under the SAME filters and territory scoping as GET /channel-radar (never limit/offset -- summary is never paginated).
+ */
+export const getChannelRadarSummary = async (params?: GetChannelRadarSummaryParams, options?: Parameters<typeof customFetch>[1]): Promise<ChannelRadarSummary> => {
+
+  return customFetch<ChannelRadarSummary>(getGetChannelRadarSummaryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChannelRadarSummaryQueryKey = (params?: GetChannelRadarSummaryParams,) => {
+    return [
+    `/api/channel-radar/summary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetChannelRadarSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getChannelRadarSummary>>, TError = ErrorType<unknown>>(params?: GetChannelRadarSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelRadarSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChannelRadarSummaryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannelRadarSummary>>> = ({ signal }) => getChannelRadarSummary(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChannelRadarSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChannelRadarSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getChannelRadarSummary>>>
+export type GetChannelRadarSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Server-side aggregate counts for the signals visible to the caller, under the SAME filters and territory scoping as GET /channel-radar (never limit/offset -- summary is never paginated).
+ */
+
+export function useGetChannelRadarSummary<TData = Awaited<ReturnType<typeof getChannelRadarSummary>>, TError = ErrorType<unknown>>(
+ params?: GetChannelRadarSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelRadarSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChannelRadarSummaryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

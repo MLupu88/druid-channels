@@ -18,6 +18,10 @@ signal_type?: string | null;
 /**
  * @nullable
  */
+entity_type?: string | null;
+/**
+ * @nullable
+ */
 implication?: string | null;
 /**
  * @nullable
@@ -28,7 +32,21 @@ impact?: string | null;
  */
 status?: string | null;
 /**
+ * 'true' or 'false' -- filters on the requires_validation flag.
+ * @nullable
+ */
+requires_validation?: string | null;
+/**
  * @nullable
  */
 search?: string | null;
+/**
+ * Max rows to return (default 50, max 200).
+ * @nullable
+ */
+limit?: number | null;
+/**
+ * @nullable
+ */
+offset?: number | null;
 };

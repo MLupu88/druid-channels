@@ -8,25 +8,50 @@ import { companiesTable, channelRadarSignalsTable, type Company } from "@workspa
 import { eq, isNull } from "drizzle-orm";
 import { normalizeCompanyName } from "./companyMatchingService";
 
-// Pure, DB-free -- takes an already-fetched candidate set so it can be unit
-// tested directly (see resolveSafeCompanyIdForEntityName below for the
-// DB-backed wrapper). Returns the single unambiguous match's id, or null on
-// zero or multiple matches -- ambiguity always stays unlinked, never a
-// best-effort guess.
-export function pickSafeCompanyMatch(entityName: string, candidates: Company[]): string | null {
-  const normalized = normalizeCompanyName(entityName);
-  if (!normalized) return null;
-  const matches = candidates.filter((c) => normalizeCompanyName(c.name) === normalized);
-  return matches.length === 1 ? matches[0]!.id : null;
+export interface CompanyMatchResult {
+  companyId: string | null;
+  // Phase 10: true only when MORE THAN ONE company shares the normalized
+  // name -- zero matches (a genuinely unlisted entity) is a completely
+  // normal outcome and is never "ambiguous" on its own. This is the one
+  // input requiresValidation (channelRadarEngine.ts) needs from identity
+  // resolution; company_id's own null-on-zero-or-many contract is
+  // unchanged, so every existing caller of pickSafeCompanyMatch /
+  // resolveSafeCompanyIdForEntityName below keeps working unmodified.
+  ambiguous: boolean;
 }
 
-// Called at Radar-signal-insert time (see channelRadarEngine.ts). A fresh
-// company lookup per signal is acceptable here -- Radar runs are already
-// bounded (MAX_RADAR_QUERIES) and manual (no schedulers), so this never
-// runs at a volume that matters.
-export async function resolveSafeCompanyIdForEntityName(entityName: string): Promise<string | null> {
+// Pure, DB-free -- takes an already-fetched candidate set so it can be unit
+// tested directly (see resolveCompanyMatchForEntityName below for the
+// DB-backed wrapper). The single unambiguous match's id, or null on zero or
+// multiple matches -- ambiguity always stays unlinked, never a best-effort
+// guess -- plus whether the null (if any) was caused by genuine ambiguity
+// (>1 match) rather than a simple absence (0 matches).
+export function pickSafeCompanyMatchDetailed(entityName: string, candidates: Company[]): CompanyMatchResult {
+  const normalized = normalizeCompanyName(entityName);
+  if (!normalized) return { companyId: null, ambiguous: false };
+  const matches = candidates.filter((c) => normalizeCompanyName(c.name) === normalized);
+  if (matches.length === 1) return { companyId: matches[0]!.id, ambiguous: false };
+  return { companyId: null, ambiguous: matches.length > 1 };
+}
+
+// Back-compat convenience wrapper -- same contract as before Phase 10.
+export function pickSafeCompanyMatch(entityName: string, candidates: Company[]): string | null {
+  return pickSafeCompanyMatchDetailed(entityName, candidates).companyId;
+}
+
+// Called at Radar-signal-insert time (see channelRadarEngine.ts) for both
+// the primary entity and (Phase 10) the related/counterparty entity. A
+// fresh company lookup per call is acceptable here -- Radar runs are
+// already bounded (MAX_RADAR_QUERIES) and manual (no schedulers), so this
+// never runs at a volume that matters.
+export async function resolveCompanyMatchForEntityName(entityName: string): Promise<CompanyMatchResult> {
   const allCompanies = await db.select().from(companiesTable);
-  return pickSafeCompanyMatch(entityName, allCompanies);
+  return pickSafeCompanyMatchDetailed(entityName, allCompanies);
+}
+
+// Back-compat convenience wrapper -- same contract as before Phase 10.
+export async function resolveSafeCompanyIdForEntityName(entityName: string): Promise<string | null> {
+  return (await resolveCompanyMatchForEntityName(entityName)).companyId;
 }
 
 // Called once a company is confirmed into the canonical Portfolio (manual

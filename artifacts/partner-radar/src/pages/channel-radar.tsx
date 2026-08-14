@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   useListChannelRadarSignals,
   getListChannelRadarSignalsQueryKey,
@@ -7,6 +7,8 @@ import {
   useUpdateChannelRadarSignal,
   useRunChannelRadar,
   useListTerritories,
+  useGetChannelRadarSummary,
+  getGetChannelRadarSummaryQueryKey,
 } from '@workspace/api-client-react';
 import {
   Table,
@@ -29,11 +31,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { X, ExternalLink, Loader2, Satellite } from 'lucide-react';
+import { X, ExternalLink, Loader2, Satellite, ShieldAlert, Link2, ChevronLeft, ChevronRight, Rows3, Ungroup } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { computeRunRadarButtonState } from '@/lib/channel-radar-run';
+import { groupSignalsByEntity, computeListPageRange } from '@/lib/channel-radar-group';
 
 const SIGNAL_TYPE_LABELS: Record<string, string> = {
   acquisition: 'Acquisition',
@@ -46,6 +49,8 @@ const SIGNAL_TYPE_LABELS: Record<string, string> = {
   product_gtm: 'Product/GTM',
   marketplace_listing: 'Marketplace listing',
   event: 'Event',
+  partner_program: 'Partner program',
+  tender_rfp: 'Tender/RFP',
   other: 'Other',
 };
 
@@ -53,16 +58,20 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   competitor: 'Competitor',
   partner: 'Partner',
   ecosystem: 'Ecosystem',
+  technology_vendor: 'Technology vendor',
   other: 'Other',
 };
+
+const PAGE_SIZE = 50;
 
 function ImplicationBadge({ implication }: { implication: string }) {
   const styles: Record<string, string> = {
     opportunity: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     threat: 'bg-rose-50 text-rose-700 border-rose-200',
+    watch: 'bg-amber-50 text-amber-700 border-amber-200',
     neutral: 'bg-slate-50 text-slate-700 border-slate-200',
   };
-  const labels: Record<string, string> = { opportunity: 'Opportunity', threat: 'Threat', neutral: 'Neutral' };
+  const labels: Record<string, string> = { opportunity: 'Opportunity', threat: 'Threat', watch: 'Watch', neutral: 'Neutral' };
   return <Badge variant="outline" className={`font-normal ${styles[implication] ?? ''}`}>{labels[implication] ?? implication}</Badge>;
 }
 
@@ -84,6 +93,29 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline" className={`font-normal capitalize ${styles[status] ?? ''}`}>{status}</Badge>;
 }
 
+function ValidationBadge() {
+  return (
+    <Badge variant="outline" className="font-normal bg-orange-50 text-orange-700 border-orange-200 gap-1">
+      <ShieldAlert className="h-3 w-3" /> Needs validation
+    </Badge>
+  );
+}
+
+interface RadarSignalRow {
+  id: string;
+  entity_name: string;
+  territory_name: string | null;
+  signal_type: string;
+  impact: string;
+  implication: string;
+  headline: string;
+  recommended_action: string;
+  discovered_at: string;
+  last_evidence_at: string;
+  evidence_count: number;
+  requires_validation: boolean;
+}
+
 export default function ChannelRadar() {
   const { user: activeUser, isGlobalUser } = useAuth();
   const { toast } = useToast();
@@ -96,33 +128,66 @@ export default function ChannelRadar() {
 
   const [territory, setTerritory] = useState<string>('all');
   const [signalType, setSignalType] = useState<string>('all');
+  const [entityType, setEntityType] = useState<string>('all');
   const [implication, setImplication] = useState<string>('all');
   const [impact, setImpact] = useState<string>('all');
   const [status, setStatus] = useState<string>('all');
+  const [requiresValidation, setRequiresValidation] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [groupByEntity, setGroupByEntity] = useState(false);
 
-  const listParams = {
-    ...(isGlobalUser && territory !== 'all' ? { territory } : {}),
+  // Every filter resets pagination back to page 0 -- a stale offset into a
+  // now-different filtered set would otherwise silently show the wrong page.
+  const resetToFirstPage = () => setPage(0);
+
+  // The one filter object both the list and summary requests are built
+  // from -- they can never silently diverge on what "the active filters"
+  // are, since both literally spread the same source object (mirrors the
+  // backend's shared applyChannelRadarFilters). limit/offset are added only
+  // for the list call below -- summary is never paginated.
+  const territoryFilterParams = isGlobalUser && territory !== 'all' ? { territory } : {};
+  const filterParams = {
+    ...territoryFilterParams,
     ...(signalType !== 'all' ? { signal_type: signalType } : {}),
+    ...(entityType !== 'all' ? { entity_type: entityType } : {}),
     ...(implication !== 'all' ? { implication } : {}),
     ...(impact !== 'all' ? { impact } : {}),
     ...(status !== 'all' ? { status } : {}),
+    ...(requiresValidation !== 'all' ? { requires_validation: requiresValidation } : {}),
     ...(search ? { search } : {}),
   };
+  const listParams = { ...filterParams, limit: PAGE_SIZE, offset: page * PAGE_SIZE };
   const { data: signals, isLoading } = useListChannelRadarSignals(listParams, {
     query: { queryKey: getListChannelRadarSignalsQueryKey(listParams) },
   });
 
-  const summary = useMemo(() => {
-    const rows = signals ?? [];
-    return {
-      newCount: rows.filter((s) => s.status === 'new').length,
-      highImpact: rows.filter((s) => s.impact === 'high').length,
-      opportunities: rows.filter((s) => s.implication === 'opportunity').length,
-      threats: rows.filter((s) => s.implication === 'threat').length,
-    };
-  }, [signals]);
+  // Server-side aggregate under the SAME active filters as the list above --
+  // correct regardless of which page is currently loaded, and the source of
+  // truth for pagination's real total (see computeListPageRange below), not
+  // just for the summary tiles.
+  const { data: summary } = useGetChannelRadarSummary(filterParams, {
+    query: { queryKey: getGetChannelRadarSummaryQueryKey(filterParams) },
+  });
+
+  const rows: RadarSignalRow[] = (signals ?? []) as RadarSignalRow[];
+  // total is undefined only while summary's first request is still in
+  // flight -- computeListPageRange treats that as "next page unproven",
+  // never as "infinite more pages" (see its own comment).
+  const { start: rangeStart, end: rangeEnd, hasPreviousPage, hasNextPage } = computeListPageRange(page, PAGE_SIZE, rows.length, summary?.total);
+
+  // Safety net: if filters/data change out from under an already-loaded
+  // page (e.g. an admin dismisses signals elsewhere, or a race between two
+  // requests) and the current page comes back empty while page > 0, never
+  // strand the user there -- drop back to page 0 automatically.
+  useEffect(() => {
+    if (!isLoading && rows.length === 0 && page > 0) {
+      setPage(0);
+    }
+  }, [isLoading, rows.length, page]);
+
+  const groupedRows = useMemo(() => (groupByEntity ? groupSignalsByEntity(rows) : null), [groupByEntity, rows]);
 
   const { data: detail, isLoading: isLoadingDetail } = useGetChannelRadarSignal(
     selectedId || '',
@@ -131,6 +196,7 @@ export default function ChannelRadar() {
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getListChannelRadarSignalsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetChannelRadarSummaryQueryKey() });
     if (selectedId) queryClient.invalidateQueries({ queryKey: getGetChannelRadarSignalQueryKey(selectedId) });
   };
 
@@ -173,6 +239,31 @@ export default function ChannelRadar() {
     isPending: runMutation.isPending,
   });
 
+  function renderRow(s: RadarSignalRow) {
+    return (
+      <TableRow key={s.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setSelectedId(s.id)}>
+        <TableCell className="font-medium">
+          <div className="flex items-center gap-1.5">
+            {s.entity_name}
+            {s.evidence_count > 1 && (
+              <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground" title={`${s.evidence_count} corroborating sources`}>
+                <Link2 className="h-3 w-3" />{s.evidence_count}
+              </span>
+            )}
+          </div>
+        </TableCell>
+        <TableCell className="text-muted-foreground">{s.territory_name ?? '—'}</TableCell>
+        <TableCell className="text-muted-foreground">{SIGNAL_TYPE_LABELS[s.signal_type] ?? s.signal_type}</TableCell>
+        <TableCell><ImpactBadge impact={s.impact} /></TableCell>
+        <TableCell><ImplicationBadge implication={s.implication} /></TableCell>
+        <TableCell className="max-w-[220px] truncate text-muted-foreground">{s.headline}</TableCell>
+        <TableCell className="max-w-[180px] truncate text-muted-foreground">{s.recommended_action}</TableCell>
+        <TableCell>{s.requires_validation && <ValidationBadge />}</TableCell>
+        <TableCell className="text-muted-foreground">{new Date(s.last_evidence_at).toLocaleDateString()}</TableCell>
+      </TableRow>
+    );
+  }
+
   return (
     <div className="flex h-full w-full relative">
       <div className="flex-1 p-6 space-y-6 overflow-auto">
@@ -201,29 +292,35 @@ export default function ChannelRadar() {
           )}
         </div>
 
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-5 gap-3">
           <Card className="shadow-none border-border/70">
             <CardContent className="p-4">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">New signals</p>
-              <p className="text-2xl font-semibold tabular-nums mt-1">{summary.newCount}</p>
+              <p className="text-2xl font-semibold tabular-nums mt-1">{summary?.by_status.new ?? '—'}</p>
             </CardContent>
           </Card>
           <Card className="shadow-none border-border/70">
             <CardContent className="p-4">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">High impact</p>
-              <p className="text-2xl font-semibold tabular-nums mt-1">{summary.highImpact}</p>
+              <p className="text-2xl font-semibold tabular-nums mt-1">{summary?.by_impact.high ?? '—'}</p>
             </CardContent>
           </Card>
           <Card className="shadow-none border-border/70">
             <CardContent className="p-4">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Opportunities</p>
-              <p className="text-2xl font-semibold tabular-nums mt-1 text-emerald-700">{summary.opportunities}</p>
+              <p className="text-2xl font-semibold tabular-nums mt-1 text-emerald-700">{summary?.by_implication.opportunity ?? '—'}</p>
             </CardContent>
           </Card>
           <Card className="shadow-none border-border/70">
             <CardContent className="p-4">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Threats</p>
-              <p className="text-2xl font-semibold tabular-nums mt-1 text-rose-700">{summary.threats}</p>
+              <p className="text-2xl font-semibold tabular-nums mt-1 text-rose-700">{summary?.by_implication.threat ?? '—'}</p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-none border-border/70">
+            <CardContent className="p-4">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Needs validation</p>
+              <p className="text-2xl font-semibold tabular-nums mt-1 text-orange-700">{summary?.requires_validation_count ?? '—'}</p>
             </CardContent>
           </Card>
         </div>
@@ -234,13 +331,13 @@ export default function ChannelRadar() {
           </p>
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); resetToFirstPage(); }}
             placeholder="Filter entity or headline..."
             title="Filters the signals already discovered below -- it does not run new Radar research. Use Run Radar for that."
             className="w-[220px] h-8 bg-background border-border/60"
           />
           {isGlobalUser && (
-            <Select value={territory} onValueChange={setTerritory}>
+            <Select value={territory} onValueChange={(v) => { setTerritory(v); resetToFirstPage(); }}>
               <SelectTrigger className="w-[170px] h-8 bg-background border-border/60">
                 <SelectValue placeholder="Territory" />
               </SelectTrigger>
@@ -252,7 +349,18 @@ export default function ChannelRadar() {
               </SelectContent>
             </Select>
           )}
-          <Select value={signalType} onValueChange={setSignalType}>
+          <Select value={entityType} onValueChange={(v) => { setEntityType(v); resetToFirstPage(); }}>
+            <SelectTrigger className="w-[160px] h-8 bg-background border-border/60">
+              <SelectValue placeholder="Entity type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All entity types</SelectItem>
+              {Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={signalType} onValueChange={(v) => { setSignalType(v); resetToFirstPage(); }}>
             <SelectTrigger className="w-[170px] h-8 bg-background border-border/60">
               <SelectValue placeholder="Signal type" />
             </SelectTrigger>
@@ -263,7 +371,7 @@ export default function ChannelRadar() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={implication} onValueChange={setImplication}>
+          <Select value={implication} onValueChange={(v) => { setImplication(v); resetToFirstPage(); }}>
             <SelectTrigger className="w-[150px] h-8 bg-background border-border/60">
               <SelectValue placeholder="Implication" />
             </SelectTrigger>
@@ -271,10 +379,11 @@ export default function ChannelRadar() {
               <SelectItem value="all">All implications</SelectItem>
               <SelectItem value="opportunity">Opportunity</SelectItem>
               <SelectItem value="threat">Threat</SelectItem>
+              <SelectItem value="watch">Watch</SelectItem>
               <SelectItem value="neutral">Neutral</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={impact} onValueChange={setImpact}>
+          <Select value={impact} onValueChange={(v) => { setImpact(v); resetToFirstPage(); }}>
             <SelectTrigger className="w-[130px] h-8 bg-background border-border/60">
               <SelectValue placeholder="Impact" />
             </SelectTrigger>
@@ -285,7 +394,7 @@ export default function ChannelRadar() {
               <SelectItem value="low">Low</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={status} onValueChange={setStatus}>
+          <Select value={status} onValueChange={(v) => { setStatus(v); resetToFirstPage(); }}>
             <SelectTrigger className="w-[140px] h-8 bg-background border-border/60">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -296,6 +405,26 @@ export default function ChannelRadar() {
               <SelectItem value="dismissed">Dismissed</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={requiresValidation} onValueChange={(v) => { setRequiresValidation(v); resetToFirstPage(); }}>
+            <SelectTrigger className="w-[160px] h-8 bg-background border-border/60">
+              <SelectValue placeholder="Validation" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All signals</SelectItem>
+              <SelectItem value="true">Needs validation</SelectItem>
+              <SelectItem value="false">No validation needed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={() => setGroupByEntity((g) => !g)}
+            title={groupByEntity ? 'Show a flat list' : 'Group rows by entity'}
+          >
+            {groupByEntity ? <Ungroup className="h-3.5 w-3.5 mr-1.5" /> : <Rows3 className="h-3.5 w-3.5 mr-1.5" />}
+            {groupByEntity ? 'Ungroup' : 'Group by entity'}
+          </Button>
         </div>
 
         <Card className="shadow-none border-border/70">
@@ -310,32 +439,49 @@ export default function ChannelRadar() {
                   <TableHead>Implication</TableHead>
                   <TableHead>What happened</TableHead>
                   <TableHead>Recommended action</TableHead>
-                  <TableHead>Date</TableHead>
+                  <TableHead>Review</TableHead>
+                  <TableHead>Last update</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={8}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
-                ) : signals && signals.length > 0 ? (
-                  signals.map((s) => (
-                    <TableRow key={s.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setSelectedId(s.id)}>
-                      <TableCell className="font-medium">{s.entity_name}</TableCell>
-                      <TableCell className="text-muted-foreground">{s.territory_name ?? '—'}</TableCell>
-                      <TableCell className="text-muted-foreground">{SIGNAL_TYPE_LABELS[s.signal_type] ?? s.signal_type}</TableCell>
-                      <TableCell><ImpactBadge impact={s.impact} /></TableCell>
-                      <TableCell><ImplicationBadge implication={s.implication} /></TableCell>
-                      <TableCell className="max-w-[240px] truncate text-muted-foreground">{s.headline}</TableCell>
-                      <TableCell className="max-w-[200px] truncate text-muted-foreground">{s.recommended_action}</TableCell>
-                      <TableCell className="text-muted-foreground">{new Date(s.discovered_at).toLocaleDateString()}</TableCell>
-                    </TableRow>
-                  ))
+                  <TableRow><TableCell colSpan={9}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
+                ) : rows.length > 0 ? (
+                  groupedRows ? (
+                    groupedRows.map(([entityName, entityRows]) => (
+                      <React.Fragment key={entityName}>
+                        <TableRow className="hover:bg-transparent bg-muted/30">
+                          <TableCell colSpan={9} className="py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            {entityName} <span className="font-normal normal-case">· {entityRows.length} signal{entityRows.length === 1 ? '' : 's'}</span>
+                          </TableCell>
+                        </TableRow>
+                        {entityRows.map(renderRow)}
+                      </React.Fragment>
+                    ))
+                  ) : (
+                    rows.map(renderRow)
+                  )
                 ) : (
-                  <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">No signals yet -- run Radar for a territory to start.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">No signals yet -- run Radar for a territory to start.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
+
+        {(rows.length > 0 || page > 0) && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <p>{summary ? `Showing ${rangeStart}–${rangeEnd} of ${summary.total}` : `Showing ${rangeStart}–${rangeEnd}`}</p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={!hasPreviousPage} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Previous
+              </Button>
+              <Button variant="outline" size="sm" disabled={!hasNextPage} onClick={() => setPage((p) => p + 1)}>
+                Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Detail drawer */}
@@ -363,6 +509,7 @@ export default function ChannelRadar() {
                     <ImpactBadge impact={detail.impact} />
                     <StatusBadge status={detail.status} />
                     <Badge variant="outline" className="font-normal text-muted-foreground capitalize">{detail.confidence} confidence</Badge>
+                    {detail.requires_validation && <ValidationBadge />}
                   </div>
 
                   {detail.existing_partner_context?.relationship && (
@@ -386,10 +533,29 @@ export default function ChannelRadar() {
                       <p className="font-medium">{SIGNAL_TYPE_LABELS[detail.signal_type] ?? detail.signal_type}</p>
                     </div>
                     <div className="rounded-md border border-border/60 p-3">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Discovered</p>
-                      <p className="font-medium">{new Date(detail.discovered_at).toLocaleDateString()}</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Last update</p>
+                      <p className="font-medium">{new Date(detail.last_evidence_at).toLocaleDateString()}</p>
+                      {detail.last_evidence_at !== detail.discovered_at && (
+                        <p className="text-xs text-muted-foreground mt-0.5">First discovered {new Date(detail.discovered_at).toLocaleDateString()}</p>
+                      )}
                     </div>
                   </div>
+
+                  {(detail.related_entity_name || detail.relationship_label) && (
+                    <div className="rounded-md border border-border/60 p-3 text-sm">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Related entity</p>
+                      <p className="font-medium">
+                        {detail.related_entity_name}
+                        {detail.related_entity_type && <span className="text-muted-foreground font-normal"> · {ENTITY_TYPE_LABELS[detail.related_entity_type] ?? detail.related_entity_type}</span>}
+                      </p>
+                      {detail.relationship_label && <p className="text-muted-foreground mt-1">{detail.relationship_label}</p>}
+                      {detail.related_entity_context?.relationship && (
+                        <p className="text-emerald-700 mt-1.5">
+                          Existing Partner ({detail.related_entity_context.relationship.status}) in {detail.related_entity_context.relationship.territory_name ?? 'this territory'}.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">{detail.headline}</h4>
@@ -404,20 +570,44 @@ export default function ChannelRadar() {
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">Recommended action</h4>
                     <p className="text-sm text-foreground leading-relaxed">{detail.recommended_action}</p>
+                    {detail.druid_partner_motion && (
+                      <p className="text-xs text-muted-foreground mt-1.5">DRUID motion: {detail.druid_partner_motion}</p>
+                    )}
                   </div>
 
                   <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">Evidence</h4>
-                    <a href={detail.source_url} target="_blank" rel="noreferrer" className="block text-xs rounded-md border border-border/60 p-2.5 hover:bg-muted/40 transition-colors">
-                      <p className="font-medium text-foreground flex items-center gap-1">{detail.source_title} <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" /></p>
-                      <p className="text-muted-foreground mt-0.5">
-                        {detail.source_domain ?? detail.source_url}
-                        {detail.source_published_at && ` · ${new Date(detail.source_published_at).toLocaleDateString()}`}
-                      </p>
-                    </a>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+                      Evidence {detail.evidence && detail.evidence.length > 1 && `(${detail.evidence.length} sources)`}
+                    </h4>
+                    <div className="space-y-1.5">
+                      {(detail.evidence ?? []).map((e) => (
+                        <a
+                          key={e.id}
+                          href={e.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block text-xs rounded-md border border-border/60 p-2.5 hover:bg-muted/40 transition-colors"
+                        >
+                          <p className="font-medium text-foreground flex items-center gap-1">
+                            {e.source_title} <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
+                            {e.is_primary && <Badge variant="outline" className="font-normal ml-1 h-4 px-1 text-[10px]">Primary</Badge>}
+                          </p>
+                          <p className="text-muted-foreground mt-0.5">
+                            {e.source_domain ?? e.source_url}
+                            {e.source_published_at && ` · ${new Date(e.source_published_at).toLocaleDateString()}`}
+                          </p>
+                        </a>
+                      ))}
+                    </div>
                   </div>
 
-                  {detail.status !== 'dismissed' && (
+                  {/* Phase 10: PAM Channel Radar access is read-only -- these
+                      review/dismiss actions call PATCH /channel-radar/:id,
+                      which stays Head/Admin-only regardless of territory
+                      ownership. Hidden here rather than just disabled, since
+                      a PAM must never be offered an action they can never
+                      complete. */}
+                  {isGlobalUser && detail.status !== 'dismissed' && (
                     <div className="flex items-center gap-2">
                       {detail.status === 'new' && (
                         <Button size="sm" onClick={() => updateMutation.mutate({ id: selectedId, data: { status: 'reviewed' } })} disabled={updateMutation.isPending}>

@@ -472,6 +472,7 @@ export const ChannelRadarEntityType = {
   competitor: 'competitor',
   partner: 'partner',
   ecosystem: 'ecosystem',
+  technology_vendor: 'technology_vendor',
   other: 'other',
 } as const;
 
@@ -489,15 +490,21 @@ export const ChannelRadarSignalType = {
   product_gtm: 'product_gtm',
   marketplace_listing: 'marketplace_listing',
   event: 'event',
+  partner_program: 'partner_program',
+  tender_rfp: 'tender_rfp',
   other: 'other',
 } as const;
 
+/**
+ * watch = strategically relevant but not enough evidence/urgency yet to call opportunity or threat. Distinct from confidence (evidence quality), which is a separate axis.
+ */
 export type ChannelRadarImplication = typeof ChannelRadarImplication[keyof typeof ChannelRadarImplication];
 
 
 export const ChannelRadarImplication = {
   opportunity: 'opportunity',
   threat: 'threat',
+  watch: 'watch',
   neutral: 'neutral',
 } as const;
 
@@ -528,6 +535,18 @@ export const ChannelRadarSignalStatus = {
   dismissed: 'dismissed',
 } as const;
 
+export interface ChannelRadarEvidenceItem {
+  id: string;
+  source_title: string;
+  source_url: string;
+  /** @nullable */
+  source_domain?: string | null;
+  /** @nullable */
+  source_published_at?: string | null;
+  discovered_at: string;
+  is_primary: boolean;
+}
+
 export interface ChannelRadarSignal {
   id: string;
   territory_id: string;
@@ -543,6 +562,11 @@ export interface ChannelRadarSignal {
   implication: ChannelRadarImplication;
   impact: ChannelRadarImpact;
   recommended_action: string;
+  /**
+     * Relevant DRUID partner motion/capability, kept separate from recommended_action.
+     * @nullable
+     */
+  druid_partner_motion?: string | null;
   confidence: ChannelRadarConfidence;
   source_title: string;
   source_url: string;
@@ -555,9 +579,23 @@ export interface ChannelRadarSignal {
   source_published_at?: string | null;
   discovered_at: string;
   status: ChannelRadarSignalStatus;
-  created_at: string;
-  updated_at: string;
+  /** Set at write time from independent factors (ambiguous entity/counterparty identity, uncertain regional applicability, low confidence) -- never simply confidence=='low'. */
+  requires_validation: boolean;
+  /** @nullable */
+  related_entity_name?: string | null;
+  related_entity_type?: ChannelRadarEntityType | null;
+  /**
+     * Short evidence-grounded descriptor of the relationship to related_entity_name (e.g. "reseller", "acquirer of"), not a taxonomy.
+     * @nullable
+     */
+  relationship_label?: string | null;
+  /** Bumped when corroborating evidence attaches; never implies the classification changed. */
+  last_evidence_at: string;
+  evidence_count: number;
+  /** Present only on the single-signal detail response (GET /channel-radar/{id}), omitted on list responses. */
+  evidence?: ChannelRadarEvidenceItem[];
   existing_partner_context?: ExistingPartnerContext;
+  related_entity_context?: ExistingPartnerContext;
 }
 
 export interface UpdateChannelRadarSignalInput {
@@ -572,6 +610,33 @@ export interface RunChannelRadarResult {
   results_found: number;
   results_qualified: number;
   message: string;
+}
+
+export interface ChannelRadarImplicationCounts {
+  opportunity: number;
+  threat: number;
+  watch: number;
+  neutral: number;
+}
+
+export interface ChannelRadarImpactCounts {
+  high: number;
+  medium: number;
+  low: number;
+}
+
+export interface ChannelRadarStatusCounts {
+  new: number;
+  reviewed: number;
+  dismissed: number;
+}
+
+export interface ChannelRadarSummary {
+  total: number;
+  by_implication: ChannelRadarImplicationCounts;
+  by_impact: ChannelRadarImpactCounts;
+  by_status: ChannelRadarStatusCounts;
+  requires_validation_count: number;
 }
 
 export type SearchResultModule = typeof SearchResultModule[keyof typeof SearchResultModule];
@@ -2732,6 +2797,10 @@ signal_type?: string | null;
 /**
  * @nullable
  */
+entity_type?: string | null;
+/**
+ * @nullable
+ */
 implication?: string | null;
 /**
  * @nullable
@@ -2741,6 +2810,56 @@ impact?: string | null;
  * @nullable
  */
 status?: string | null;
+/**
+ * 'true' or 'false' -- filters on the requires_validation flag.
+ * @nullable
+ */
+requires_validation?: string | null;
+/**
+ * @nullable
+ */
+search?: string | null;
+/**
+ * Max rows to return (default 50, max 200).
+ * @nullable
+ */
+limit?: number | null;
+/**
+ * @nullable
+ */
+offset?: number | null;
+};
+
+export type GetChannelRadarSummaryParams = {
+/**
+ * @nullable
+ */
+territory?: string | null;
+/**
+ * @nullable
+ */
+signal_type?: string | null;
+/**
+ * @nullable
+ */
+entity_type?: string | null;
+/**
+ * @nullable
+ */
+implication?: string | null;
+/**
+ * @nullable
+ */
+impact?: string | null;
+/**
+ * @nullable
+ */
+status?: string | null;
+/**
+ * 'true' or 'false' -- filters on the requires_validation flag.
+ * @nullable
+ */
+requires_validation?: string | null;
 /**
  * @nullable
  */

@@ -574,6 +574,10 @@ paths:
           in: query
           schema:
             type: ["string", "null"]
+        - name: entity_type
+          in: query
+          schema:
+            type: ["string", "null"]
         - name: implication
           in: query
           schema:
@@ -586,19 +590,80 @@ paths:
           in: query
           schema:
             type: ["string", "null"]
+        - name: requires_validation
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: "'true' or 'false' -- filters on the requires_validation flag."
         - name: search
           in: query
           schema:
             type: ["string", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: ["number", "null"]
+          description: Max rows to return (default 50, max 200).
+        - name: offset
+          in: query
+          schema:
+            type: ["number", "null"]
       responses:
         "200":
-          description: List of Channel Radar signals
+          description: List of Channel Radar signals (paginated; evidence omitted, see evidence_count)
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/ChannelRadarSignal"
+
+  /channel-radar/summary:
+    get:
+      operationId: getChannelRadarSummary
+      tags: [channel-radar]
+      summary: Server-side aggregate counts for the signals visible to the caller, under the SAME filters and territory scoping as GET /channel-radar (never limit/offset -- summary is never paginated).
+      parameters:
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: signal_type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: entity_type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: implication
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: impact
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: requires_validation
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: "'true' or 'false' -- filters on the requires_validation flag."
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Aggregate counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelRadarSummary"
 
   /channel-radar/{id}:
     get:
@@ -2744,15 +2809,16 @@ components:
 
     ChannelRadarEntityType:
       type: string
-      enum: [competitor, partner, ecosystem, other]
+      enum: [competitor, partner, ecosystem, technology_vendor, other]
 
     ChannelRadarSignalType:
       type: string
-      enum: [acquisition, partnership, reseller_distributor, regional_expansion, leadership_hire, funding, customer_win, product_gtm, marketplace_listing, event, other]
+      enum: [acquisition, partnership, reseller_distributor, regional_expansion, leadership_hire, funding, customer_win, product_gtm, marketplace_listing, event, partner_program, tender_rfp, other]
 
     ChannelRadarImplication:
       type: string
-      enum: [opportunity, threat, neutral]
+      enum: [opportunity, threat, watch, neutral]
+      description: "watch = strategically relevant but not enough evidence/urgency yet to call opportunity or threat. Distinct from confidence (evidence quality), which is a separate axis."
 
     ChannelRadarImpact:
       type: string
@@ -2768,7 +2834,7 @@ components:
 
     ChannelRadarSignal:
       type: object
-      required: [id, territory_id, entity_name, entity_type, signal_type, headline, summary, why_it_matters, implication, impact, recommended_action, confidence, source_title, source_url, discovered_at, status, created_at, updated_at]
+      required: [id, territory_id, entity_name, entity_type, signal_type, headline, summary, why_it_matters, implication, impact, recommended_action, confidence, source_title, source_url, discovered_at, status, created_at, updated_at, requires_validation, last_evidence_at, evidence_count]
       properties:
         id:
           type: string
@@ -2798,6 +2864,9 @@ components:
           $ref: "#/components/schemas/ChannelRadarImpact"
         recommended_action:
           type: string
+        druid_partner_motion:
+          type: ["string", "null"]
+          description: Relevant DRUID partner motion/capability, kept separate from recommended_action.
         confidence:
           $ref: "#/components/schemas/ChannelRadarConfidence"
         source_title:
@@ -2813,12 +2882,51 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/ChannelRadarSignalStatus"
-        created_at:
+        requires_validation:
+          type: boolean
+          description: "Set at write time from independent factors (ambiguous entity/counterparty identity, uncertain regional applicability, low confidence) -- never simply confidence=='low'."
+        related_entity_name:
+          type: ["string", "null"]
+        related_entity_type:
+          oneOf:
+            - $ref: "#/components/schemas/ChannelRadarEntityType"
+            - type: "null"
+        relationship_label:
+          type: ["string", "null"]
+          description: Short evidence-grounded descriptor of the relationship to related_entity_name (e.g. "reseller", "acquirer of"), not a taxonomy.
+        last_evidence_at:
           type: string
-        updated_at:
-          type: string
+          description: Bumped when corroborating evidence attaches; never implies the classification changed.
+        evidence_count:
+          type: number
+        evidence:
+          type: array
+          description: Present only on the single-signal detail response (GET /channel-radar/{id}), omitted on list responses.
+          items:
+            $ref: "#/components/schemas/ChannelRadarEvidenceItem"
         existing_partner_context:
           $ref: "#/components/schemas/ExistingPartnerContext"
+        related_entity_context:
+          $ref: "#/components/schemas/ExistingPartnerContext"
+
+    ChannelRadarEvidenceItem:
+      type: object
+      required: [id, source_title, source_url, discovered_at, is_primary]
+      properties:
+        id:
+          type: string
+        source_title:
+          type: string
+        source_url:
+          type: string
+        source_domain:
+          type: ["string", "null"]
+        source_published_at:
+          type: ["string", "null"]
+        discovered_at:
+          type: string
+        is_primary:
+          type: boolean
 
     UpdateChannelRadarSignalInput:
       type: object
@@ -2844,6 +2952,56 @@ components:
           type: number
         message:
           type: string
+
+    ChannelRadarImplicationCounts:
+      type: object
+      required: [opportunity, threat, watch, neutral]
+      properties:
+        opportunity:
+          type: number
+        threat:
+          type: number
+        watch:
+          type: number
+        neutral:
+          type: number
+
+    ChannelRadarImpactCounts:
+      type: object
+      required: [high, medium, low]
+      properties:
+        high:
+          type: number
+        medium:
+          type: number
+        low:
+          type: number
+
+    ChannelRadarStatusCounts:
+      type: object
+      required: [new, reviewed, dismissed]
+      properties:
+        new:
+          type: number
+        reviewed:
+          type: number
+        dismissed:
+          type: number
+
+    ChannelRadarSummary:
+      type: object
+      required: [total, by_implication, by_impact, by_status, requires_validation_count]
+      properties:
+        total:
+          type: number
+        by_implication:
+          $ref: "#/components/schemas/ChannelRadarImplicationCounts"
+        by_impact:
+          $ref: "#/components/schemas/ChannelRadarImpactCounts"
+        by_status:
+          $ref: "#/components/schemas/ChannelRadarStatusCounts"
+        requires_validation_count:
+          type: number
 
     SearchResultModule:
       type: string

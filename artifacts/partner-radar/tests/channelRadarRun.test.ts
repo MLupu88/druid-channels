@@ -3,6 +3,13 @@
 // previously the button's very presence in the DOM was gated on
 // `!isGlobalUser || territory !== 'all'`. Pure unit tests for the replacement
 // decision function -- no React rendering, no network.
+//
+// Phase 10: the authorization model changed -- triggering a Radar run
+// spends paid provider credits, so a PAM (read-only Channel Radar access)
+// must never see this button at all, regardless of territory. The
+// global-user cases below are unchanged from 5B-R; the PAM cases were
+// rewritten for the new contract (a PAM used to always see the button --
+// that assumption no longer holds).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { computeRunRadarButtonState } from "../src/lib/channel-radar-run";
@@ -27,27 +34,43 @@ test("check: Head/Admin's Run Radar disables (not hides) while a scan is already
   assert.equal(state.disabled, true);
 });
 
-test("check: PAM (non-global user) always sees and can run Radar for their own territory", () => {
+// ---- Phase 10: PAM never sees the button ------------------------------
+
+test("Phase 10: PAM never sees Run Radar, even with a resolved own-territory id", () => {
   const state = computeRunRadarButtonState({ isGlobalUser: false, territory: "all", runTargetTerritoryId: "own-territory-1", isPending: false });
-  assert.equal(state.visible, true, "a PAM's Run Radar must never be gated on the territory filter selector");
-  assert.equal(state.disabled, false);
+  assert.equal(state.visible, false, "PAM Radar access is read-only in Phase 10 -- triggering a run spends paid provider credits");
 });
 
-test("PAM with no territory assigned at all is disabled with an explanation, but still visible", () => {
+test("Phase 10: PAM with no territory assigned still never sees Run Radar (not visible-but-disabled)", () => {
   const state = computeRunRadarButtonState({ isGlobalUser: false, territory: "all", runTargetTerritoryId: null, isPending: false });
-  assert.equal(state.visible, true);
-  assert.equal(state.disabled, true);
-  assert.ok(state.title && state.title.length > 0);
+  assert.equal(state.visible, false);
 });
 
-test("visible is true in every case -- the button is never conditionally omitted from the page", () => {
+test("Phase 10: PAM never sees Run Radar regardless of the territory filter value or pending state", () => {
   const scenarios = [
+    { isGlobalUser: false, territory: "all", runTargetTerritoryId: "own", isPending: false },
+    { isGlobalUser: false, territory: "all", runTargetTerritoryId: "own", isPending: true },
+    { isGlobalUser: false, territory: "own-territory-1", runTargetTerritoryId: "own-territory-1", isPending: false },
+  ];
+  for (const scenario of scenarios) {
+    assert.equal(computeRunRadarButtonState(scenario).visible, false, JSON.stringify(scenario));
+  }
+});
+
+test("visible is true only for a global user -- never for a PAM, in any scenario", () => {
+  const globalScenarios = [
     { isGlobalUser: true, territory: "all", runTargetTerritoryId: null, isPending: false },
     { isGlobalUser: true, territory: "t1", runTargetTerritoryId: "t1", isPending: false },
+  ];
+  for (const scenario of globalScenarios) {
+    assert.equal(computeRunRadarButtonState(scenario).visible, true, JSON.stringify(scenario));
+  }
+
+  const pamScenarios = [
     { isGlobalUser: false, territory: "all", runTargetTerritoryId: "own", isPending: false },
     { isGlobalUser: false, territory: "all", runTargetTerritoryId: null, isPending: true },
   ];
-  for (const scenario of scenarios) {
-    assert.equal(computeRunRadarButtonState(scenario).visible, true, JSON.stringify(scenario));
+  for (const scenario of pamScenarios) {
+    assert.equal(computeRunRadarButtonState(scenario).visible, false, JSON.stringify(scenario));
   }
 });

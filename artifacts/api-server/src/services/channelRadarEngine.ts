@@ -1,10 +1,19 @@
 import { db } from "@workspace/db";
-import { channelRadarConfigsTable, channelRadarSignalsTable, territoriesTable, type ChannelRadarConfig, type Territory } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  channelRadarConfigsTable,
+  channelRadarSignalsTable,
+  channelRadarSignalEvidenceTable,
+  territoriesTable,
+  RADAR_SIGNAL_TYPES,
+  type ChannelRadarConfig,
+  type Territory,
+} from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import * as searchProvider from "./discoveryProviders/search";
 import * as radarAiProvider from "./channelRadarProviders/ai";
-import { resolveSafeCompanyIdForEntityName } from "./radarCompanyBridge";
+import { resolveCompanyMatchForEntityName } from "./radarCompanyBridge";
+import { normalizeCompanyName } from "./companyMatchingService";
 import { logger } from "../lib/logger";
 
 // Stage 5 Channel Radar engine. Deliberately no demo/fallback data path --
@@ -135,6 +144,345 @@ export function isValidStatusTransition(from: string, to: string): boolean {
   return false;
 }
 
+// ---- Phase 10: cross-run event consolidation -------------------------------
+//
+// dedupeKey (above) is the exact-URL floor: a repeated URL for the same
+// entity+signal_type collapses onto the same row. It does NOT solve a
+// different source reporting the SAME event under a DIFFERENT URL days
+// later -- that's what the candidate search + bounded same-event AI check
+// below solve. See channelRadarProviders/ai.ts's classifySameEvent for the
+// AI half of this (a narrow binary decision made only over what this
+// deterministic search returns).
+
+// Fixed, documented constant -- not a per-territory config knob, matching
+// this file's existing convention (MAX_RADAR_QUERIES, MAX_RESULTS_PER_QUERY)
+// of small fixed constants over configurable ones for internal engine
+// behavior. Generous enough to catch slow follow-on trade-press coverage of
+// the same announcement; bounded enough to not merge across unrelated
+// quarters.
+export const EVENT_MATCH_WINDOW_DAYS = 60;
+export const MAX_EVENT_CANDIDATES = 3;
+
+export interface EventCandidate {
+  id: string;
+  headline: string;
+  summary: string;
+  sourceTitle: string;
+  sourceUrl: string;
+}
+
+interface EventCandidateRow {
+  id: string;
+  entityName: string;
+  companyId: string | null;
+  headline: string;
+  summary: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  discoveredAt: Date;
+  lastEvidenceAt: Date | null;
+}
+
+// Pure, DB-free -- takes an already-fetched row set so the matching/ranking
+// logic can be unit tested without a database. See findEventCandidates below
+// for the DB-backed wrapper actually used by runRadarForConfig.
+//
+// Deliberately does NOT exclude status='dismissed' signals: a dismissed
+// signal is a real, human-reviewed event on record, not noise to forget --
+// a corroborating source found later must still be able to attach to it
+// (see the correction in the Phase 10 plan). The window anchors on
+// lastEvidenceAt (falling back to discoveredAt for rows that never had
+// evidence attached, including every pre-Phase-10 row) rather than
+// source_published_at, which Tavily frequently leaves null -- the window
+// must anchor on what this pipeline reliably knows.
+export function selectEventCandidates(
+  rows: EventCandidateRow[],
+  input: { entityName: string; companyId: string | null; asOf: Date },
+): EventCandidate[] {
+  const normalizedEntity = normalizeCompanyName(input.entityName);
+  const windowStart = input.asOf.getTime() - EVENT_MATCH_WINDOW_DAYS * 86_400_000;
+
+  const matches = rows.filter((r) => {
+    const sameEntity =
+      input.companyId && r.companyId ? r.companyId === input.companyId : normalizeCompanyName(r.entityName) === normalizedEntity;
+    if (!sameEntity) return false;
+    const anchorMs = (r.lastEvidenceAt ?? r.discoveredAt).getTime();
+    return anchorMs >= windowStart && anchorMs <= input.asOf.getTime();
+  });
+
+  matches.sort((a, b) => {
+    const aMs = (a.lastEvidenceAt ?? a.discoveredAt).getTime();
+    const bMs = (b.lastEvidenceAt ?? b.discoveredAt).getTime();
+    return bMs - aMs; // most-recent-first
+  });
+
+  return matches.slice(0, MAX_EVENT_CANDIDATES).map((r) => ({
+    id: r.id,
+    headline: r.headline,
+    summary: r.summary,
+    sourceTitle: r.sourceTitle,
+    sourceUrl: r.sourceUrl,
+  }));
+}
+
+// DB-backed wrapper: scoped to the same territory + same signal_type
+// (deterministic, cheap filters pushed into SQL), then the entity match +
+// time window + ranking + cap happen in selectEventCandidates above.
+async function findEventCandidates(
+  territoryId: string,
+  signalType: (typeof RADAR_SIGNAL_TYPES)[number],
+  entityName: string,
+  companyId: string | null,
+  asOf: Date,
+): Promise<EventCandidate[]> {
+  const rows = await db
+    .select({
+      id: channelRadarSignalsTable.id,
+      entityName: channelRadarSignalsTable.entityName,
+      companyId: channelRadarSignalsTable.companyId,
+      headline: channelRadarSignalsTable.headline,
+      summary: channelRadarSignalsTable.summary,
+      sourceTitle: channelRadarSignalsTable.sourceTitle,
+      sourceUrl: channelRadarSignalsTable.sourceUrl,
+      discoveredAt: channelRadarSignalsTable.discoveredAt,
+      lastEvidenceAt: channelRadarSignalsTable.lastEvidenceAt,
+    })
+    .from(channelRadarSignalsTable)
+    .where(and(eq(channelRadarSignalsTable.territoryId, territoryId), eq(channelRadarSignalsTable.signalType, signalType)));
+
+  return selectEventCandidates(rows, { entityName, companyId, asOf });
+}
+
+// Iterates candidates most-recent-first (the order selectEventCandidates
+// already returns them in), calling `classify` -- a thin wrapper the caller
+// supplies around radarAiProvider.classifySameEvent -- for each one, and
+// stops at the first confirmed match. Exported and injected-callback-based
+// specifically so this policy is unit-testable with a mocked classify
+// function, no DB or network required:
+//   - ANY error thrown by classify (provider down, malformed response,
+//     anything) is caught HERE and treated as "different event" for that
+//     candidate -- it never propagates and never fails the caller's scan.
+//   - A false/uncertain decision moves on to the next candidate; running out
+//     of candidates returns null (create a new signal).
+//   - The first candidate classify confirms true wins immediately -- later
+//     candidates are never even asked.
+export async function resolveEventAttachment(
+  candidates: EventCandidate[],
+  classify: (candidate: EventCandidate) => Promise<radarAiProvider.SameEventOutput>,
+): Promise<string | null> {
+  for (const candidate of candidates) {
+    let sameEvent = false;
+    try {
+      sameEvent = (await classify(candidate)).sameEvent;
+    } catch (err) {
+      logger.warn(
+        { candidateSignalId: candidate.id, errorName: err instanceof Error ? err.name : typeof err },
+        "Channel Radar: same-event classification failed for a candidate; treated as a different event",
+      );
+      sameEvent = false; // never merge on AI error/uncertainty
+    }
+    if (sameEvent) return candidate.id;
+  }
+  return null;
+}
+
+// ---- Phase 10 fix: territory-scoped exact-URL floor -----------------------
+//
+// The floor checks in runRadarForConfig below query BROADLY (any territory
+// sharing this dedupeKey / this normalized evidence URL, via a query pushed
+// only as far as "same key" -- see below) and then decide NARROWLY, here,
+// whether one of those rows actually belongs to the territory this run is
+// scoped to. A same-dedupeKey or same-URL row that belongs to a DIFFERENT
+// territory must never suppress this territory's own signal -- the same
+// entity+signal_type+URL is a legitimate, independently-owned event in each
+// territory that happens to observe it (e.g. a global vendor's announcement
+// picked up by two territories' scans). Pure and DB-free specifically so
+// this decision is unit-testable without a database -- mirrors
+// selectEventCandidates' fetch-broadly/decide-narrowly shape above.
+export function isClaimedInTerritory(rows: Array<{ territoryId: string }>, territoryId: string): boolean {
+  return rows.some((r) => r.territoryId === territoryId);
+}
+
+// ---- Phase 10: small pure route helpers (kept here, not in routes/, so
+// they're unit-testable without importing Express/session/db-connection
+// machinery -- same convention as every other pure function in this file) --
+
+const DEFAULT_LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 200;
+
+export function boundListPagination(limit: number | null | undefined, offset: number | null | undefined): { limit: number; offset: number } {
+  const boundedLimit = Math.max(1, Math.min(limit ?? DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT));
+  const boundedOffset = Math.max(0, offset ?? 0);
+  return { limit: boundedLimit, offset: boundedOffset };
+}
+
+// Query params arrive as strings (or null/undefined when omitted) --
+// "true"/"false" are the only two values that mean anything; anything else
+// (including an omitted param) means "don't filter on this at all", not
+// "false".
+export function coerceBooleanFilter(value: string | null | undefined): boolean | undefined {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+}
+
+// Phase 10 fix: the ONE filter-application function both GET /channel-radar
+// (list) and GET /channel-radar/summary call, so their notion of "the
+// currently active filters" can never silently drift apart. `territory`
+// scoping stays a separate, prior step in both routes (it decides which
+// rows are even fetched under PAM's own-territory constraint, via
+// scopedTerritoryId -- see services/authz.ts), passed in here already
+// resolved; every other filter is applied identically for both endpoints.
+export interface ChannelRadarActiveFilters {
+  scopedTerritoryId: string | null;
+  territory?: string | null;
+  signalType?: string | null;
+  entityType?: string | null;
+  implication?: string | null;
+  impact?: string | null;
+  status?: string | null;
+  requiresValidation?: boolean;
+  search?: string | null;
+}
+
+interface FilterableSignalRow {
+  signal: {
+    territoryId: string;
+    signalType: string;
+    entityType: string;
+    implication: string;
+    impact: string;
+    status: string;
+    requiresValidation: boolean;
+    entityName: string;
+    headline: string;
+  };
+  territory: { name: string } | null;
+}
+
+export function applyChannelRadarFilters<T extends FilterableSignalRow>(rows: T[], filters: ChannelRadarActiveFilters): T[] {
+  let filtered = rows;
+  if (filters.scopedTerritoryId) {
+    filtered = filtered.filter((r) => r.signal.territoryId === filters.scopedTerritoryId);
+  } else if (filters.territory) {
+    filtered = filtered.filter((r) => r.territory?.name === filters.territory || r.signal.territoryId === filters.territory);
+  }
+  if (filters.signalType) filtered = filtered.filter((r) => r.signal.signalType === filters.signalType);
+  if (filters.entityType) filtered = filtered.filter((r) => r.signal.entityType === filters.entityType);
+  if (filters.implication) filtered = filtered.filter((r) => r.signal.implication === filters.implication);
+  if (filters.impact) filtered = filtered.filter((r) => r.signal.impact === filters.impact);
+  if (filters.status) filtered = filtered.filter((r) => r.signal.status === filters.status);
+  if (filters.requiresValidation !== undefined) {
+    filtered = filtered.filter((r) => r.signal.requiresValidation === filters.requiresValidation);
+  }
+  if (filters.search) {
+    const q = filters.search.toLowerCase();
+    filtered = filtered.filter((r) => r.signal.entityName.toLowerCase().includes(q) || r.signal.headline.toLowerCase().includes(q));
+  }
+  return filtered;
+}
+
+// ---- Phase 10 fix: legacy evidence compatibility ---------------------------
+//
+// Pre-Phase-10 signals were created before channel_radar_signal_evidence
+// existed and were never backfilled into it (backfilling would mean
+// mutating historical rows just because they were read -- deliberately not
+// done). Such a signal must never *look* like it has zero evidence when it
+// plainly has one: its own source_title/source_url/source_domain/
+// source_published_at. This synthesizes exactly one read-only, never-
+// persisted primary evidence item from those fields when the evidence
+// table has nothing for this signal yet.
+
+export interface ChannelRadarEvidenceItem {
+  id: string;
+  source_title: string;
+  source_url: string;
+  source_domain: string | null;
+  source_published_at: string | null;
+  discovered_at: string;
+  is_primary: boolean;
+}
+
+export interface EvidenceRowLike {
+  id: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  sourceDomain: string | null;
+  sourcePublishedAt: string | null;
+  discoveredAt: Date;
+  isPrimary: boolean;
+}
+
+export interface LegacySignalSourceFields {
+  id: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  sourceDomain: string | null;
+  sourcePublishedAt: string | null;
+  discoveredAt: Date;
+}
+
+// evidence rows exist -> use them (mapped, unchanged).
+// no evidence rows + a real legacy source_url -> synthesize one primary item.
+// no evidence rows + no source_url -> [] (never fabricates a source).
+export function resolveSignalEvidence(evidenceRows: EvidenceRowLike[], signal: LegacySignalSourceFields): ChannelRadarEvidenceItem[] {
+  if (evidenceRows.length > 0) {
+    return evidenceRows.map((e) => ({
+      id: e.id,
+      source_title: e.sourceTitle,
+      source_url: e.sourceUrl,
+      source_domain: e.sourceDomain,
+      source_published_at: e.sourcePublishedAt,
+      discovered_at: e.discoveredAt.toISOString(),
+      is_primary: e.isPrimary,
+    }));
+  }
+  if (!signal.sourceUrl) return [];
+  return [
+    {
+      // Deterministic, stable, and deliberately never a real evidence-table
+      // uuid -- a synthesized item is not a persisted row and must never be
+      // mistaken for one (e.g. by a client trying to key/cache it).
+      id: `legacy-${signal.id}`,
+      source_title: signal.sourceTitle,
+      source_url: signal.sourceUrl,
+      source_domain: signal.sourceDomain,
+      source_published_at: signal.sourcePublishedAt,
+      discovered_at: signal.discoveredAt.toISOString(),
+      is_primary: true,
+    },
+  ];
+}
+
+// Same compatibility rule applied to the cheap bulk-count path the LIST
+// endpoint uses (it already has signal.sourceUrl on hand from its own
+// select, so this never needs a second query) -- keeps evidence_count
+// consistent between the list and detail responses for the same signal.
+export function resolveEvidenceCount(rawEvidenceRowCount: number, hasLegacySource: boolean): number {
+  return rawEvidenceRowCount > 0 ? rawEvidenceRowCount : hasLegacySource ? 1 : 0;
+}
+
+// Three independent, OR'd factors -- deliberately never simply
+// confidence=='low' (confidence and validation stay conceptually separate).
+// A high-confidence signal can still require validation via an ambiguous
+// identity or uncertain regional applicability; a low-confidence signal is
+// one path among three, not the definition. Zero company matches (a
+// genuinely unlisted entity) is never ambiguity on its own -- only more than
+// one match is.
+export function computeRequiresValidation(input: {
+  ambiguousPrimaryIdentity: boolean;
+  ambiguousRelatedIdentity: boolean;
+  regionalApplicabilityCertain: boolean;
+  confidence: "high" | "medium" | "low";
+}): boolean {
+  return (
+    input.ambiguousPrimaryIdentity ||
+    input.ambiguousRelatedIdentity ||
+    !input.regionalApplicabilityCertain ||
+    input.confidence === "low"
+  );
+}
+
 export class ChannelRadarNotConfiguredError extends Error {}
 export class ChannelRadarRunFailedError extends Error {}
 
@@ -189,38 +537,181 @@ export async function runRadarForConfig(configId: string): Promise<ChannelRadarR
         if (!qualification.keep) continue;
 
         const primaryUrl = qualification.evidenceUrls[0] ?? result.url;
+        const normalizedPrimaryUrl = normalizeUrl(primaryUrl);
         const dedupeKey = computeDedupeKey(qualification.entityName, qualification.signalType, primaryUrl);
-        // Stage 6: deterministic, exact-name-only bridge to the canonical
-        // companies table -- see radarCompanyBridge.ts. Stays null on any
-        // ambiguity; never an LLM call, never fuzzy.
-        const companyId = await resolveSafeCompanyIdForEntityName(qualification.entityName);
 
-        const [inserted] = await db
-          .insert(channelRadarSignalsTable)
-          .values({
-            territoryId: territory.id,
-            assignedUserId: territory.ownerUserId,
-            companyId,
-            entityName: qualification.entityName,
-            entityType: qualification.entityType,
-            signalType: qualification.signalType,
-            headline: qualification.headline,
-            summary: qualification.summary,
-            whyItMatters: qualification.whyItMatters,
-            implication: qualification.implication,
-            impact: qualification.impact,
-            recommendedAction: qualification.recommendedAction,
-            confidence: qualification.confidence,
+        // Floor check (cheap, deterministic, no AI): this exact URL was
+        // already fully processed before *within this territory*, either as
+        // a primary signal (dedupeKey) or as evidence attached to one on an
+        // earlier run (normalizedPrimaryUrl in the evidence table). A
+        // repeated "Run Radar" over the same underlying result, in the SAME
+        // territory, is a true no-op here -- no candidate search, no AI
+        // call. Phase 10 fix: both queries below fetch by key alone (any
+        // territory), then isClaimedInTerritory decides narrowly whether
+        // one of those rows is actually THIS territory's -- a same-key row
+        // owned by a different territory must never suppress this one (see
+        // isClaimedInTerritory's comment above).
+        const dedupeKeyRows = await db
+          .select({ territoryId: channelRadarSignalsTable.territoryId })
+          .from(channelRadarSignalsTable)
+          .where(eq(channelRadarSignalsTable.dedupeKey, dedupeKey));
+        const evidenceUrlRows = await db
+          .select({ territoryId: channelRadarSignalsTable.territoryId })
+          .from(channelRadarSignalEvidenceTable)
+          .innerJoin(channelRadarSignalsTable, eq(channelRadarSignalEvidenceTable.signalId, channelRadarSignalsTable.id))
+          .where(eq(channelRadarSignalEvidenceTable.normalizedUrl, normalizedPrimaryUrl));
+        if (isClaimedInTerritory(dedupeKeyRows, territory.id) || isClaimedInTerritory(evidenceUrlRows, territory.id)) continue;
+
+        // Stage 6 / Phase 10: deterministic, exact-name-only bridge to the
+        // canonical companies table -- see radarCompanyBridge.ts. Stays null
+        // on any ambiguity; never an LLM call, never fuzzy. Resolved for
+        // both the primary entity and (Phase 10) its counterparty, when the
+        // qualification named one -- `ambiguous` (>1 match, never a
+        // zero-match "genuinely unlisted entity") feeds requiresValidation
+        // below, never company_id's own null-on-ambiguity-or-absence
+        // contract.
+        const primaryMatch = await resolveCompanyMatchForEntityName(qualification.entityName);
+        const relatedMatch = qualification.relatedEntityName
+          ? await resolveCompanyMatchForEntityName(qualification.relatedEntityName)
+          : { companyId: null, ambiguous: false };
+
+        const requiresValidation = computeRequiresValidation({
+          ambiguousPrimaryIdentity: primaryMatch.ambiguous,
+          ambiguousRelatedIdentity: relatedMatch.ambiguous,
+          regionalApplicabilityCertain: qualification.regionalApplicabilityCertain,
+          confidence: qualification.confidence,
+        });
+
+        // Phase 10 cross-run consolidation: a bounded, deterministic
+        // candidate search (same territory + same entity + same
+        // signal_type + 60-day window, dismissed included, capped at 3),
+        // then -- only over those pre-vetted candidates -- one narrow AI
+        // same-event/different-event call per candidate, most-recent-first,
+        // stopping at the first confirmed match (see resolveEventAttachment
+        // below for the never-merge-on-error/doubt policy).
+        const candidates = await findEventCandidates(
+          territory.id,
+          qualification.signalType,
+          qualification.entityName,
+          primaryMatch.companyId,
+          new Date(),
+        );
+
+        const attachToSignalId = await resolveEventAttachment(candidates, (candidate) =>
+          radarAiProvider.classifySameEvent({
+            entityHint: qualification.entityName,
+            candidate: {
+              headline: candidate.headline,
+              summary: candidate.summary,
+              sourceTitle: candidate.sourceTitle,
+              sourceUrl: candidate.sourceUrl,
+            },
+            newEvidence: { url: primaryUrl, title: result.title, text: result.snippet },
+          }),
+        );
+
+        if (attachToSignalId) {
+          // Attach: new evidence row only. Never rewrite headline/summary/
+          // why_it_matters/implication/impact/confidence/recommended_action/
+          // status/requires_validation on the existing signal -- a human may
+          // already have reviewed or dismissed it, and this must not
+          // silently reopen or reclassify it. Bump last_evidence_at only.
+          const [insertedEvidence] = await db
+            .insert(channelRadarSignalEvidenceTable)
+            .values({
+              signalId: attachToSignalId,
+              sourceTitle: result.title,
+              sourceUrl: primaryUrl,
+              normalizedUrl: normalizedPrimaryUrl,
+              sourceDomain: extractDomain(primaryUrl),
+              sourcePublishedAt: result.publishedAt,
+              isPrimary: false,
+            })
+            .onConflictDoNothing({ target: [channelRadarSignalEvidenceTable.signalId, channelRadarSignalEvidenceTable.normalizedUrl] })
+            .returning();
+
+          if (insertedEvidence) {
+            await db
+              .update(channelRadarSignalsTable)
+              .set({ lastEvidenceAt: new Date() })
+              .where(eq(channelRadarSignalsTable.id, attachToSignalId));
+            resultsQualified++;
+          }
+          continue;
+        }
+
+        // Phase 10 fix: signal + primary evidence are created atomically --
+        // either both persist or neither does. Previously these were two
+        // independent statements; a failure on the evidence insert could
+        // leave a signal row with no evidence at all (the exact defect
+        // legacy rows already have -- see resolveSignalEvidence -- but
+        // freshly self-inflicted on every new signal instead of inherited
+        // from before this table existed). onConflictDoNothing's target is
+        // the new territory-scoped composite unique (territory_id,
+        // dedupe_key) -- matches the migration in
+        // lib/db/schema/channel_radar_signals.ts; a same-dedupeKey row in a
+        // different territory is no longer a conflict at all.
+        const now = new Date();
+        const created = await db.transaction(async (tx) => {
+          const [inserted] = await tx
+            .insert(channelRadarSignalsTable)
+            .values({
+              territoryId: territory.id,
+              assignedUserId: territory.ownerUserId,
+              companyId: primaryMatch.companyId,
+              entityName: qualification.entityName,
+              entityType: qualification.entityType,
+              signalType: qualification.signalType,
+              headline: qualification.headline,
+              summary: qualification.summary,
+              whyItMatters: qualification.whyItMatters,
+              implication: qualification.implication,
+              impact: qualification.impact,
+              recommendedAction: qualification.recommendedAction,
+              druidPartnerMotion: qualification.druidPartnerMotion,
+              confidence: qualification.confidence,
+              sourceTitle: result.title,
+              sourceUrl: primaryUrl,
+              sourceDomain: extractDomain(primaryUrl),
+              sourcePublishedAt: result.publishedAt, // honest: null when the provider gave no date
+              dedupeKey,
+              requiresValidation,
+              regionalApplicabilityCertain: qualification.regionalApplicabilityCertain,
+              relatedEntityName: qualification.relatedEntityName,
+              relatedEntityType: qualification.relatedEntityType,
+              relatedEntityCompanyId: relatedMatch.companyId,
+              relationshipLabel: qualification.relationshipLabel,
+              discoveredAt: now,
+              // Initialized from this signal's own creation/discovery moment
+              // so candidate-window logic (findEventCandidates above) can
+              // consistently use lastEvidenceAt going forward; pre-Phase-10
+              // rows fall back to discoveredAt (see selectEventCandidates).
+              lastEvidenceAt: now,
+            })
+            .onConflictDoNothing({ target: [channelRadarSignalsTable.territoryId, channelRadarSignalsTable.dedupeKey] })
+            .returning();
+
+          if (!inserted) return null; // idempotent no-op: exact repeat within this territory
+
+          // Mirror the primary evidence into the evidence table at creation
+          // time -- the evidence table is then the single source of truth
+          // for "which URLs have been recorded against this event." Same
+          // transaction as the signal insert above: if this throws, the
+          // signal insert rolls back with it.
+          await tx.insert(channelRadarSignalEvidenceTable).values({
+            signalId: inserted.id,
             sourceTitle: result.title,
             sourceUrl: primaryUrl,
+            normalizedUrl: normalizedPrimaryUrl,
             sourceDomain: extractDomain(primaryUrl),
-            sourcePublishedAt: result.publishedAt, // honest: null when the provider gave no date
-            dedupeKey,
-          })
-          .onConflictDoNothing({ target: channelRadarSignalsTable.dedupeKey })
-          .returning();
+            sourcePublishedAt: result.publishedAt,
+            isPrimary: true,
+          });
 
-        if (inserted) resultsQualified++;
+          return inserted;
+        });
+
+        if (created) resultsQualified++;
       }
     }
   } catch (err) {

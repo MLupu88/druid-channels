@@ -22,6 +22,7 @@ export * from "./partner_recruitments";
 export * from "./partner_recruitment_history";
 export * from "./channel_radar_configs";
 export * from "./channel_radar_signals";
+export * from "./channel_radar_signal_evidence";
 export * from "./partner_relationships";
 export * from "./partner_relationship_history";
 export * from "./partner_activities";
