@@ -25,6 +25,7 @@ import pamCopilotRouter from "./pam_copilot";
 import territoryPotentialRouter from "./territory_potential";
 import opportunitiesRouter from "./opportunities";
 import channelChiefRouter from "./channel_chief";
+import weeklyReportingRouter from "./weekly_reporting";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(pamCopilotRouter);
 router.use(territoryPotentialRouter);
 router.use(opportunitiesRouter);
 router.use(channelChiefRouter);
+router.use(weeklyReportingRouter);
 
 export default router;

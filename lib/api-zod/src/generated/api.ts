@@ -2099,7 +2099,7 @@ export const GetChannelChiefSnapshotResponse = zod.object({
   "partner_referrals": zod.number().int()
 })).describe('Bounded most-recent-N activities across every territory -- never a full-table dump.')
 }),
-  "data_quality_notes": zod.array(zod.string()).describe('Deterministic notes about missing\/incomplete\/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as \"unknown\".')
+  "data_quality_notes": zod.array(zod.string())
 })
 
 
@@ -3335,5 +3335,684 @@ export const ListRecentProspectActivityResponseItem = zod.object({
   "note": zod.string().nullish()
 })
 export const ListRecentProspectActivityResponse = zod.array(ListRecentProspectActivityResponseItem)
+
+
+/**
+ * @summary Phase 7 -- the caller's own weekly PAM report for a given reporting week (defaults to the current week). A draft/current week is computed live from canonical commercial/recruitment/marketing services; a submitted week reads back its frozen snapshot, never recomputed. PAM self-service only -- never accepts another user's id.
+ */
+export const GetMyWeeklyReportQueryParams = zod.object({
+  "week_start": zod.coerce.string().nullish().describe('Canonical Monday (YYYY-MM-DD) of the reporting week. Defaults to the Monday of the current week.')
+})
+
+export const GetMyWeeklyReportResponse = zod.object({
+  "pam_user_id": zod.string(),
+  "territory_ids": zod.array(zod.string()),
+  "territory_names": zod.array(zod.string()),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "status": zod.enum(['draft', 'submitted']),
+  "submitted_at": zod.string().nullable(),
+  "snapshot_generated_at": zod.string().nullable(),
+  "metrics": zod.object({
+  "snapshot_version": zod.number(),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "territory_ids": zod.array(zod.string()).describe('One entry per territory the PAM canonically owns (may be more than one -- territories.owner_user_id has no DB uniqueness constraint). A single-territory PAM has an array of length 1.'),
+  "territory_names": zod.array(zod.string()),
+  "pam_user_id": zod.string(),
+  "generated_at": zod.string(),
+  "commercial": zod.object({
+  "open_pipeline_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunity_count_open": zod.number(),
+  "opportunities_created_count": zod.number(),
+  "deals_won_count": zod.number(),
+  "targets": zod.array(zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "metric_key": zod.string(),
+  "period_key": zod.string(),
+  "target_value": zod.number().nullable(),
+  "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
+  "progress_percent": zod.number().nullable(),
+  "status": zod.enum(['ahead', 'behind', 'no_target'])
+}).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
+  "contributing_open_pipeline": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number()
+})).describe('Per-opportunity backing data behind open_pipeline_usd -- lets team-level aggregation dedupe by opportunity_id across PAM reports without a live re-query for a frozen\/submitted PAM. Not meaningful presented directly to a PAM.'),
+  "contributing_won_revenue": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number(),
+  "closed_at": zod.string()
+})),
+  "contributing_opportunities_created": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "opportunity_date": zod.string()
+}))
+}),
+  "recruitment": zod.object({
+  "new_candidates_count": zod.number(),
+  "stage_transitions_count": zod.number().describe('Genuine stage-movement events in the week, from the canonical partner_recruitment_history table -- excludes the initial recruitment-creation event.'),
+  "signed_this_week_count": zod.number().describe('From the canonical signed_at field (partner_recruitments.stage = \"signed\") -- the same date kpiService\'s Signed Partners KPI uses.'),
+  "stalled_items": zod.array(zod.object({
+  "recruitment_id": zod.string(),
+  "company_name": zod.string(),
+  "stage": zod.string(),
+  "days_in_stage": zod.number()
+})),
+  "needing_attention_relationships": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_name": zod.string(),
+  "last_interaction_at": zod.string().nullable()
+}))
+}),
+  "marketing": zod.object({
+  "activities": zod.array(zod.object({
+  "campaign_id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "partner_company_name": zod.string().nullable(),
+  "status": zod.string(),
+  "linked_opportunity_count": zod.number()
+})),
+  "activity_count": zod.number(),
+  "commercial_impact": zod.object({
+  "unique_linked_opportunity_count": zod.number().describe('Every distinct linked opportunity, regardless of status (open\/won\/lost) -- deduplicated across every activity linked in the week, so an opportunity linked from more than one activity counts exactly once.'),
+  "open_pipeline_usd": zod.number(),
+  "won_revenue_usd": zod.number(),
+  "contributing_opportunities": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "usd_value": zod.number()
+}))
+})
+}),
+  "attention": zod.array(zod.object({
+  "kind": zod.enum(['stalled_recruitment', 'relationship_needs_attention', 'target_gap']),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "ref_id": zod.string().nullable()
+}))
+}).describe('The structured, Phase 8-consumable weekly figures -- computed live for a draft report, frozen permanently at submit time for a submitted one.'),
+  "commentary": zod.object({
+  "wins_progress": zod.string().nullable(),
+  "risks_blockers": zod.string().nullable(),
+  "priorities_next_week": zod.string().nullable(),
+  "help_needed": zod.string().nullable(),
+  "commentary_updated_at": zod.string().nullable()
+})
+})
+
+
+/**
+ * @summary Phase 7 -- the caller's past weekly reports that have an actual persisted row (a commentary save or a submission), most recent first. A week nobody has touched yet is not included, though it remains viewable live via GET /reporting/weekly/me.
+ */
+export const ListMyWeeklyReportHistoryQueryParams = zod.object({
+  "limit": zod.coerce.number().nullish()
+})
+
+export const ListMyWeeklyReportHistoryResponseItem = zod.object({
+  "week_start": zod.string(),
+  "status": zod.enum(['draft', 'submitted']),
+  "submitted_at": zod.string().nullable(),
+  "commentary_updated_at": zod.string().nullable()
+})
+export const ListMyWeeklyReportHistoryResponse = zod.array(ListMyWeeklyReportHistoryResponseItem)
+
+
+/**
+ * @summary Phase 7 -- create or update the caller's own commentary for a reporting week. Fields omitted from the body are left unchanged; sending null clears a field. Rejected (409) once that week's report has been submitted -- commentary is read-only after submit, with no reopen workflow.
+ */
+export const UpsertMyWeeklyCommentaryBody = zod.object({
+  "week_start": zod.string(),
+  "wins_progress": zod.string().nullish(),
+  "risks_blockers": zod.string().nullish(),
+  "priorities_next_week": zod.string().nullish(),
+  "help_needed": zod.string().nullish()
+}).describe('Fields omitted are left unchanged; sending null explicitly clears that field.')
+
+export const UpsertMyWeeklyCommentaryResponse = zod.object({
+  "pam_user_id": zod.string(),
+  "territory_ids": zod.array(zod.string()),
+  "territory_names": zod.array(zod.string()),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "status": zod.enum(['draft', 'submitted']),
+  "submitted_at": zod.string().nullable(),
+  "snapshot_generated_at": zod.string().nullable(),
+  "metrics": zod.object({
+  "snapshot_version": zod.number(),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "territory_ids": zod.array(zod.string()).describe('One entry per territory the PAM canonically owns (may be more than one -- territories.owner_user_id has no DB uniqueness constraint). A single-territory PAM has an array of length 1.'),
+  "territory_names": zod.array(zod.string()),
+  "pam_user_id": zod.string(),
+  "generated_at": zod.string(),
+  "commercial": zod.object({
+  "open_pipeline_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunity_count_open": zod.number(),
+  "opportunities_created_count": zod.number(),
+  "deals_won_count": zod.number(),
+  "targets": zod.array(zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "metric_key": zod.string(),
+  "period_key": zod.string(),
+  "target_value": zod.number().nullable(),
+  "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
+  "progress_percent": zod.number().nullable(),
+  "status": zod.enum(['ahead', 'behind', 'no_target'])
+}).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
+  "contributing_open_pipeline": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number()
+})).describe('Per-opportunity backing data behind open_pipeline_usd -- lets team-level aggregation dedupe by opportunity_id across PAM reports without a live re-query for a frozen\/submitted PAM. Not meaningful presented directly to a PAM.'),
+  "contributing_won_revenue": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number(),
+  "closed_at": zod.string()
+})),
+  "contributing_opportunities_created": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "opportunity_date": zod.string()
+}))
+}),
+  "recruitment": zod.object({
+  "new_candidates_count": zod.number(),
+  "stage_transitions_count": zod.number().describe('Genuine stage-movement events in the week, from the canonical partner_recruitment_history table -- excludes the initial recruitment-creation event.'),
+  "signed_this_week_count": zod.number().describe('From the canonical signed_at field (partner_recruitments.stage = \"signed\") -- the same date kpiService\'s Signed Partners KPI uses.'),
+  "stalled_items": zod.array(zod.object({
+  "recruitment_id": zod.string(),
+  "company_name": zod.string(),
+  "stage": zod.string(),
+  "days_in_stage": zod.number()
+})),
+  "needing_attention_relationships": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_name": zod.string(),
+  "last_interaction_at": zod.string().nullable()
+}))
+}),
+  "marketing": zod.object({
+  "activities": zod.array(zod.object({
+  "campaign_id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "partner_company_name": zod.string().nullable(),
+  "status": zod.string(),
+  "linked_opportunity_count": zod.number()
+})),
+  "activity_count": zod.number(),
+  "commercial_impact": zod.object({
+  "unique_linked_opportunity_count": zod.number().describe('Every distinct linked opportunity, regardless of status (open\/won\/lost) -- deduplicated across every activity linked in the week, so an opportunity linked from more than one activity counts exactly once.'),
+  "open_pipeline_usd": zod.number(),
+  "won_revenue_usd": zod.number(),
+  "contributing_opportunities": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "usd_value": zod.number()
+}))
+})
+}),
+  "attention": zod.array(zod.object({
+  "kind": zod.enum(['stalled_recruitment', 'relationship_needs_attention', 'target_gap']),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "ref_id": zod.string().nullable()
+}))
+}).describe('The structured, Phase 8-consumable weekly figures -- computed live for a draft report, frozen permanently at submit time for a submitted one.'),
+  "commentary": zod.object({
+  "wins_progress": zod.string().nullable(),
+  "risks_blockers": zod.string().nullable(),
+  "priorities_next_week": zod.string().nullable(),
+  "help_needed": zod.string().nullable(),
+  "commentary_updated_at": zod.string().nullable()
+})
+})
+
+
+/**
+ * @summary Phase 7 -- freezes the caller's live weekly figures into a permanent snapshot for the given week and marks the report submitted. Immutable afterward -- neither the snapshot nor its commentary can be edited again, and this endpoint itself becomes a 409 on a second call for the same week.
+ */
+export const SubmitMyWeeklyReportBody = zod.object({
+  "week_start": zod.string()
+})
+
+export const SubmitMyWeeklyReportResponse = zod.object({
+  "pam_user_id": zod.string(),
+  "territory_ids": zod.array(zod.string()),
+  "territory_names": zod.array(zod.string()),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "status": zod.enum(['draft', 'submitted']),
+  "submitted_at": zod.string().nullable(),
+  "snapshot_generated_at": zod.string().nullable(),
+  "metrics": zod.object({
+  "snapshot_version": zod.number(),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "territory_ids": zod.array(zod.string()).describe('One entry per territory the PAM canonically owns (may be more than one -- territories.owner_user_id has no DB uniqueness constraint). A single-territory PAM has an array of length 1.'),
+  "territory_names": zod.array(zod.string()),
+  "pam_user_id": zod.string(),
+  "generated_at": zod.string(),
+  "commercial": zod.object({
+  "open_pipeline_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunity_count_open": zod.number(),
+  "opportunities_created_count": zod.number(),
+  "deals_won_count": zod.number(),
+  "targets": zod.array(zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "metric_key": zod.string(),
+  "period_key": zod.string(),
+  "target_value": zod.number().nullable(),
+  "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
+  "progress_percent": zod.number().nullable(),
+  "status": zod.enum(['ahead', 'behind', 'no_target'])
+}).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
+  "contributing_open_pipeline": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number()
+})).describe('Per-opportunity backing data behind open_pipeline_usd -- lets team-level aggregation dedupe by opportunity_id across PAM reports without a live re-query for a frozen\/submitted PAM. Not meaningful presented directly to a PAM.'),
+  "contributing_won_revenue": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number(),
+  "closed_at": zod.string()
+})),
+  "contributing_opportunities_created": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "opportunity_date": zod.string()
+}))
+}),
+  "recruitment": zod.object({
+  "new_candidates_count": zod.number(),
+  "stage_transitions_count": zod.number().describe('Genuine stage-movement events in the week, from the canonical partner_recruitment_history table -- excludes the initial recruitment-creation event.'),
+  "signed_this_week_count": zod.number().describe('From the canonical signed_at field (partner_recruitments.stage = \"signed\") -- the same date kpiService\'s Signed Partners KPI uses.'),
+  "stalled_items": zod.array(zod.object({
+  "recruitment_id": zod.string(),
+  "company_name": zod.string(),
+  "stage": zod.string(),
+  "days_in_stage": zod.number()
+})),
+  "needing_attention_relationships": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_name": zod.string(),
+  "last_interaction_at": zod.string().nullable()
+}))
+}),
+  "marketing": zod.object({
+  "activities": zod.array(zod.object({
+  "campaign_id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "partner_company_name": zod.string().nullable(),
+  "status": zod.string(),
+  "linked_opportunity_count": zod.number()
+})),
+  "activity_count": zod.number(),
+  "commercial_impact": zod.object({
+  "unique_linked_opportunity_count": zod.number().describe('Every distinct linked opportunity, regardless of status (open\/won\/lost) -- deduplicated across every activity linked in the week, so an opportunity linked from more than one activity counts exactly once.'),
+  "open_pipeline_usd": zod.number(),
+  "won_revenue_usd": zod.number(),
+  "contributing_opportunities": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "usd_value": zod.number()
+}))
+})
+}),
+  "attention": zod.array(zod.object({
+  "kind": zod.enum(['stalled_recruitment', 'relationship_needs_attention', 'target_gap']),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "ref_id": zod.string().nullable()
+}))
+}).describe('The structured, Phase 8-consumable weekly figures -- computed live for a draft report, frozen permanently at submit time for a submitted one.'),
+  "commentary": zod.object({
+  "wins_progress": zod.string().nullable(),
+  "risks_blockers": zod.string().nullable(),
+  "priorities_next_week": zod.string().nullable(),
+  "help_needed": zod.string().nullable(),
+  "commentary_updated_at": zod.string().nullable()
+})
+})
+
+
+/**
+ * @summary Phase 7 -- Head/Admin drill-down into a specific PAM's weekly report. Identical computation to GET /reporting/weekly/me for that PAM -- never a separate/divergent calculation.
+ */
+export const GetPamWeeklyReportParams = zod.object({
+  "userId": zod.coerce.string().uuid().describe('Must be a syntactically valid UUID -- validated here (400 on malformed input) rather than being passed unvalidated into the underlying PostgreSQL uuid-typed lookup, which would otherwise throw a raw query error instead of a controlled response.')
+})
+
+export const GetPamWeeklyReportQueryParams = zod.object({
+  "week_start": zod.coerce.string().nullish()
+})
+
+export const GetPamWeeklyReportResponse = zod.object({
+  "pam_user_id": zod.string(),
+  "territory_ids": zod.array(zod.string()),
+  "territory_names": zod.array(zod.string()),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "status": zod.enum(['draft', 'submitted']),
+  "submitted_at": zod.string().nullable(),
+  "snapshot_generated_at": zod.string().nullable(),
+  "metrics": zod.object({
+  "snapshot_version": zod.number(),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "territory_ids": zod.array(zod.string()).describe('One entry per territory the PAM canonically owns (may be more than one -- territories.owner_user_id has no DB uniqueness constraint). A single-territory PAM has an array of length 1.'),
+  "territory_names": zod.array(zod.string()),
+  "pam_user_id": zod.string(),
+  "generated_at": zod.string(),
+  "commercial": zod.object({
+  "open_pipeline_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunity_count_open": zod.number(),
+  "opportunities_created_count": zod.number(),
+  "deals_won_count": zod.number(),
+  "targets": zod.array(zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "metric_key": zod.string(),
+  "period_key": zod.string(),
+  "target_value": zod.number().nullable(),
+  "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
+  "progress_percent": zod.number().nullable(),
+  "status": zod.enum(['ahead', 'behind', 'no_target'])
+}).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
+  "contributing_open_pipeline": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number()
+})).describe('Per-opportunity backing data behind open_pipeline_usd -- lets team-level aggregation dedupe by opportunity_id across PAM reports without a live re-query for a frozen\/submitted PAM. Not meaningful presented directly to a PAM.'),
+  "contributing_won_revenue": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number(),
+  "closed_at": zod.string()
+})),
+  "contributing_opportunities_created": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "opportunity_date": zod.string()
+}))
+}),
+  "recruitment": zod.object({
+  "new_candidates_count": zod.number(),
+  "stage_transitions_count": zod.number().describe('Genuine stage-movement events in the week, from the canonical partner_recruitment_history table -- excludes the initial recruitment-creation event.'),
+  "signed_this_week_count": zod.number().describe('From the canonical signed_at field (partner_recruitments.stage = \"signed\") -- the same date kpiService\'s Signed Partners KPI uses.'),
+  "stalled_items": zod.array(zod.object({
+  "recruitment_id": zod.string(),
+  "company_name": zod.string(),
+  "stage": zod.string(),
+  "days_in_stage": zod.number()
+})),
+  "needing_attention_relationships": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_name": zod.string(),
+  "last_interaction_at": zod.string().nullable()
+}))
+}),
+  "marketing": zod.object({
+  "activities": zod.array(zod.object({
+  "campaign_id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "partner_company_name": zod.string().nullable(),
+  "status": zod.string(),
+  "linked_opportunity_count": zod.number()
+})),
+  "activity_count": zod.number(),
+  "commercial_impact": zod.object({
+  "unique_linked_opportunity_count": zod.number().describe('Every distinct linked opportunity, regardless of status (open\/won\/lost) -- deduplicated across every activity linked in the week, so an opportunity linked from more than one activity counts exactly once.'),
+  "open_pipeline_usd": zod.number(),
+  "won_revenue_usd": zod.number(),
+  "contributing_opportunities": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "usd_value": zod.number()
+}))
+})
+}),
+  "attention": zod.array(zod.object({
+  "kind": zod.enum(['stalled_recruitment', 'relationship_needs_attention', 'target_gap']),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "ref_id": zod.string().nullable()
+}))
+}).describe('The structured, Phase 8-consumable weekly figures -- computed live for a draft report, frozen permanently at submit time for a submitted one.'),
+  "commentary": zod.object({
+  "wins_progress": zod.string().nullable(),
+  "risks_blockers": zod.string().nullable(),
+  "priorities_next_week": zod.string().nullable(),
+  "help_needed": zod.string().nullable(),
+  "commentary_updated_at": zod.string().nullable()
+})
+})
+
+
+/**
+ * @summary Phase 7 -- Head/Admin consolidated team weekly view. team_commercial/team_marketing are aggregated entirely from the same pam_reports shown alongside them (never an independently live-queried figure), so the team total always matches exactly the PAM population displayed and correctly respects each PAM's own draft (live) or submitted (frozen) state.
+ */
+export const GetWeeklyTeamReportQueryParams = zod.object({
+  "week_start": zod.coerce.string().nullish()
+})
+
+export const GetWeeklyTeamReportResponse = zod.object({
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "generated_at": zod.string(),
+  "report_state_summary": zod.object({
+  "submitted_count": zod.number(),
+  "draft_count": zod.number()
+}),
+  "pams_with_multiple_territories": zod.array(zod.string()),
+  "team_commercial": zod.object({
+  "open_pipeline_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunity_count_open": zod.number(),
+  "opportunities_created_count": zod.number(),
+  "deals_won_count": zod.number(),
+  "conflicts": zod.array(zod.object({
+  "kind": zod.enum(['open_pipeline', 'won_revenue']),
+  "opportunity_id": zod.string(),
+  "entries": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number(),
+  "as_of": zod.string()
+}))
+}).describe('Surfaced when the same opportunity was sighted with different attribution\/value across two PAMs\' reports (e.g. a reassignment mid-week) -- the team totals use a deterministic most-recent-sighting tie-break, but the conflict itself is always exposed here rather than silently resolved.'))
+}),
+  "team_marketing": zod.object({
+  "activity_count": zod.number(),
+  "commercial_impact": zod.object({
+  "unique_linked_opportunity_count": zod.number(),
+  "open_pipeline_usd": zod.number(),
+  "won_revenue_usd": zod.number()
+}),
+  "conflicts": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "entries": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "usd_value": zod.number(),
+  "as_of": zod.string()
+}))
+}))
+}),
+  "pam_reports": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "territory_ids": zod.array(zod.string()),
+  "territory_names": zod.array(zod.string()),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "status": zod.enum(['draft', 'submitted']),
+  "submitted_at": zod.string().nullable(),
+  "snapshot_generated_at": zod.string().nullable(),
+  "metrics": zod.object({
+  "snapshot_version": zod.number(),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "territory_ids": zod.array(zod.string()).describe('One entry per territory the PAM canonically owns (may be more than one -- territories.owner_user_id has no DB uniqueness constraint). A single-territory PAM has an array of length 1.'),
+  "territory_names": zod.array(zod.string()),
+  "pam_user_id": zod.string(),
+  "generated_at": zod.string(),
+  "commercial": zod.object({
+  "open_pipeline_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunity_count_open": zod.number(),
+  "opportunities_created_count": zod.number(),
+  "deals_won_count": zod.number(),
+  "targets": zod.array(zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "metric_key": zod.string(),
+  "period_key": zod.string(),
+  "target_value": zod.number().nullable(),
+  "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
+  "progress_percent": zod.number().nullable(),
+  "status": zod.enum(['ahead', 'behind', 'no_target'])
+}).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
+  "contributing_open_pipeline": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number()
+})).describe('Per-opportunity backing data behind open_pipeline_usd -- lets team-level aggregation dedupe by opportunity_id across PAM reports without a live re-query for a frozen\/submitted PAM. Not meaningful presented directly to a PAM.'),
+  "contributing_won_revenue": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number(),
+  "closed_at": zod.string()
+})),
+  "contributing_opportunities_created": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "opportunity_date": zod.string()
+}))
+}),
+  "recruitment": zod.object({
+  "new_candidates_count": zod.number(),
+  "stage_transitions_count": zod.number().describe('Genuine stage-movement events in the week, from the canonical partner_recruitment_history table -- excludes the initial recruitment-creation event.'),
+  "signed_this_week_count": zod.number().describe('From the canonical signed_at field (partner_recruitments.stage = \"signed\") -- the same date kpiService\'s Signed Partners KPI uses.'),
+  "stalled_items": zod.array(zod.object({
+  "recruitment_id": zod.string(),
+  "company_name": zod.string(),
+  "stage": zod.string(),
+  "days_in_stage": zod.number()
+})),
+  "needing_attention_relationships": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_name": zod.string(),
+  "last_interaction_at": zod.string().nullable()
+}))
+}),
+  "marketing": zod.object({
+  "activities": zod.array(zod.object({
+  "campaign_id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "partner_company_name": zod.string().nullable(),
+  "status": zod.string(),
+  "linked_opportunity_count": zod.number()
+})),
+  "activity_count": zod.number(),
+  "commercial_impact": zod.object({
+  "unique_linked_opportunity_count": zod.number().describe('Every distinct linked opportunity, regardless of status (open\/won\/lost) -- deduplicated across every activity linked in the week, so an opportunity linked from more than one activity counts exactly once.'),
+  "open_pipeline_usd": zod.number(),
+  "won_revenue_usd": zod.number(),
+  "contributing_opportunities": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "usd_value": zod.number()
+}))
+})
+}),
+  "attention": zod.array(zod.object({
+  "kind": zod.enum(['stalled_recruitment', 'relationship_needs_attention', 'target_gap']),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "ref_id": zod.string().nullable()
+}))
+}).describe('The structured, Phase 8-consumable weekly figures -- computed live for a draft report, frozen permanently at submit time for a submitted one.'),
+  "commentary": zod.object({
+  "wins_progress": zod.string().nullable(),
+  "risks_blockers": zod.string().nullable(),
+  "priorities_next_week": zod.string().nullable(),
+  "help_needed": zod.string().nullable(),
+  "commentary_updated_at": zod.string().nullable()
+})
+}).and(zod.object({
+  "pam_name": zod.string(),
+  "current_role": zod.string().describe('The PAM\'s CURRENT role, not their role at report time (not tracked). A historical report is still shown even if this no longer reads \"pam\".')
+})).describe('A WeeklyPamReport plus the PAM\'s display name and current role, as shown in the Head\/Admin team view\'s pam_reports list.')),
+  "help_requests": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "pam_name": zod.string(),
+  "help_needed": zod.string()
+})),
+  "attention_summary": zod.object({
+  "stalled_recruitment_count": zod.number(),
+  "relationships_needing_attention_count": zod.number(),
+  "pams_behind_target": zod.number().describe('Counts a PAM once regardless of how many of their territories are behind target.')
+}).describe('Deterministic notes about missing\/incomplete\/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as \"unknown\".')
+})
 
 

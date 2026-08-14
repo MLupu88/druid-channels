@@ -20,6 +20,8 @@ import TeamTargets from '@/pages/team-targets';
 import Pams from '@/pages/pams';
 import MyWorkspace from '@/pages/pam-workspace';
 import Campaigns from '@/pages/campaigns';
+import MyWeeklyReport from '@/pages/weekly-report';
+import WeeklyTeamReport from '@/pages/weekly-team-report';
 import Settings from '@/pages/settings';
 import { Loader2 } from 'lucide-react';
 
@@ -73,6 +75,15 @@ function AuthenticatedApp() {
         </Route>
         <Route path="/my-workspace">
           <Guarded allow={!isGlobalUser}><MyWorkspace /></Guarded>
+        </Route>
+        {/* Phase 7: PAM-only self-service weekly report -- Head/Admin has no
+            PAM report of their own (see requirePam on the backend) and uses
+            /weekly-team-report's drill-down instead. */}
+        <Route path="/my-weekly-report">
+          <Guarded allow={!isGlobalUser}><MyWeeklyReport /></Guarded>
+        </Route>
+        <Route path="/weekly-team-report">
+          <Guarded allow={isGlobalUser}><WeeklyTeamReport /></Guarded>
         </Route>
         <Route path="/activities" component={Campaigns} />
         <Route path="/settings">

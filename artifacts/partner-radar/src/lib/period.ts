@@ -58,3 +58,42 @@ export function yearOptions(): number[] {
   const current = getCurrentYear();
   return [current - 1, current, current + 1];
 }
+
+// Phase 7: Monday-anchored week identity, mirroring the backend's
+// kpiService.mondayOf/weeklyReportingService.weekEndExclusive exactly --
+// pure calendar math, safe to duplicate client-side (see this file's own
+// header comment on that distinction). week_start is always the canonical
+// Monday (YYYY-MM-DD) the API expects.
+export function mondayOf(date: Date): string {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = d.getUTCDay();
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  d.setUTCDate(d.getUTCDate() - diffToMonday);
+  return d.toISOString().slice(0, 10);
+}
+
+export function getDefaultWeekStart(): string {
+  return mondayOf(new Date());
+}
+
+export function addWeeks(weekStart: string, delta: number): string {
+  const d = new Date(weekStart + "T00:00:00.000Z");
+  d.setUTCDate(d.getUTCDate() + delta * 7);
+  return d.toISOString().slice(0, 10);
+}
+
+export function weekEndInclusive(weekStart: string): string {
+  const d = new Date(weekStart + "T00:00:00.000Z");
+  d.setUTCDate(d.getUTCDate() + 6);
+  return d.toISOString().slice(0, 10);
+}
+
+const SHORT_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+export function weekLabel(weekStart: string): string {
+  const start = new Date(weekStart + "T00:00:00.000Z");
+  const end = new Date(weekEndInclusive(weekStart) + "T00:00:00.000Z");
+  const isCurrent = weekStart === getDefaultWeekStart();
+  const range = `${SHORT_DATE.format(start)} – ${SHORT_DATE.format(end)}`;
+  return isCurrent ? `${range} (this week)` : range;
+}

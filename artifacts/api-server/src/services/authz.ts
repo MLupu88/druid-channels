@@ -30,6 +30,24 @@ export async function getOwnTerritory(userId: string): Promise<ResolvedTerritory
   return { territoryId: row.id, territoryName: row.name };
 }
 
+// Phase 7: a PAM MAY canonically own more than one territory --
+// territories.owner_user_id has no DB uniqueness constraint, unlike the
+// single-territory assumption every other existing feature relies on via
+// getOwnTerritory above. Weekly reporting must reflect a PAM's FULL owned
+// set rather than silently picking one (see services/weeklyReportingService.ts).
+// Additive: getOwnTerritory's single-result behavior and every existing
+// caller of it are unchanged.
+export interface OwnedTerritories {
+  territoryIds: string[];
+  territoryNames: string[];
+}
+
+export async function getOwnTerritories(userId: string): Promise<OwnedTerritories | null> {
+  const rows = await db.select().from(territoriesTable).where(eq(territoriesTable.ownerUserId, userId));
+  if (rows.length === 0) return null;
+  return { territoryIds: rows.map((r) => r.id), territoryNames: rows.map((r) => r.name) };
+}
+
 /**
  * Resolves the effective territory scope for a request, given the acting
  * (session-derived) user and an optional client-requested territory

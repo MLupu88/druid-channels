@@ -2649,8 +2649,320 @@ export interface ChannelChiefSnapshot {
   portfolio: ChannelChiefPortfolioSummary;
   discovery: ChannelChiefDiscoverySummary;
   activity: ChannelChiefActivitySummary;
-  /** Deterministic notes about missing/incomplete/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as "unknown". */
   data_quality_notes: string[];
+}
+
+export interface WeeklySourcedInfluencedAmount {
+  sourced: number;
+  influenced: number;
+  total: number;
+}
+
+export type WeeklyTargetProgressStatus = typeof WeeklyTargetProgressStatus[keyof typeof WeeklyTargetProgressStatus];
+
+
+export const WeeklyTargetProgressStatus = {
+  ahead: 'ahead',
+  behind: 'behind',
+  no_target: 'no_target',
+} as const;
+
+/**
+ * One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.
+ */
+export interface WeeklyTargetProgress {
+  territory_id: string;
+  territory_name: string;
+  metric_key: string;
+  period_key: string;
+  /** @nullable */
+  target_value: number | null;
+  /**
+     * Quarter-to-date actual as of this reporting week's own end date (clamped to the quarter's own end) -- never "as of today", so a draft report about a past week shows what was true then.
+     * @nullable
+     */
+  period_actual_usd: number | null;
+  /** @nullable */
+  progress_percent: number | null;
+  status: WeeklyTargetProgressStatus;
+}
+
+export interface WeeklyPipelineContributingOpportunity {
+  opportunity_id: string;
+  attribution_type: OpportunityAttributionType;
+  usd_value: number;
+}
+
+export interface WeeklyWonRevenueContributingOpportunity {
+  opportunity_id: string;
+  attribution_type: OpportunityAttributionType;
+  usd_value: number;
+  closed_at: string;
+}
+
+export interface WeeklyCreatedContributingOpportunity {
+  opportunity_id: string;
+  opportunity_date: string;
+}
+
+export interface WeeklyCommercialSnapshot {
+  open_pipeline_usd: WeeklySourcedInfluencedAmount;
+  won_revenue_usd: WeeklySourcedInfluencedAmount;
+  opportunity_count_open: number;
+  opportunities_created_count: number;
+  deals_won_count: number;
+  targets: WeeklyTargetProgress[];
+  /** Per-opportunity backing data behind open_pipeline_usd -- lets team-level aggregation dedupe by opportunity_id across PAM reports without a live re-query for a frozen/submitted PAM. Not meaningful presented directly to a PAM. */
+  contributing_open_pipeline: WeeklyPipelineContributingOpportunity[];
+  contributing_won_revenue: WeeklyWonRevenueContributingOpportunity[];
+  contributing_opportunities_created: WeeklyCreatedContributingOpportunity[];
+}
+
+export interface WeeklyStalledRecruitmentItem {
+  recruitment_id: string;
+  company_name: string;
+  stage: string;
+  days_in_stage: number;
+}
+
+export interface WeeklyAttentionRelationshipItem {
+  relationship_id: string;
+  company_name: string;
+  /** @nullable */
+  last_interaction_at: string | null;
+}
+
+export interface WeeklyRecruitmentSnapshot {
+  new_candidates_count: number;
+  /** Genuine stage-movement events in the week, from the canonical partner_recruitment_history table -- excludes the initial recruitment-creation event. */
+  stage_transitions_count: number;
+  /** From the canonical signed_at field (partner_recruitments.stage = "signed") -- the same date kpiService's Signed Partners KPI uses. */
+  signed_this_week_count: number;
+  stalled_items: WeeklyStalledRecruitmentItem[];
+  needing_attention_relationships: WeeklyAttentionRelationshipItem[];
+}
+
+export interface WeeklyMarketingActivityItem {
+  campaign_id: string;
+  name: string;
+  type: string;
+  /** @nullable */
+  partner_company_name: string | null;
+  status: string;
+  linked_opportunity_count: number;
+}
+
+export interface WeeklyMarketingContributingOpportunity {
+  opportunity_id: string;
+  status: OpportunityStatus;
+  usd_value: number;
+}
+
+export interface WeeklyMarketingCommercialImpact {
+  /** Every distinct linked opportunity, regardless of status (open/won/lost) -- deduplicated across every activity linked in the week, so an opportunity linked from more than one activity counts exactly once. */
+  unique_linked_opportunity_count: number;
+  open_pipeline_usd: number;
+  won_revenue_usd: number;
+  contributing_opportunities: WeeklyMarketingContributingOpportunity[];
+}
+
+export interface WeeklyMarketingSnapshot {
+  activities: WeeklyMarketingActivityItem[];
+  activity_count: number;
+  commercial_impact: WeeklyMarketingCommercialImpact;
+}
+
+export type WeeklyAttentionItemKind = typeof WeeklyAttentionItemKind[keyof typeof WeeklyAttentionItemKind];
+
+
+export const WeeklyAttentionItemKind = {
+  stalled_recruitment: 'stalled_recruitment',
+  relationship_needs_attention: 'relationship_needs_attention',
+  target_gap: 'target_gap',
+} as const;
+
+export interface WeeklyAttentionItem {
+  kind: WeeklyAttentionItemKind;
+  label: string;
+  detail: string;
+  /** @nullable */
+  ref_id: string | null;
+}
+
+/**
+ * The structured, Phase 8-consumable weekly figures -- computed live for a draft report, frozen permanently at submit time for a submitted one.
+ */
+export interface WeeklyMetricsSnapshot {
+  snapshot_version: number;
+  week_start: string;
+  week_end: string;
+  /** One entry per territory the PAM canonically owns (may be more than one -- territories.owner_user_id has no DB uniqueness constraint). A single-territory PAM has an array of length 1. */
+  territory_ids: string[];
+  territory_names: string[];
+  pam_user_id: string;
+  generated_at: string;
+  commercial: WeeklyCommercialSnapshot;
+  recruitment: WeeklyRecruitmentSnapshot;
+  marketing: WeeklyMarketingSnapshot;
+  attention: WeeklyAttentionItem[];
+}
+
+export interface WeeklyReportCommentary {
+  /** @nullable */
+  wins_progress: string | null;
+  /** @nullable */
+  risks_blockers: string | null;
+  /** @nullable */
+  priorities_next_week: string | null;
+  /** @nullable */
+  help_needed: string | null;
+  /** @nullable */
+  commentary_updated_at: string | null;
+}
+
+export type WeeklyReportStatus = typeof WeeklyReportStatus[keyof typeof WeeklyReportStatus];
+
+
+export const WeeklyReportStatus = {
+  draft: 'draft',
+  submitted: 'submitted',
+} as const;
+
+export interface WeeklyPamReport {
+  pam_user_id: string;
+  territory_ids: string[];
+  territory_names: string[];
+  week_start: string;
+  week_end: string;
+  status: WeeklyReportStatus;
+  /** @nullable */
+  submitted_at: string | null;
+  /** @nullable */
+  snapshot_generated_at: string | null;
+  metrics: WeeklyMetricsSnapshot;
+  commentary: WeeklyReportCommentary;
+}
+
+/**
+ * A WeeklyPamReport plus the PAM's display name and current role, as shown in the Head/Admin team view's pam_reports list.
+ */
+export type WeeklyPamReportSummary = WeeklyPamReport & {
+  pam_name: string;
+  /** The PAM's CURRENT role, not their role at report time (not tracked). A historical report is still shown even if this no longer reads "pam". */
+  current_role: string;
+};
+
+export interface WeeklyReportHistoryItem {
+  week_start: string;
+  status: WeeklyReportStatus;
+  /** @nullable */
+  submitted_at: string | null;
+  /** @nullable */
+  commentary_updated_at: string | null;
+}
+
+/**
+ * Fields omitted are left unchanged; sending null explicitly clears that field.
+ */
+export interface WeeklyCommentaryInput {
+  week_start: string;
+  /** @nullable */
+  wins_progress?: string | null;
+  /** @nullable */
+  risks_blockers?: string | null;
+  /** @nullable */
+  priorities_next_week?: string | null;
+  /** @nullable */
+  help_needed?: string | null;
+}
+
+export type WeeklyCommercialConflictKind = typeof WeeklyCommercialConflictKind[keyof typeof WeeklyCommercialConflictKind];
+
+
+export const WeeklyCommercialConflictKind = {
+  open_pipeline: 'open_pipeline',
+  won_revenue: 'won_revenue',
+} as const;
+
+export interface WeeklyCommercialConflictEntry {
+  pam_user_id: string;
+  attribution_type: OpportunityAttributionType;
+  usd_value: number;
+  as_of: string;
+}
+
+/**
+ * Surfaced when the same opportunity was sighted with different attribution/value across two PAMs' reports (e.g. a reassignment mid-week) -- the team totals use a deterministic most-recent-sighting tie-break, but the conflict itself is always exposed here rather than silently resolved.
+ */
+export interface WeeklyCommercialConflict {
+  kind: WeeklyCommercialConflictKind;
+  opportunity_id: string;
+  entries: WeeklyCommercialConflictEntry[];
+}
+
+export interface WeeklyMarketingConflictEntry {
+  pam_user_id: string;
+  status: OpportunityStatus;
+  usd_value: number;
+  as_of: string;
+}
+
+export interface WeeklyMarketingConflict {
+  opportunity_id: string;
+  entries: WeeklyMarketingConflictEntry[];
+}
+
+export interface WeeklyTeamCommercial {
+  open_pipeline_usd: WeeklySourcedInfluencedAmount;
+  won_revenue_usd: WeeklySourcedInfluencedAmount;
+  opportunity_count_open: number;
+  opportunities_created_count: number;
+  deals_won_count: number;
+  conflicts: WeeklyCommercialConflict[];
+}
+
+export type WeeklyTeamMarketingCommercialImpact = {
+  unique_linked_opportunity_count: number;
+  open_pipeline_usd: number;
+  won_revenue_usd: number;
+};
+
+export interface WeeklyTeamMarketing {
+  activity_count: number;
+  commercial_impact: WeeklyTeamMarketingCommercialImpact;
+  conflicts: WeeklyMarketingConflict[];
+}
+
+export interface WeeklyReportStateSummary {
+  submitted_count: number;
+  draft_count: number;
+}
+
+export interface WeeklyTeamHelpRequest {
+  pam_user_id: string;
+  pam_name: string;
+  help_needed: string;
+}
+
+export interface WeeklyTeamAttentionSummary {
+  stalled_recruitment_count: number;
+  relationships_needing_attention_count: number;
+  /** Counts a PAM once regardless of how many of their territories are behind target. */
+  pams_behind_target: number;
+}
+
+export interface WeeklyTeamReport {
+  week_start: string;
+  week_end: string;
+  generated_at: string;
+  report_state_summary: WeeklyReportStateSummary;
+  pams_with_multiple_territories: string[];
+  team_commercial: WeeklyTeamCommercial;
+  team_marketing: WeeklyTeamMarketing;
+  pam_reports: WeeklyPamReportSummary[];
+  help_requests: WeeklyTeamHelpRequest[];
+  /** Deterministic notes about missing/incomplete/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as "unknown". */
+  attention_summary: WeeklyTeamAttentionSummary;
 }
 
 export type ListProspectsParams = {
@@ -3046,5 +3358,38 @@ export type ListRecentProspectActivityParams = {
  * @nullable
  */
 days?: number | null;
+};
+
+export type GetMyWeeklyReportParams = {
+/**
+ * Canonical Monday (YYYY-MM-DD) of the reporting week. Defaults to the Monday of the current week.
+ * @nullable
+ */
+week_start?: string | null;
+};
+
+export type ListMyWeeklyReportHistoryParams = {
+/**
+ * @nullable
+ */
+limit?: number | null;
+};
+
+export type SubmitMyWeeklyReportBody = {
+  week_start: string;
+};
+
+export type GetPamWeeklyReportParams = {
+/**
+ * @nullable
+ */
+week_start?: string | null;
+};
+
+export type GetWeeklyTeamReportParams = {
+/**
+ * @nullable
+ */
+week_start?: string | null;
 };
 
