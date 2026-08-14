@@ -29,7 +29,8 @@ import {
   Building2,
   Target,
   ListChecks,
-  DollarSign
+  DollarSign,
+  CalendarCheck
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -66,6 +67,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
         { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
         { href: '/team-targets', label: 'Team Targets', icon: Target },
+        { href: '/weekly-team-report', label: 'Team Weekly Report', icon: CalendarCheck },
         { href: '/pams', label: 'PAMs', icon: Users },
         { href: '/activities', label: 'Marketing Activities', icon: ListOrdered },
       ]
@@ -85,6 +87,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
         { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
         { href: '/my-workspace', label: 'My workspace', icon: Briefcase },
+        { href: '/my-weekly-report', label: 'My Weekly Report', icon: CalendarCheck },
         { href: '/activities', label: 'Marketing Activities', icon: ListOrdered },
       ];
 

@@ -58,6 +58,8 @@ tags:
     description: Phase 5A -- the commercial deal ledger (partner_opportunities). Backs pipeline, closed revenue, and opportunities-created reporting, and the credit-aware annual target attainment cascade.
   - name: channel-chief
     description: Machine-to-machine, read-only leadership snapshot for the Aniri/Channel Chief agent. Service-token authenticated only -- never a human session, never direct DB access, never an LLM call.
+  - name: weekly-reporting
+    description: Phase 7 -- weekly PAM operating reports and the Head/Admin consolidated team view. Every commercial/recruitment/marketing figure is computed by calling the existing canonical services (kpiService, targetService, partnerRecruitmentService, partnerRelationshipService, campaignService), never a second KPI engine. A draft/current week is always live; a submitted week is a permanent, immutable frozen snapshot.
 
 paths:
   /auth/login:
@@ -2275,6 +2277,152 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/RecentProspectActivityItem"
+
+  /reporting/weekly/me:
+    get:
+      operationId: getMyWeeklyReport
+      tags: [weekly-reporting]
+      summary: Phase 7 -- the caller's own weekly PAM report for a given reporting week (defaults to the current week). A draft/current week is computed live from canonical commercial/recruitment/marketing services; a submitted week reads back its frozen snapshot, never recomputed. PAM self-service only -- never accepts another user's id.
+      parameters:
+        - name: week_start
+          in: query
+          description: Canonical Monday (YYYY-MM-DD) of the reporting week. Defaults to the Monday of the current week.
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: The caller's weekly report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyPamReport"
+        "400":
+          description: week_start is not a canonical Monday
+        "403":
+          description: Caller has no canonical territory assigned
+
+  /reporting/weekly/me/history:
+    get:
+      operationId: listMyWeeklyReportHistory
+      tags: [weekly-reporting]
+      summary: Phase 7 -- the caller's past weekly reports that have an actual persisted row (a commentary save or a submission), most recent first. A week nobody has touched yet is not included, though it remains viewable live via GET /reporting/weekly/me.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: ["number", "null"]
+      responses:
+        "200":
+          description: Weekly report history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WeeklyReportHistoryItem"
+
+  /reporting/weekly/me/commentary:
+    put:
+      operationId: upsertMyWeeklyCommentary
+      tags: [weekly-reporting]
+      summary: Phase 7 -- create or update the caller's own commentary for a reporting week. Fields omitted from the body are left unchanged; sending null clears a field. Rejected (409) once that week's report has been submitted -- commentary is read-only after submit, with no reopen workflow.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WeeklyCommentaryInput"
+      responses:
+        "200":
+          description: The updated weekly report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyPamReport"
+        "400":
+          description: week_start is not a canonical Monday
+        "403":
+          description: Caller has no canonical territory assigned
+        "409":
+          description: This weekly report has already been submitted
+
+  /reporting/weekly/me/submit:
+    post:
+      operationId: submitMyWeeklyReport
+      tags: [weekly-reporting]
+      summary: Phase 7 -- freezes the caller's live weekly figures into a permanent snapshot for the given week and marks the report submitted. Immutable afterward -- neither the snapshot nor its commentary can be edited again, and this endpoint itself becomes a 409 on a second call for the same week.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [week_start]
+              properties:
+                week_start:
+                  type: string
+      responses:
+        "200":
+          description: The now-submitted weekly report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyPamReport"
+        "400":
+          description: week_start is not a canonical Monday
+        "403":
+          description: Caller has no canonical territory assigned
+        "409":
+          description: This weekly report has already been submitted
+
+  /reporting/weekly/pam/{userId}:
+    get:
+      operationId: getPamWeeklyReport
+      tags: [weekly-reporting]
+      summary: Phase 7 -- Head/Admin drill-down into a specific PAM's weekly report. Identical computation to GET /reporting/weekly/me for that PAM -- never a separate/divergent calculation.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Must be a syntactically valid UUID -- validated here (400 on malformed input) rather than being passed unvalidated into the underlying PostgreSQL uuid-typed lookup, which would otherwise throw a raw query error instead of a controlled response.
+          schema:
+            type: string
+            format: uuid
+        - name: week_start
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: The PAM's weekly report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyPamReport"
+        "400":
+          description: week_start is not a canonical Monday, or userId is not a syntactically valid UUID
+        "403":
+          description: That PAM has no canonical territory assigned
+
+  /reporting/weekly/team:
+    get:
+      operationId: getWeeklyTeamReport
+      tags: [weekly-reporting]
+      summary: Phase 7 -- Head/Admin consolidated team weekly view. team_commercial/team_marketing are aggregated entirely from the same pam_reports shown alongside them (never an independently live-queried figure), so the team total always matches exactly the PAM population displayed and correctly respects each PAM's own draft (live) or submitted (frozen) state.
+      parameters:
+        - name: week_start
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Team weekly report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyTeamReport"
+        "400":
+          description: week_start is not a canonical Monday
 
 components:
   schemas:
@@ -5369,4 +5517,546 @@ components:
           type: array
           items:
             type: string
+
+    # ---- Phase 7: weekly PAM reporting -----------------------------------
+    # Mirrors lib/db/src/reporting/weeklyPamReportContract.ts's
+    # WeeklyMetricsSnapshot shape field-for-field -- that TS module is the
+    # canonical contract; these schemas exist only so the HTTP layer can
+    # validate/type the same shape, never a second, independently-evolving
+    # definition.
+
+    WeeklySourcedInfluencedAmount:
+      type: object
+      required: [sourced, influenced, total]
+      properties:
+        sourced:
+          type: number
+        influenced:
+          type: number
+        total:
+          type: number
+
+    WeeklyTargetProgressStatus:
+      type: string
+      enum: [ahead, behind, no_target]
+
+    WeeklyTargetProgress:
+      type: object
+      required: [territory_id, territory_name, metric_key, period_key, target_value, period_actual_usd, progress_percent, status]
+      description: One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.
+      properties:
+        territory_id:
+          type: string
+        territory_name:
+          type: string
+        metric_key:
+          type: string
+        period_key:
+          type: string
+        target_value:
+          type: ["number", "null"]
+        period_actual_usd:
+          type: ["number", "null"]
+          description: Quarter-to-date actual as of this reporting week's own end date (clamped to the quarter's own end) -- never "as of today", so a draft report about a past week shows what was true then.
+        progress_percent:
+          type: ["number", "null"]
+        status:
+          $ref: "#/components/schemas/WeeklyTargetProgressStatus"
+
+    WeeklyPipelineContributingOpportunity:
+      type: object
+      required: [opportunity_id, attribution_type, usd_value]
+      properties:
+        opportunity_id:
+          type: string
+        attribution_type:
+          $ref: "#/components/schemas/OpportunityAttributionType"
+        usd_value:
+          type: number
+
+    WeeklyWonRevenueContributingOpportunity:
+      type: object
+      required: [opportunity_id, attribution_type, usd_value, closed_at]
+      properties:
+        opportunity_id:
+          type: string
+        attribution_type:
+          $ref: "#/components/schemas/OpportunityAttributionType"
+        usd_value:
+          type: number
+        closed_at:
+          type: string
+
+    WeeklyCreatedContributingOpportunity:
+      type: object
+      required: [opportunity_id, opportunity_date]
+      properties:
+        opportunity_id:
+          type: string
+        opportunity_date:
+          type: string
+
+    WeeklyCommercialSnapshot:
+      type: object
+      required:
+        - open_pipeline_usd
+        - won_revenue_usd
+        - opportunity_count_open
+        - opportunities_created_count
+        - deals_won_count
+        - targets
+        - contributing_open_pipeline
+        - contributing_won_revenue
+        - contributing_opportunities_created
+      properties:
+        open_pipeline_usd:
+          $ref: "#/components/schemas/WeeklySourcedInfluencedAmount"
+        won_revenue_usd:
+          $ref: "#/components/schemas/WeeklySourcedInfluencedAmount"
+        opportunity_count_open:
+          type: number
+        opportunities_created_count:
+          type: number
+        deals_won_count:
+          type: number
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyTargetProgress"
+        contributing_open_pipeline:
+          type: array
+          description: Per-opportunity backing data behind open_pipeline_usd -- lets team-level aggregation dedupe by opportunity_id across PAM reports without a live re-query for a frozen/submitted PAM. Not meaningful presented directly to a PAM.
+          items:
+            $ref: "#/components/schemas/WeeklyPipelineContributingOpportunity"
+        contributing_won_revenue:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyWonRevenueContributingOpportunity"
+        contributing_opportunities_created:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyCreatedContributingOpportunity"
+
+    WeeklyStalledRecruitmentItem:
+      type: object
+      required: [recruitment_id, company_name, stage, days_in_stage]
+      properties:
+        recruitment_id:
+          type: string
+        company_name:
+          type: string
+        stage:
+          type: string
+        days_in_stage:
+          type: number
+
+    WeeklyAttentionRelationshipItem:
+      type: object
+      required: [relationship_id, company_name, last_interaction_at]
+      properties:
+        relationship_id:
+          type: string
+        company_name:
+          type: string
+        last_interaction_at:
+          type: ["string", "null"]
+
+    WeeklyRecruitmentSnapshot:
+      type: object
+      required: [new_candidates_count, stage_transitions_count, signed_this_week_count, stalled_items, needing_attention_relationships]
+      properties:
+        new_candidates_count:
+          type: number
+        stage_transitions_count:
+          type: number
+          description: Genuine stage-movement events in the week, from the canonical partner_recruitment_history table -- excludes the initial recruitment-creation event.
+        signed_this_week_count:
+          type: number
+          description: From the canonical signed_at field (partner_recruitments.stage = "signed") -- the same date kpiService's Signed Partners KPI uses.
+        stalled_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyStalledRecruitmentItem"
+        needing_attention_relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyAttentionRelationshipItem"
+
+    WeeklyMarketingActivityItem:
+      type: object
+      required: [campaign_id, name, type, partner_company_name, status, linked_opportunity_count]
+      properties:
+        campaign_id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        partner_company_name:
+          type: ["string", "null"]
+        status:
+          type: string
+        linked_opportunity_count:
+          type: number
+
+    WeeklyMarketingContributingOpportunity:
+      type: object
+      required: [opportunity_id, status, usd_value]
+      properties:
+        opportunity_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/OpportunityStatus"
+        usd_value:
+          type: number
+
+    WeeklyMarketingCommercialImpact:
+      type: object
+      required: [unique_linked_opportunity_count, open_pipeline_usd, won_revenue_usd, contributing_opportunities]
+      properties:
+        unique_linked_opportunity_count:
+          type: number
+          description: Every distinct linked opportunity, regardless of status (open/won/lost) -- deduplicated across every activity linked in the week, so an opportunity linked from more than one activity counts exactly once.
+        open_pipeline_usd:
+          type: number
+        won_revenue_usd:
+          type: number
+        contributing_opportunities:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyMarketingContributingOpportunity"
+
+    WeeklyMarketingSnapshot:
+      type: object
+      required: [activities, activity_count, commercial_impact]
+      properties:
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyMarketingActivityItem"
+        activity_count:
+          type: number
+        commercial_impact:
+          $ref: "#/components/schemas/WeeklyMarketingCommercialImpact"
+
+    WeeklyAttentionItemKind:
+      type: string
+      enum: [stalled_recruitment, relationship_needs_attention, target_gap]
+
+    WeeklyAttentionItem:
+      type: object
+      required: [kind, label, detail, ref_id]
+      properties:
+        kind:
+          $ref: "#/components/schemas/WeeklyAttentionItemKind"
+        label:
+          type: string
+        detail:
+          type: string
+        ref_id:
+          type: ["string", "null"]
+
+    WeeklyMetricsSnapshot:
+      type: object
+      description: The structured, Phase 8-consumable weekly figures -- computed live for a draft report, frozen permanently at submit time for a submitted one.
+      required:
+        - snapshot_version
+        - week_start
+        - week_end
+        - territory_ids
+        - territory_names
+        - pam_user_id
+        - generated_at
+        - commercial
+        - recruitment
+        - marketing
+        - attention
+      properties:
+        snapshot_version:
+          type: number
+        week_start:
+          type: string
+        week_end:
+          type: string
+        territory_ids:
+          type: array
+          items:
+            type: string
+          description: One entry per territory the PAM canonically owns (may be more than one -- territories.owner_user_id has no DB uniqueness constraint). A single-territory PAM has an array of length 1.
+        territory_names:
+          type: array
+          items:
+            type: string
+        pam_user_id:
+          type: string
+        generated_at:
+          type: string
+        commercial:
+          $ref: "#/components/schemas/WeeklyCommercialSnapshot"
+        recruitment:
+          $ref: "#/components/schemas/WeeklyRecruitmentSnapshot"
+        marketing:
+          $ref: "#/components/schemas/WeeklyMarketingSnapshot"
+        attention:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyAttentionItem"
+
+    WeeklyReportCommentary:
+      type: object
+      required: [wins_progress, risks_blockers, priorities_next_week, help_needed, commentary_updated_at]
+      properties:
+        wins_progress:
+          type: ["string", "null"]
+        risks_blockers:
+          type: ["string", "null"]
+        priorities_next_week:
+          type: ["string", "null"]
+        help_needed:
+          type: ["string", "null"]
+        commentary_updated_at:
+          type: ["string", "null"]
+
+    WeeklyReportStatus:
+      type: string
+      enum: [draft, submitted]
+
+    WeeklyPamReport:
+      type: object
+      required: [pam_user_id, territory_ids, territory_names, week_start, week_end, status, submitted_at, snapshot_generated_at, metrics, commentary]
+      properties:
+        pam_user_id:
+          type: string
+        territory_ids:
+          type: array
+          items:
+            type: string
+        territory_names:
+          type: array
+          items:
+            type: string
+        week_start:
+          type: string
+        week_end:
+          type: string
+        status:
+          $ref: "#/components/schemas/WeeklyReportStatus"
+        submitted_at:
+          type: ["string", "null"]
+        snapshot_generated_at:
+          type: ["string", "null"]
+        metrics:
+          $ref: "#/components/schemas/WeeklyMetricsSnapshot"
+        commentary:
+          $ref: "#/components/schemas/WeeklyReportCommentary"
+
+    WeeklyPamReportSummary:
+      description: A WeeklyPamReport plus the PAM's display name and current role, as shown in the Head/Admin team view's pam_reports list.
+      allOf:
+        - $ref: "#/components/schemas/WeeklyPamReport"
+        - type: object
+          required: [pam_name, current_role]
+          properties:
+            pam_name:
+              type: string
+            current_role:
+              type: string
+              description: The PAM's CURRENT role, not their role at report time (not tracked). A historical report is still shown even if this no longer reads "pam".
+
+    WeeklyReportHistoryItem:
+      type: object
+      required: [week_start, status, submitted_at, commentary_updated_at]
+      properties:
+        week_start:
+          type: string
+        status:
+          $ref: "#/components/schemas/WeeklyReportStatus"
+        submitted_at:
+          type: ["string", "null"]
+        commentary_updated_at:
+          type: ["string", "null"]
+
+    WeeklyCommentaryInput:
+      type: object
+      required: [week_start]
+      description: Fields omitted are left unchanged; sending null explicitly clears that field.
+      properties:
+        week_start:
+          type: string
+        wins_progress:
+          type: ["string", "null"]
+        risks_blockers:
+          type: ["string", "null"]
+        priorities_next_week:
+          type: ["string", "null"]
+        help_needed:
+          type: ["string", "null"]
+
+    WeeklyCommercialConflictKind:
+      type: string
+      enum: [open_pipeline, won_revenue]
+
+    WeeklyCommercialConflictEntry:
+      type: object
+      required: [pam_user_id, attribution_type, usd_value, as_of]
+      properties:
+        pam_user_id:
+          type: string
+        attribution_type:
+          $ref: "#/components/schemas/OpportunityAttributionType"
+        usd_value:
+          type: number
+        as_of:
+          type: string
+
+    WeeklyCommercialConflict:
+      type: object
+      description: Surfaced when the same opportunity was sighted with different attribution/value across two PAMs' reports (e.g. a reassignment mid-week) -- the team totals use a deterministic most-recent-sighting tie-break, but the conflict itself is always exposed here rather than silently resolved.
+      required: [kind, opportunity_id, entries]
+      properties:
+        kind:
+          $ref: "#/components/schemas/WeeklyCommercialConflictKind"
+        opportunity_id:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyCommercialConflictEntry"
+
+    WeeklyMarketingConflictEntry:
+      type: object
+      required: [pam_user_id, status, usd_value, as_of]
+      properties:
+        pam_user_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/OpportunityStatus"
+        usd_value:
+          type: number
+        as_of:
+          type: string
+
+    WeeklyMarketingConflict:
+      type: object
+      required: [opportunity_id, entries]
+      properties:
+        opportunity_id:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyMarketingConflictEntry"
+
+    WeeklyTeamCommercial:
+      type: object
+      required: [open_pipeline_usd, won_revenue_usd, opportunity_count_open, opportunities_created_count, deals_won_count, conflicts]
+      properties:
+        open_pipeline_usd:
+          $ref: "#/components/schemas/WeeklySourcedInfluencedAmount"
+        won_revenue_usd:
+          $ref: "#/components/schemas/WeeklySourcedInfluencedAmount"
+        opportunity_count_open:
+          type: number
+        opportunities_created_count:
+          type: number
+        deals_won_count:
+          type: number
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyCommercialConflict"
+
+    WeeklyTeamMarketing:
+      type: object
+      required: [activity_count, commercial_impact, conflicts]
+      properties:
+        activity_count:
+          type: number
+        commercial_impact:
+          type: object
+          required: [unique_linked_opportunity_count, open_pipeline_usd, won_revenue_usd]
+          properties:
+            unique_linked_opportunity_count:
+              type: number
+            open_pipeline_usd:
+              type: number
+            won_revenue_usd:
+              type: number
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyMarketingConflict"
+
+    WeeklyReportStateSummary:
+      type: object
+      required: [submitted_count, draft_count]
+      properties:
+        submitted_count:
+          type: number
+        draft_count:
+          type: number
+
+    WeeklyTeamHelpRequest:
+      type: object
+      required: [pam_user_id, pam_name, help_needed]
+      properties:
+        pam_user_id:
+          type: string
+        pam_name:
+          type: string
+        help_needed:
+          type: string
+
+    WeeklyTeamAttentionSummary:
+      type: object
+      required: [stalled_recruitment_count, relationships_needing_attention_count, pams_behind_target]
+      properties:
+        stalled_recruitment_count:
+          type: number
+        relationships_needing_attention_count:
+          type: number
+        pams_behind_target:
+          type: number
+          description: Counts a PAM once regardless of how many of their territories are behind target.
+
+    WeeklyTeamReport:
+      type: object
+      required:
+        - week_start
+        - week_end
+        - generated_at
+        - report_state_summary
+        - pams_with_multiple_territories
+        - team_commercial
+        - team_marketing
+        - pam_reports
+        - help_requests
+        - attention_summary
+      properties:
+        week_start:
+          type: string
+        week_end:
+          type: string
+        generated_at:
+          type: string
+        report_state_summary:
+          $ref: "#/components/schemas/WeeklyReportStateSummary"
+        pams_with_multiple_territories:
+          type: array
+          items:
+            type: string
+        team_commercial:
+          $ref: "#/components/schemas/WeeklyTeamCommercial"
+        team_marketing:
+          $ref: "#/components/schemas/WeeklyTeamMarketing"
+        pam_reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyPamReportSummary"
+        help_requests:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyTeamHelpRequest"
+        attention_summary:
+          $ref: "#/components/schemas/WeeklyTeamAttentionSummary"
           description: Deterministic notes about missing/incomplete/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as "unknown".

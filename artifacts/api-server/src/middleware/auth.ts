@@ -69,3 +69,26 @@ export const requireAdmin: RequestHandler = async (req, res, next) => {
   req.actingUser = user;
   next();
 };
+
+// Phase 7: requires an active session AND role="pam" specifically --
+// excludes head_of_channels/admin even though they are otherwise
+// authenticated, so a Head/Admin can never accidentally use a PAM
+// self-service endpoint (e.g. /reporting/weekly/me) as if it were their
+// own, including in the edge case where a non-PAM user happens to
+// canonically own a territory (territories.owner_user_id has no role
+// restriction). Mirrors requireAdmin's exact structure; no existing route
+// needed this exclusion before Phase 7's weekly reporting self-service
+// endpoints.
+export const requirePam: RequestHandler = async (req, res, next) => {
+  const user = await loadActingUser(req as Request);
+  if (!user) {
+    res.status(401).json({ error: "Authentication required. Send Authorization: Bearer <session token>." });
+    return;
+  }
+  if (user.role !== "pam") {
+    res.status(403).json({ error: "This action is only available to PAM accounts." });
+    return;
+  }
+  req.actingUser = user;
+  next();
+};

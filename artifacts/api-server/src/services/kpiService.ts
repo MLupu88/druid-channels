@@ -11,6 +11,7 @@ import {
   usersTable,
   partnerRecruitmentsTable,
   partnerOpportunitiesTable,
+  OPPORTUNITY_ATTRIBUTION_TYPES,
 } from "@workspace/db";
 import { eq, and, isNull, gte, lte, inArray, desc } from "drizzle-orm";
 import { METRIC_BY_KEY, METRIC_REGISTRY, resolvePeriodRange, resolvePeriodKey, splitPeriodKey, isMoneyMetric, type SourceType } from "./kpiRegistry";
@@ -507,9 +508,11 @@ async function computeCurrentStateLive(metricKey: string, target: ResolvedTerrit
   const attributionType = PIPELINE_ATTRIBUTION_BY_KEY[metricKey];
   const label = METRIC_BY_KEY.get(metricKey)!.label;
   const allTerritories = await db.select().from(territoriesTable);
-  const allOpportunities = await db.select().from(partnerOpportunitiesTable);
 
-  const eligible = allOpportunities.filter((o) => o.status === "open" && o.attributionType === attributionType);
+  // Phase 7: shares its "status = open" eligibility with
+  // computeOpenPipelineForScope below (fetchOpenOpportunities).
+  const open = await fetchOpenOpportunities();
+  const eligible = open.filter((o) => o.attributionType === attributionType);
   const rateByCurrency = await buildUsdRateMap(eligible.map((o) => o.currency));
   const valueOf = (o: (typeof eligible)[number]) => usdValueOf(o, rateByCurrency);
 
@@ -619,14 +622,13 @@ async function computeClosedRevenue(periodKey: string, target: ResolvedTerritory
   const periodInfo = resolvePeriodRange(periodKey);
   const label = METRIC_BY_KEY.get("closed_revenue")!.label;
   const allTerritories = await db.select().from(territoriesTable);
-  const allOpportunities = await db.select().from(partnerOpportunitiesTable);
 
-  const closedDateStr = (o: (typeof allOpportunities)[number]) =>
-    o.closedAt ? new Date(o.closedAt as unknown as string).toISOString().slice(0, 10) : null;
-  const inRange = (dateStr: string | null, end: string) => dateStr !== null && dateStr >= periodInfo.start && dateStr <= end;
-
-  const won = allOpportunities.filter((o) => o.status === "won");
-  const eligible = won.filter((o) => inRange(closedDateStr(o), effectiveAsOfDateStr(periodKey)));
+  // Phase 7: shares its won/closed_at-in-range eligibility with
+  // computeClosedRevenueForRange below (fetchWonOpportunitiesInRange) --
+  // dayAfter() turns this function's existing inclusive end date into that
+  // helper's [start, end) contract without changing which dates are
+  // included (see dayAfter's own comment).
+  const eligible = await fetchWonOpportunitiesInRange(periodInfo.start, dayAfter(effectiveAsOfDateStr(periodKey)));
 
   const rateByCurrency = await buildUsdRateMap(eligible.map((o) => o.currency));
   const valueOf = (o: (typeof eligible)[number]) => usdValueOf(o, rateByCurrency);
@@ -645,10 +647,10 @@ async function computeClosedRevenue(periodKey: string, target: ResolvedTerritory
     return !latest || updated > latest ? updated : latest;
   }, null);
 
-  const records: KpiDetailRecord[] = scoped.slice(0, 100).map((o) => ({ label: o.name, value: valueOf(o), date: closedDateStr(o) }));
+  const records: KpiDetailRecord[] = scoped.slice(0, 100).map((o) => ({ label: o.name, value: valueOf(o), date: closedAtDateStr(o) }));
 
   const lastWeekEndStr = minDateStr(periodInfo.end, endOfPreviousCalendarWeek(new Date()).toISOString().slice(0, 10));
-  const lastWeekEligible = won.filter((o) => inRange(closedDateStr(o), lastWeekEndStr));
+  const lastWeekEligible = await fetchWonOpportunitiesInRange(periodInfo.start, dayAfter(lastWeekEndStr));
   const lastWeekRateByCurrency = await buildUsdRateMap(lastWeekEligible.map((o) => o.currency));
   const lastWeekScoped = target.territoryId ? lastWeekEligible.filter((o) => o.territoryId === target.territoryId) : lastWeekEligible;
   const lastWeek = lastWeekScoped.reduce((sum, o) => sum + usdValueOf(o, lastWeekRateByCurrency), 0);
@@ -678,10 +680,12 @@ async function computeClosedRevenue(periodKey: string, target: ResolvedTerritory
 async function computeOpportunitiesCreated(periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
   const periodInfo = resolvePeriodRange(periodKey);
   const allTerritories = await db.select().from(territoriesTable);
-  const allOpportunities = await db.select().from(partnerOpportunitiesTable);
 
-  const inRange = (dateStr: string | null, end: string) => dateStr !== null && dateStr >= periodInfo.start && dateStr <= end;
-  const eligible = allOpportunities.filter((o) => inRange(o.opportunityDate, effectiveAsOfDateStr(periodKey)));
+  // Phase 7: shares its opportunity_date-in-range eligibility with
+  // computeOpportunitiesCreatedForRange below
+  // (fetchOpportunitiesCreatedInRange) -- see computeClosedRevenue's
+  // dayAfter() comment for why the inclusive end date translates cleanly.
+  const eligible = await fetchOpportunitiesCreatedInRange(periodInfo.start, dayAfter(effectiveAsOfDateStr(periodKey)));
 
   const byTerritory: TerritoryContribution[] = allTerritories.map((t) => ({
     territory_id: t.id,
@@ -698,7 +702,7 @@ async function computeOpportunitiesCreated(periodKey: string, target: ResolvedTe
   const records: KpiDetailRecord[] = scoped.slice(0, 100).map((o) => ({ label: o.name, value: 1, date: o.opportunityDate }));
 
   const lastWeekEndStr = minDateStr(periodInfo.end, endOfPreviousCalendarWeek(new Date()).toISOString().slice(0, 10));
-  const lastWeekEligible = allOpportunities.filter((o) => inRange(o.opportunityDate, lastWeekEndStr));
+  const lastWeekEligible = await fetchOpportunitiesCreatedInRange(periodInfo.start, dayAfter(lastWeekEndStr));
   const lastWeekScoped = target.territoryId ? lastWeekEligible.filter((o) => o.territoryId === target.territoryId) : lastWeekEligible;
 
   return {
@@ -716,6 +720,215 @@ async function computeOpportunitiesCreated(periodKey: string, target: ResolvedTe
     by_territory: byTerritory,
     records,
   };
+}
+
+// ---- Phase 7: shared eligibility primitives + additive range/scope entry points ----
+//
+// Weekly reporting needs two things the existing computeMetric dispatch
+// doesn't provide: (1) a date range that isn't a quarter/YTD periodKey, and
+// (2) for a PAM's own report, a stricter visibility scope than "territory
+// only" -- the same (territory AND assigned_user_id) rule
+// routes/opportunities.ts's assertPamOwnsOpportunity and
+// campaignService.ts's isOpportunityVisible already enforce for a PAM's own
+// opportunities, reused here rather than reinvented, so a weekly report can
+// never surface an opportunity assigned to a different PAM merely because it
+// sits in the same territory (the one-PAM-per-territory pattern is never
+// treated as an authorization boundary).
+//
+// The existing period-based functions above and the functions below share
+// the same DB-fetch+eligibility primitives (fetchWonOpportunitiesInRange,
+// fetchOpportunitiesCreatedInRange, fetchOpenOpportunities) -- only the
+// downstream scoping/shaping differs, and only because the existing
+// functions' by_territory breakdowns are deliberately scope-free (every
+// territory's own total, always) while target filtering applies only to
+// their `current`/`scoped` figure, exactly as before this section existed.
+// computeMetric's externally observable behavior is unchanged.
+
+// Discriminated on purpose (rather than a loosely-optional {territoryId,
+// assignedUserId?}) so a PAM-scoped call can never accidentally compile with
+// only one of the two fields set -- "pam" always carries both, "territory"
+// only where a genuine territory-level (not PAM-identity) figure is needed,
+// "global" for unrestricted Head/Admin aggregation. "pam" carries a
+// territoryIds ARRAY, not a single id: territories.owner_user_id has no DB
+// uniqueness constraint, so a PAM may canonically own more than one
+// territory (see authz.ts's getOwnTerritories) -- a single territoryId
+// field would silently under-scope such a PAM's report.
+export type OpportunityScope =
+  | { kind: "global" }
+  | { kind: "territory"; territoryId: string }
+  | { kind: "pam"; territoryIds: string[]; assignedUserId: string };
+
+// Exported (alongside OpportunityScope) purely so
+// tests/weeklyReportingRangeMath.test.ts can exercise this rule directly
+// without a database -- same rationale as campaignService.ts's
+// isOpportunityVisible.
+export function matchesOpportunityScope(o: { territoryId: string; assignedUserId: string }, scope: OpportunityScope): boolean {
+  switch (scope.kind) {
+    case "global":
+      return true;
+    case "territory":
+      return o.territoryId === scope.territoryId;
+    case "pam":
+      return scope.territoryIds.includes(o.territoryId) && o.assignedUserId === scope.assignedUserId;
+  }
+}
+
+// Reuses the canonical attribution vocabulary (partner_opportunities.ts's
+// OPPORTUNITY_ATTRIBUTION_TYPES) rather than a separately hard-coded union.
+export type OpportunityAttributionType = (typeof OPPORTUNITY_ATTRIBUTION_TYPES)[number];
+
+// One calendar day after a YYYY-MM-DD date string, via UTC date arithmetic
+// (never string manipulation) -- lets the existing inclusive-end period
+// functions above express their same "<= end" boundary as the shared
+// helpers' "< endExclusive" contract without changing which dates are
+// included: for plain YYYY-MM-DD strings, `d <= end` is exactly equivalent
+// to `d < dayAfter(end)` (see tests/weeklyReportingRangeMath.test.ts).
+// Exported purely so tests/weeklyReportingRangeMath.test.ts can prove, without
+// a database, that `d <= end` and `d < dayAfter(end)` agree for every plain
+// YYYY-MM-DD date string -- the equivalence the refactored
+// computeClosedRevenue/computeOpportunitiesCreated rely on to preserve their
+// exact pre-Phase-7 inclusive-end behavior.
+export function dayAfter(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00.000Z");
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function closedAtDateStr(o: { closedAt: unknown }): string | null {
+  return o.closedAt ? new Date(o.closedAt as string).toISOString().slice(0, 10) : null;
+}
+
+// Shared by computeClosedRevenue(periodKey) above and
+// computeClosedRevenueForRange(...) below -- the only place "won, closed_at
+// inside [startInclusive, endExclusive)" is expressed.
+async function fetchWonOpportunitiesInRange(startInclusive: string, endExclusive: string) {
+  const allOpportunities = await db.select().from(partnerOpportunitiesTable);
+  return allOpportunities.filter((o) => {
+    if (o.status !== "won") return false;
+    const d = closedAtDateStr(o);
+    return d !== null && d >= startInclusive && d < endExclusive;
+  });
+}
+
+// Shared by computeOpportunitiesCreated(periodKey) above and
+// computeOpportunitiesCreatedForRange(...) below. Deliberately not
+// status-filtered (unchanged) -- opportunity_date is the real business open
+// date, never created_at, so a since-lost/won or historically backfilled
+// opportunity still counts in the period it was truly opened.
+async function fetchOpportunitiesCreatedInRange(startInclusive: string, endExclusive: string) {
+  const allOpportunities = await db.select().from(partnerOpportunitiesTable);
+  return allOpportunities.filter((o) => o.opportunityDate >= startInclusive && o.opportunityDate < endExclusive);
+}
+
+// Shared by computeCurrentStateLive(metricKey, target) above and
+// computeOpenPipelineForScope(...) below -- the only place "status = open"
+// is expressed for current-state pipeline/open-count reporting.
+async function fetchOpenOpportunities() {
+  return db.select().from(partnerOpportunitiesTable).where(eq(partnerOpportunitiesTable.status, "open"));
+}
+
+// Per-opportunity backing data behind every Phase 7 range/scope money total
+// below -- lets a caller (weeklyReportingService.ts) dedupe by opportunity_id
+// across multiple PAMs' figures (e.g. after a Head/Admin reassignment moves
+// an opportunity between PAMs mid-week) without ever re-deriving the
+// eligibility/attribution/USD-normalization rule itself; the aggregate
+// sourced/influenced/total numbers below are always exactly the sum of
+// these entries, never a separately-computed figure.
+export interface OpportunityMoneyEntry {
+  opportunityId: string;
+  attributionType: OpportunityAttributionType;
+  usdValue: number;
+}
+
+export interface OpportunityClosedRevenueEntry extends OpportunityMoneyEntry {
+  // Always non-null: the eligibility filter above (fetchWonOpportunitiesInRange)
+  // already requires a real closed_at for every entry that reaches here.
+  closedAt: string;
+}
+
+export interface OpportunityCreatedEntry {
+  opportunityId: string;
+  opportunityDate: string;
+}
+
+export interface RangeMoneyByAttribution {
+  sourced: number;
+  influenced: number;
+  total: number;
+  count: number;
+  entries: OpportunityClosedRevenueEntry[];
+}
+
+// Additive Phase 7 entry point: same eligibility as computeClosedRevenue
+// (fetchWonOpportunitiesInRange above), scoped by an explicit
+// OpportunityScope instead of a territory-only ResolvedTerritory, and split
+// by attribution (never a single ambiguous total) -- REPORTING revenue only,
+// deal_value/closed_at, never credit_value/credit_date.
+export async function computeClosedRevenueForRange(
+  startInclusive: string,
+  endExclusive: string,
+  scope: OpportunityScope,
+): Promise<RangeMoneyByAttribution> {
+  const won = await fetchWonOpportunitiesInRange(startInclusive, endExclusive);
+  const eligible = won.filter((o) => matchesOpportunityScope(o, scope));
+
+  const rateByCurrency = await buildUsdRateMap(eligible.map((o) => o.currency));
+  const entries: OpportunityClosedRevenueEntry[] = eligible.map((o) => ({
+    opportunityId: o.id,
+    attributionType: o.attributionType as OpportunityAttributionType,
+    usdValue: usdValueOf(o, rateByCurrency),
+    closedAt: closedAtDateStr(o)!,
+  }));
+
+  const sourced = entries.filter((e) => e.attributionType === "partner_sourced").reduce((sum, e) => sum + e.usdValue, 0);
+  const influenced = entries.filter((e) => e.attributionType === "partner_influenced").reduce((sum, e) => sum + e.usdValue, 0);
+
+  return { sourced, influenced, total: sourced + influenced, count: entries.length, entries };
+}
+
+// Additive Phase 7 entry point: same eligibility as computeOpportunitiesCreated
+// (fetchOpportunitiesCreatedInRange above), scoped by an explicit
+// OpportunityScope instead of a territory-only ResolvedTerritory.
+export async function computeOpportunitiesCreatedForRange(
+  startInclusive: string,
+  endExclusive: string,
+  scope: OpportunityScope,
+): Promise<{ count: number; entries: OpportunityCreatedEntry[] }> {
+  const created = await fetchOpportunitiesCreatedInRange(startInclusive, endExclusive);
+  const eligible = created.filter((o) => matchesOpportunityScope(o, scope));
+  const entries: OpportunityCreatedEntry[] = eligible.map((o) => ({ opportunityId: o.id, opportunityDate: o.opportunityDate }));
+  return { count: entries.length, entries };
+}
+
+export interface OpenPipelineByScope {
+  sourced: number;
+  influenced: number;
+  total: number;
+  openCount: number;
+  entries: OpportunityMoneyEntry[];
+}
+
+// Additive Phase 7 entry point: same eligibility as computeCurrentStateLive
+// (fetchOpenOpportunities above), scoped by an explicit OpportunityScope,
+// with sourced/influenced always broken out explicitly (never a single
+// ambiguous pipeline number) and openCount derived from the exact same
+// filtered set as the money totals -- so a PAM's "open pipeline" and "open
+// opportunity count" can never disagree with each other.
+export async function computeOpenPipelineForScope(scope: OpportunityScope): Promise<OpenPipelineByScope> {
+  const open = await fetchOpenOpportunities();
+  const eligible = open.filter((o) => matchesOpportunityScope(o, scope));
+
+  const rateByCurrency = await buildUsdRateMap(eligible.map((o) => o.currency));
+  const entries: OpportunityMoneyEntry[] = eligible.map((o) => ({
+    opportunityId: o.id,
+    attributionType: o.attributionType as OpportunityAttributionType,
+    usdValue: usdValueOf(o, rateByCurrency),
+  }));
+
+  const sourced = entries.filter((e) => e.attributionType === "partner_sourced").reduce((sum, e) => sum + e.usdValue, 0);
+  const influenced = entries.filter((e) => e.attributionType === "partner_influenced").reduce((sum, e) => sum + e.usdValue, 0);
+
+  return { sourced, influenced, total: sourced + influenced, openCount: entries.length, entries };
 }
 
 async function computePartnerRadar(metricKey: string, periodKey: string, target: ResolvedTerritory, targetOverride: number | null): Promise<KpiComputation> {

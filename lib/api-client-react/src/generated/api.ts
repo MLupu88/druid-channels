@@ -53,8 +53,11 @@ import type {
   GetChannelRadarSummaryParams,
   GetHeadOfChannelsKpisParams,
   GetKpiDetailsParams,
+  GetMyWeeklyReportParams,
+  GetPamWeeklyReportParams,
   GetPortfolioSummaryParams,
   GetTerritoryPotentialParams,
+  GetWeeklyTeamReportParams,
   HeadOfChannelsKpis,
   HealthStatus,
   HelpNeededInput,
@@ -64,6 +67,7 @@ import type {
   ListChannelRadarSignalsParams,
   ListManualMetricValuesParams,
   ListMetricTargetsParams,
+  ListMyWeeklyReportHistoryParams,
   ListOpportunitiesParams,
   ListPartnersParams,
   ListPortfolioImportsParams,
@@ -116,6 +120,7 @@ import type {
   SearchParams,
   SearchResult,
   SetCampaignOpportunitiesInput,
+  SubmitMyWeeklyReportBody,
   TeamTargetRow,
   Territory,
   TerritoryEditInput,
@@ -129,7 +134,11 @@ import type {
   UpdateRecruitmentInput,
   User,
   UserEditInput,
-  UserResetPasswordResponse
+  UserResetPasswordResponse,
+  WeeklyCommentaryInput,
+  WeeklyPamReport,
+  WeeklyReportHistoryItem,
+  WeeklyTeamReport
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -6924,6 +6933,489 @@ export function useListRecentProspectActivity<TData = Awaited<ReturnType<typeof 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListRecentProspectActivityQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMyWeeklyReportUrl = (params?: GetMyWeeklyReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reporting/weekly/me?${stringifiedParams}` : `/api/reporting/weekly/me`
+}
+
+/**
+ * @summary Phase 7 -- the caller's own weekly PAM report for a given reporting week (defaults to the current week). A draft/current week is computed live from canonical commercial/recruitment/marketing services; a submitted week reads back its frozen snapshot, never recomputed. PAM self-service only -- never accepts another user's id.
+ */
+export const getMyWeeklyReport = async (params?: GetMyWeeklyReportParams, options?: Parameters<typeof customFetch>[1]): Promise<WeeklyPamReport> => {
+
+  return customFetch<WeeklyPamReport>(getGetMyWeeklyReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyWeeklyReportQueryKey = (params?: GetMyWeeklyReportParams,) => {
+    return [
+    `/api/reporting/weekly/me`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMyWeeklyReportQueryOptions = <TData = Awaited<ReturnType<typeof getMyWeeklyReport>>, TError = ErrorType<void>>(params?: GetMyWeeklyReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyWeeklyReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyWeeklyReportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyWeeklyReport>>> = ({ signal }) => getMyWeeklyReport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyWeeklyReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyWeeklyReportQueryResult = NonNullable<Awaited<ReturnType<typeof getMyWeeklyReport>>>
+export type GetMyWeeklyReportQueryError = ErrorType<void>
+
+
+/**
+ * @summary Phase 7 -- the caller's own weekly PAM report for a given reporting week (defaults to the current week). A draft/current week is computed live from canonical commercial/recruitment/marketing services; a submitted week reads back its frozen snapshot, never recomputed. PAM self-service only -- never accepts another user's id.
+ */
+
+export function useGetMyWeeklyReport<TData = Awaited<ReturnType<typeof getMyWeeklyReport>>, TError = ErrorType<void>>(
+ params?: GetMyWeeklyReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyWeeklyReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyWeeklyReportQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListMyWeeklyReportHistoryUrl = (params?: ListMyWeeklyReportHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reporting/weekly/me/history?${stringifiedParams}` : `/api/reporting/weekly/me/history`
+}
+
+/**
+ * @summary Phase 7 -- the caller's past weekly reports that have an actual persisted row (a commentary save or a submission), most recent first. A week nobody has touched yet is not included, though it remains viewable live via GET /reporting/weekly/me.
+ */
+export const listMyWeeklyReportHistory = async (params?: ListMyWeeklyReportHistoryParams, options?: Parameters<typeof customFetch>[1]): Promise<WeeklyReportHistoryItem[]> => {
+
+  return customFetch<WeeklyReportHistoryItem[]>(getListMyWeeklyReportHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMyWeeklyReportHistoryQueryKey = (params?: ListMyWeeklyReportHistoryParams,) => {
+    return [
+    `/api/reporting/weekly/me/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListMyWeeklyReportHistoryQueryOptions = <TData = Awaited<ReturnType<typeof listMyWeeklyReportHistory>>, TError = ErrorType<unknown>>(params?: ListMyWeeklyReportHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMyWeeklyReportHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMyWeeklyReportHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMyWeeklyReportHistory>>> = ({ signal }) => listMyWeeklyReportHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMyWeeklyReportHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMyWeeklyReportHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof listMyWeeklyReportHistory>>>
+export type ListMyWeeklyReportHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Phase 7 -- the caller's past weekly reports that have an actual persisted row (a commentary save or a submission), most recent first. A week nobody has touched yet is not included, though it remains viewable live via GET /reporting/weekly/me.
+ */
+
+export function useListMyWeeklyReportHistory<TData = Awaited<ReturnType<typeof listMyWeeklyReportHistory>>, TError = ErrorType<unknown>>(
+ params?: ListMyWeeklyReportHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMyWeeklyReportHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMyWeeklyReportHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpsertMyWeeklyCommentaryUrl = () => {
+
+
+
+
+  return `/api/reporting/weekly/me/commentary`
+}
+
+/**
+ * @summary Phase 7 -- create or update the caller's own commentary for a reporting week. Fields omitted from the body are left unchanged; sending null clears a field. Rejected (409) once that week's report has been submitted -- commentary is read-only after submit, with no reopen workflow.
+ */
+export const upsertMyWeeklyCommentary = async (weeklyCommentaryInput: WeeklyCommentaryInput, options?: Parameters<typeof customFetch>[1]): Promise<WeeklyPamReport> => {
+
+  return customFetch<WeeklyPamReport>(getUpsertMyWeeklyCommentaryUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(weeklyCommentaryInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertMyWeeklyCommentaryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMyWeeklyCommentary>>, TError,{data: BodyType<WeeklyCommentaryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertMyWeeklyCommentary>>, TError,{data: BodyType<WeeklyCommentaryInput>}, TContext> => {
+
+const mutationKey = ['upsertMyWeeklyCommentary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertMyWeeklyCommentary>>, {data: BodyType<WeeklyCommentaryInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertMyWeeklyCommentary(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertMyWeeklyCommentaryMutationResult = NonNullable<Awaited<ReturnType<typeof upsertMyWeeklyCommentary>>>
+    export type UpsertMyWeeklyCommentaryMutationBody = BodyType<WeeklyCommentaryInput>
+    export type UpsertMyWeeklyCommentaryMutationError = ErrorType<void>
+
+    /**
+ * @summary Phase 7 -- create or update the caller's own commentary for a reporting week. Fields omitted from the body are left unchanged; sending null clears a field. Rejected (409) once that week's report has been submitted -- commentary is read-only after submit, with no reopen workflow.
+ */
+export const useUpsertMyWeeklyCommentary = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMyWeeklyCommentary>>, TError,{data: BodyType<WeeklyCommentaryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertMyWeeklyCommentary>>,
+        TError,
+        {data: BodyType<WeeklyCommentaryInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertMyWeeklyCommentaryMutationOptions(options));
+    }
+
+export const getSubmitMyWeeklyReportUrl = () => {
+
+
+
+
+  return `/api/reporting/weekly/me/submit`
+}
+
+/**
+ * @summary Phase 7 -- freezes the caller's live weekly figures into a permanent snapshot for the given week and marks the report submitted. Immutable afterward -- neither the snapshot nor its commentary can be edited again, and this endpoint itself becomes a 409 on a second call for the same week.
+ */
+export const submitMyWeeklyReport = async (submitMyWeeklyReportBody: SubmitMyWeeklyReportBody, options?: Parameters<typeof customFetch>[1]): Promise<WeeklyPamReport> => {
+
+  return customFetch<WeeklyPamReport>(getSubmitMyWeeklyReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submitMyWeeklyReportBody)
+  }
+);}
+
+
+
+
+
+export const getSubmitMyWeeklyReportMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitMyWeeklyReport>>, TError,{data: BodyType<SubmitMyWeeklyReportBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitMyWeeklyReport>>, TError,{data: BodyType<SubmitMyWeeklyReportBody>}, TContext> => {
+
+const mutationKey = ['submitMyWeeklyReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitMyWeeklyReport>>, {data: BodyType<SubmitMyWeeklyReportBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitMyWeeklyReport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitMyWeeklyReportMutationResult = NonNullable<Awaited<ReturnType<typeof submitMyWeeklyReport>>>
+    export type SubmitMyWeeklyReportMutationBody = BodyType<SubmitMyWeeklyReportBody>
+    export type SubmitMyWeeklyReportMutationError = ErrorType<void>
+
+    /**
+ * @summary Phase 7 -- freezes the caller's live weekly figures into a permanent snapshot for the given week and marks the report submitted. Immutable afterward -- neither the snapshot nor its commentary can be edited again, and this endpoint itself becomes a 409 on a second call for the same week.
+ */
+export const useSubmitMyWeeklyReport = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitMyWeeklyReport>>, TError,{data: BodyType<SubmitMyWeeklyReportBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitMyWeeklyReport>>,
+        TError,
+        {data: BodyType<SubmitMyWeeklyReportBody>},
+        TContext
+      > => {
+      return useMutation(getSubmitMyWeeklyReportMutationOptions(options));
+    }
+
+export const getGetPamWeeklyReportUrl = (userId: string,
+    params?: GetPamWeeklyReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reporting/weekly/pam/${userId}?${stringifiedParams}` : `/api/reporting/weekly/pam/${userId}`
+}
+
+/**
+ * @summary Phase 7 -- Head/Admin drill-down into a specific PAM's weekly report. Identical computation to GET /reporting/weekly/me for that PAM -- never a separate/divergent calculation.
+ */
+export const getPamWeeklyReport = async (userId: string,
+    params?: GetPamWeeklyReportParams, options?: Parameters<typeof customFetch>[1]): Promise<WeeklyPamReport> => {
+
+  return customFetch<WeeklyPamReport>(getGetPamWeeklyReportUrl(userId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPamWeeklyReportQueryKey = (userId: string,
+    params?: GetPamWeeklyReportParams,) => {
+    return [
+    `/api/reporting/weekly/pam/${userId}`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPamWeeklyReportQueryOptions = <TData = Awaited<ReturnType<typeof getPamWeeklyReport>>, TError = ErrorType<void>>(userId: string,
+    params?: GetPamWeeklyReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamWeeklyReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPamWeeklyReportQueryKey(userId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPamWeeklyReport>>> = ({ signal }) => getPamWeeklyReport(userId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: userId !== null && userId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPamWeeklyReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPamWeeklyReportQueryResult = NonNullable<Awaited<ReturnType<typeof getPamWeeklyReport>>>
+export type GetPamWeeklyReportQueryError = ErrorType<void>
+
+
+/**
+ * @summary Phase 7 -- Head/Admin drill-down into a specific PAM's weekly report. Identical computation to GET /reporting/weekly/me for that PAM -- never a separate/divergent calculation.
+ */
+
+export function useGetPamWeeklyReport<TData = Awaited<ReturnType<typeof getPamWeeklyReport>>, TError = ErrorType<void>>(
+ userId: string,
+    params?: GetPamWeeklyReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamWeeklyReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPamWeeklyReportQueryOptions(userId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWeeklyTeamReportUrl = (params?: GetWeeklyTeamReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reporting/weekly/team?${stringifiedParams}` : `/api/reporting/weekly/team`
+}
+
+/**
+ * @summary Phase 7 -- Head/Admin consolidated team weekly view. team_commercial/team_marketing are aggregated entirely from the same pam_reports shown alongside them (never an independently live-queried figure), so the team total always matches exactly the PAM population displayed and correctly respects each PAM's own draft (live) or submitted (frozen) state.
+ */
+export const getWeeklyTeamReport = async (params?: GetWeeklyTeamReportParams, options?: Parameters<typeof customFetch>[1]): Promise<WeeklyTeamReport> => {
+
+  return customFetch<WeeklyTeamReport>(getGetWeeklyTeamReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWeeklyTeamReportQueryKey = (params?: GetWeeklyTeamReportParams,) => {
+    return [
+    `/api/reporting/weekly/team`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWeeklyTeamReportQueryOptions = <TData = Awaited<ReturnType<typeof getWeeklyTeamReport>>, TError = ErrorType<void>>(params?: GetWeeklyTeamReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWeeklyTeamReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWeeklyTeamReportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWeeklyTeamReport>>> = ({ signal }) => getWeeklyTeamReport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWeeklyTeamReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWeeklyTeamReportQueryResult = NonNullable<Awaited<ReturnType<typeof getWeeklyTeamReport>>>
+export type GetWeeklyTeamReportQueryError = ErrorType<void>
+
+
+/**
+ * @summary Phase 7 -- Head/Admin consolidated team weekly view. team_commercial/team_marketing are aggregated entirely from the same pam_reports shown alongside them (never an independently live-queried figure), so the team total always matches exactly the PAM population displayed and correctly respects each PAM's own draft (live) or submitted (frozen) state.
+ */
+
+export function useGetWeeklyTeamReport<TData = Awaited<ReturnType<typeof getWeeklyTeamReport>>, TError = ErrorType<void>>(
+ params?: GetWeeklyTeamReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWeeklyTeamReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWeeklyTeamReportQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
