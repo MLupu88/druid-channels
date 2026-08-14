@@ -13,5 +13,6 @@ export const ChannelRadarEntityType = {
   competitor: 'competitor',
   partner: 'partner',
   ecosystem: 'ecosystem',
+  technology_vendor: 'technology_vendor',
   other: 'other',
 } as const;

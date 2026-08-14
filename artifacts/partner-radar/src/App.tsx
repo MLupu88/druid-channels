@@ -54,9 +54,14 @@ function AuthenticatedApp() {
           {isGlobalUser ? <Prospects /> : <MyProspects />}
         </Route>
         <Route path="/recruitment" component={Recruitment} />
-        <Route path="/channel-radar">
-          <Guarded allow={isGlobalUser}><ChannelRadar /></Guarded>
-        </Route>
+        {/* Phase 10: Channel Radar is no longer Head/Admin-only end to end --
+            a PAM has read-only access to their own territory's persisted
+            intelligence (see routes/channel_radar.ts). The page itself
+            already role-gates the territory selector, Run Radar, and the
+            review/dismiss actions (Head/Admin only), so no route-level
+            Guarded wrapper is needed here -- any authenticated user reaches
+            the page, same as /recruitment, /portfolio, /opportunities. */}
+        <Route path="/channel-radar" component={ChannelRadar} />
         <Route path="/portfolio" component={Portfolio} />
         <Route path="/portfolio/import" component={PortfolioImport} />
         <Route path="/opportunities" component={Opportunities} />

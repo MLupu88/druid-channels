@@ -7,6 +7,7 @@
  */
 import type { ChannelRadarConfidence } from './channelRadarConfidence';
 import type { ChannelRadarEntityType } from './channelRadarEntityType';
+import type { ChannelRadarEvidenceItem } from './channelRadarEvidenceItem';
 import type { ChannelRadarImpact } from './channelRadarImpact';
 import type { ChannelRadarImplication } from './channelRadarImplication';
 import type { ChannelRadarSignalStatus } from './channelRadarSignalStatus';
@@ -29,6 +30,11 @@ export interface ChannelRadarSignal {
   implication: ChannelRadarImplication;
   impact: ChannelRadarImpact;
   recommended_action: string;
+  /**
+     * Relevant DRUID partner motion/capability, kept separate from recommended_action.
+     * @nullable
+     */
+  druid_partner_motion?: string | null;
   confidence: ChannelRadarConfidence;
   source_title: string;
   source_url: string;
@@ -41,7 +47,21 @@ export interface ChannelRadarSignal {
   source_published_at?: string | null;
   discovered_at: string;
   status: ChannelRadarSignalStatus;
-  created_at: string;
-  updated_at: string;
+  /** Set at write time from independent factors (ambiguous entity/counterparty identity, uncertain regional applicability, low confidence) -- never simply confidence=='low'. */
+  requires_validation: boolean;
+  /** @nullable */
+  related_entity_name?: string | null;
+  related_entity_type?: ChannelRadarEntityType | null;
+  /**
+     * Short evidence-grounded descriptor of the relationship to related_entity_name (e.g. "reseller", "acquirer of"), not a taxonomy.
+     * @nullable
+     */
+  relationship_label?: string | null;
+  /** Bumped when corroborating evidence attaches; never implies the classification changed. */
+  last_evidence_at: string;
+  evidence_count: number;
+  /** Present only on the single-signal detail response (GET /channel-radar/{id}), omitted on list responses. */
+  evidence?: ChannelRadarEvidenceItem[];
   existing_partner_context?: ExistingPartnerContext;
+  related_entity_context?: ExistingPartnerContext;
 }

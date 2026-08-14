@@ -6,11 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * watch = strategically relevant but not enough evidence/urgency yet to call opportunity or threat. Distinct from confidence (evidence quality), which is a separate axis.
+ */
 export type ChannelRadarImplication = typeof ChannelRadarImplication[keyof typeof ChannelRadarImplication];
 
 
 export const ChannelRadarImplication = {
   opportunity: 'opportunity',
   threat: 'threat',
+  watch: 'watch',
   neutral: 'neutral',
 } as const;

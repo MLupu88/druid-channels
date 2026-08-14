@@ -20,5 +20,7 @@ export const ChannelRadarSignalType = {
   product_gtm: 'product_gtm',
   marketplace_listing: 'marketplace_listing',
   event: 'event',
+  partner_program: 'partner_program',
+  tender_rfp: 'tender_rfp',
   other: 'other',
 } as const;

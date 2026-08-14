@@ -27,8 +27,13 @@ function shapeConfig(c: typeof channelRadarConfigsTable.$inferSelect, territoryN
   };
 }
 
-// Role-separation hotfix: Channel Radar is Head-of-Channels/Admin-only in
-// this stage -- a PAM gets no API access, including read-only config views.
+// Phase 10 authorization model: Channel Radar CONFIGURATION (this file) and
+// research triggering (POST /channel-radar/run) stay Head-of-Channels/Admin-
+// only -- a PAM gets no API access here, not even read-only, because a
+// config controls what paid-provider research runs. This is now distinct
+// from persisted SIGNAL access (routes/channel_radar.ts's GET routes),
+// which a PAM can read for their own territory -- see that file's header
+// comments for the split.
 router.get("/channel-radar-configs", requireAdmin, async (req, res): Promise<void> => {
   const actingUser = req.actingUser!;
   let ownTerritoryId: string | null = null;

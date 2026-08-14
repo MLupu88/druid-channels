@@ -71,15 +71,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       ]
     : [
         // Role-separation hotfix: a PAM is an execution role, not a
-        // Discovery/Radar operator -- Discovery is replaced by "My
-        // Prospects" (same route, a role-conditional component -- see
-        // App.tsx), and Channel Radar is dropped entirely (Head/Admin-only,
-        // see routes/channel_radar.ts).
+        // Discovery operator -- Discovery is replaced by "My Prospects"
+        // (same route, a role-conditional component -- see App.tsx).
+        // Phase 10: Channel Radar is now included here too -- a PAM has
+        // read-only access to their own territory's persisted intelligence
+        // (see routes/channel_radar.ts); they still cannot configure it,
+        // trigger a run, or review/dismiss signals (the page itself hides
+        // those controls for a non-global user).
         { href: '/', label: 'Overview', icon: LayoutDashboard },
         { href: '/new-partners', label: 'My Prospects', icon: ListChecks },
         { href: '/recruitment', label: 'Recruitment', icon: Handshake },
         { href: '/portfolio', label: 'Portfolio', icon: Building2 },
         { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
+        { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
         { href: '/my-workspace', label: 'My workspace', icon: Briefcase },
         { href: '/activities', label: 'Marketing Activities', icon: ListOrdered },
       ];

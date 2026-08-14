@@ -1,0 +1,2 @@
+ALTER TABLE "channel_radar_signals" DROP CONSTRAINT "channel_radar_signals_dedupe_key_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "channel_radar_signals_territory_dedupe_key_unique" ON "channel_radar_signals" USING btree ("territory_id","dedupe_key");
