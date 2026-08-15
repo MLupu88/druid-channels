@@ -16,6 +16,8 @@ import {
   getListUsersQueryKey,
   useSearchCompanies,
   getSearchCompaniesQueryKey,
+  useGetRecruitment,
+  getGetRecruitmentQueryKey,
 } from '@workspace/api-client-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -37,6 +39,8 @@ import { WorkspaceSubNav } from '@/components/workspace-subnav';
 import { getPartnersSubNavItems } from '@/lib/navigation';
 import { PageHeader } from '@/components/page-header';
 import { statusTone } from '@/lib/status-tone';
+import { buildRecruitmentJourney } from '@/lib/recruitment-journey';
+import { RecruitmentJourney } from '@/components/recruitment-journey';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -111,6 +115,22 @@ export function PortfolioView({ territoryId, pamUserId }: { territoryId?: string
   const { data: detail, isLoading: isLoadingDetail } = useGetPortfolioRelationship(
     selectedId || '',
     { query: { enabled: !!selectedId, queryKey: getGetPortfolioRelationshipQueryKey(selectedId || '') } },
+  );
+
+  // Phase 11.4: origin_recruitment_id is the true "this partner came from
+  // recruitment" signal (set only when a recruitment reached signed and
+  // created this relationship -- see partnerRelationshipService.ts). This
+  // is deliberately NOT detail.context.related_recruitment, which is the
+  // most-recently-updated recruitment for the COMPANY overall and can be a
+  // different, still-in-progress recruitment unrelated to how this
+  // relationship began. Existing GET /recruitment/:id endpoint, no backend
+  // change. Gracefully renders nothing on 403/404 (e.g. a partner
+  // reassigned to a different territory than its origin recruitment) --
+  // never a broken-looking panel.
+  const originRecruitmentId = detail?.origin_recruitment_id ?? '';
+  const { data: originRecruitment, isError: originRecruitmentError } = useGetRecruitment(
+    originRecruitmentId,
+    { query: { enabled: !!originRecruitmentId, queryKey: getGetRecruitmentQueryKey(originRecruitmentId), retry: false } },
   );
 
   const invalidate = () => {
@@ -359,6 +379,26 @@ export function PortfolioView({ territoryId, pamUserId }: { territoryId?: string
                       <p className="font-medium capitalize">{detail.origin_type.replace('_', ' ')}</p>
                     </div>
                   </div>
+
+                  {/* Phase 11.4: compact, quiet confirmation that this
+                      specific relationship came through Recruitment --
+                      distinct from the "Also in Recruitment" block below,
+                      which reports the company's most recent recruitment
+                      activity in general (possibly a different, unrelated
+                      recruitment). Renders nothing if the origin recruitment
+                      can't be loaded (e.g. cross-territory access) rather
+                      than showing a broken panel. */}
+                  {originRecruitmentId && originRecruitment && !originRecruitmentError && (
+                    <RecruitmentJourney
+                      mode="compact"
+                      journey={buildRecruitmentJourney({
+                        stage: originRecruitment.stage,
+                        previous_stage: originRecruitment.previous_stage,
+                        stage_entered_at: originRecruitment.stage_entered_at,
+                        history: originRecruitment.history,
+                      })}
+                    />
+                  )}
 
                   {detail.context?.related_recruitment && (
                     <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">

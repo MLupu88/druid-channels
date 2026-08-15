@@ -19,7 +19,8 @@
     "test:channel-radar-group": "tsx --test tests/channelRadarGroup.test.ts",
     "test:opportunities-ui-scope": "tsx --test tests/opportunitiesUiScope.test.ts",
     "test:opportunity-import": "tsx --test tests/opportunityImport.test.ts",
-    "test:opportunities-import-ui-scope": "tsx --test tests/opportunitiesImportUiScope.test.ts"
+    "test:opportunities-import-ui-scope": "tsx --test tests/opportunitiesImportUiScope.test.ts",
+    "test:recruitment-journey": "tsx --test tests/recruitmentJourney.test.ts"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

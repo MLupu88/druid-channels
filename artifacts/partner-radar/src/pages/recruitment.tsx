@@ -47,22 +47,21 @@ import { WorkspaceSubNav } from '@/components/workspace-subnav';
 import { getPartnersSubNavItems } from '@/lib/navigation';
 import { PageHeader } from '@/components/page-header';
 import { statusTone } from '@/lib/status-tone';
+import { CANONICAL_RECRUITMENT_STAGES, CANONICAL_STAGE_LABELS, buildRecruitmentJourney } from '@/lib/recruitment-journey';
+import { RecruitmentJourney } from '@/components/recruitment-journey';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 
 const STAGE_LABELS: Record<string, string> = {
-  accepted: 'Accepted',
-  contacting: 'Contacting',
-  engaged: 'Engaged',
-  agreement: 'Agreement',
-  signed: 'Signed',
+  ...CANONICAL_STAGE_LABELS,
   on_hold: 'On Hold',
   not_pursuing: 'Not Pursuing',
 };
 
 // Headline summary cards -- On Hold/Not Pursuing are exception states, not
-// part of the primary funnel, so they're deliberately excluded here.
-const SUMMARY_STAGES = ['accepted', 'contacting', 'engaged', 'agreement', 'signed'] as const;
+// part of the primary funnel, so they're deliberately excluded here. Single
+// source: CANONICAL_RECRUITMENT_STAGES (lib/recruitment-journey.ts).
+const SUMMARY_STAGES = CANONICAL_RECRUITMENT_STAGES;
 
 const NOT_PURSUING_REASONS = [
   { value: 'no_strategic_fit', label: 'No strategic fit' },
@@ -340,6 +339,27 @@ export default function Recruitment() {
                     </a>
                   </div>
 
+                  {/* Phase 11.4: at-a-glance journey, informational only --
+                      the explicit action buttons below (Start outreach /
+                      Mark engaged / Resume / etc.) remain the only way to
+                      actually change stage. The chronological History list
+                      further down still has the full log; this is a
+                      complement, not a replacement. */}
+                  <RecruitmentJourney
+                    mode="full"
+                    journey={buildRecruitmentJourney({
+                      stage: detail.stage,
+                      previous_stage: detail.previous_stage,
+                      stage_entered_at: detail.stage_entered_at,
+                      history: detail.history,
+                    })}
+                    notPursuingReasonLabel={
+                      detail.not_pursuing_reason
+                        ? NOT_PURSUING_REASONS.find((r) => r.value === detail.not_pursuing_reason)?.label ?? detail.not_pursuing_reason
+                        : null
+                    }
+                  />
+
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-md border border-border/60 p-3">
                       <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Territory</p>
@@ -365,11 +385,8 @@ export default function Recruitment() {
                     </div>
                   )}
 
-                  {detail.stage === 'not_pursuing' && detail.not_pursuing_reason && (
-                    <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-                      Not pursuing: {NOT_PURSUING_REASONS.find((r) => r.value === detail.not_pursuing_reason)?.label ?? detail.not_pursuing_reason}
-                    </div>
-                  )}
+                  {/* Not-pursuing reason is now shown by the RecruitmentJourney
+                      banner above -- not duplicated here. */}
 
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">Discovery context</h4>
