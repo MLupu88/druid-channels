@@ -21,7 +21,6 @@ import Pams from '@/pages/pams';
 import MyWorkspace from '@/pages/pam-workspace';
 import Campaigns from '@/pages/campaigns';
 import MyWeeklyReport from '@/pages/weekly-report';
-import WeeklyTeamReport from '@/pages/weekly-team-report';
 import Settings from '@/pages/settings';
 import { Loader2 } from 'lucide-react';
 
@@ -83,12 +82,15 @@ function AuthenticatedApp() {
         </Route>
         {/* Phase 7: PAM-only self-service weekly report -- Head/Admin has no
             PAM report of their own (see requirePam on the backend) and uses
-            /weekly-team-report's drill-down instead. */}
+            Overview's "Weekly Team" view drill-down instead. */}
         <Route path="/my-weekly-report">
           <Guarded allow={!isGlobalUser}><MyWeeklyReport /></Guarded>
         </Route>
+        {/* Phase 8: Team Weekly Report is no longer a standalone nav
+            destination -- it lives inside Overview as the "Weekly Team"
+            view. This redirect preserves the old URL/bookmarks. */}
         <Route path="/weekly-team-report">
-          <Guarded allow={isGlobalUser}><WeeklyTeamReport /></Guarded>
+          <Redirect to="/?view=weekly-team" />
         </Route>
         <Route path="/activities" component={Campaigns} />
         <Route path="/settings">

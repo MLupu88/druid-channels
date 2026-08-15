@@ -45,6 +45,7 @@ import type {
   CreateTerritoryInput,
   CreateUserInput,
   DeleteResult,
+  ExportManagementPptxParams,
   ExportQuarterlyPptxParams,
   GetAiChannelBriefParams,
   GetAnnualCascadeParams,
@@ -53,6 +54,7 @@ import type {
   GetChannelRadarSummaryParams,
   GetHeadOfChannelsKpisParams,
   GetKpiDetailsParams,
+  GetManagementReportSummaryParams,
   GetMyWeeklyReportParams,
   GetPamWeeklyReportParams,
   GetPortfolioSummaryParams,
@@ -78,6 +80,7 @@ import type {
   ListScanRunsParams,
   ListTeamTargetsParams,
   LoginInput,
+  ManagementReportSummary,
   ManualMetricValue,
   ManualMetricValueInput,
   MetricMapping,
@@ -5811,6 +5814,90 @@ export function useExportQuarterlyPptx<TData = Awaited<ReturnType<typeof exportQ
 
 
 
+export const getExportManagementPptxUrl = (params?: ExportManagementPptxParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/exports/management-pptx?${stringifiedParams}` : `/api/exports/management-pptx`
+}
+
+/**
+ * @summary Export the Phase 8 Head/Admin management report (selected week + WoW + current QTD + weekly PAM insights) as a PowerPoint deck. Built from the exact same payload as GET /reporting/management/summary -- nothing in this deck is calculated separately from the Overview management view.
+ */
+export const exportManagementPptx = async (params?: ExportManagementPptxParams, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getExportManagementPptxUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportManagementPptxQueryKey = (params?: ExportManagementPptxParams,) => {
+    return [
+    `/api/exports/management-pptx`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportManagementPptxQueryOptions = <TData = Awaited<ReturnType<typeof exportManagementPptx>>, TError = ErrorType<void>>(params?: ExportManagementPptxParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportManagementPptx>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportManagementPptxQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportManagementPptx>>> = ({ signal }) => exportManagementPptx(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportManagementPptx>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportManagementPptxQueryResult = NonNullable<Awaited<ReturnType<typeof exportManagementPptx>>>
+export type ExportManagementPptxQueryError = ErrorType<void>
+
+
+/**
+ * @summary Export the Phase 8 Head/Admin management report (selected week + WoW + current QTD + weekly PAM insights) as a PowerPoint deck. Built from the exact same payload as GET /reporting/management/summary -- nothing in this deck is calculated separately from the Overview management view.
+ */
+
+export function useExportManagementPptx<TData = Awaited<ReturnType<typeof exportManagementPptx>>, TError = ErrorType<void>>(
+ params?: ExportManagementPptxParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportManagementPptx>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportManagementPptxQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetAiChannelBriefUrl = (params?: GetAiChannelBriefParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -7416,6 +7503,90 @@ export function useGetWeeklyTeamReport<TData = Awaited<ReturnType<typeof getWeek
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetWeeklyTeamReportQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetManagementReportSummaryUrl = (params?: GetManagementReportSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reporting/management/summary?${stringifiedParams}` : `/api/reporting/management/summary`
+}
+
+/**
+ * @summary Phase 8 -- Head/Admin management report. weekly is the SELECTED week's team report (Phase 7's getTeamWeeklyReport, untouched semantics -- submission state, frozen/live, commentary, attention). quarter_to_date is ALWAYS the current quarter as of generation, never a historical reconstruction for the selected week -- see report_context.quarter_to_date_note. comparisons.week_over_week compares the selected week to the immediately preceding canonical week using the canonical range helpers directly (never two team-report calls); open pipeline has no reliable historical reconstruction (no status-history table exists), so it is reported as a current-state figure only, not a week-over-week delta.
+ */
+export const getManagementReportSummary = async (params?: GetManagementReportSummaryParams, options?: Parameters<typeof customFetch>[1]): Promise<ManagementReportSummary> => {
+
+  return customFetch<ManagementReportSummary>(getGetManagementReportSummaryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetManagementReportSummaryQueryKey = (params?: GetManagementReportSummaryParams,) => {
+    return [
+    `/api/reporting/management/summary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetManagementReportSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getManagementReportSummary>>, TError = ErrorType<void>>(params?: GetManagementReportSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getManagementReportSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetManagementReportSummaryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getManagementReportSummary>>> = ({ signal }) => getManagementReportSummary(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getManagementReportSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetManagementReportSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getManagementReportSummary>>>
+export type GetManagementReportSummaryQueryError = ErrorType<void>
+
+
+/**
+ * @summary Phase 8 -- Head/Admin management report. weekly is the SELECTED week's team report (Phase 7's getTeamWeeklyReport, untouched semantics -- submission state, frozen/live, commentary, attention). quarter_to_date is ALWAYS the current quarter as of generation, never a historical reconstruction for the selected week -- see report_context.quarter_to_date_note. comparisons.week_over_week compares the selected week to the immediately preceding canonical week using the canonical range helpers directly (never two team-report calls); open pipeline has no reliable historical reconstruction (no status-history table exists), so it is reported as a current-state figure only, not a week-over-week delta.
+ */
+
+export function useGetManagementReportSummary<TData = Awaited<ReturnType<typeof getManagementReportSummary>>, TError = ErrorType<void>>(
+ params?: GetManagementReportSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getManagementReportSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetManagementReportSummaryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

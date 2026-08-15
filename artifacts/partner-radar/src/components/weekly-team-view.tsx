@@ -59,11 +59,15 @@ function HeadlineTile({ label, value, sub }: { label: string; value: React.React
  * team_marketing come pre-aggregated from GET /reporting/weekly/team
  * (weeklyReportingService.getTeamWeeklyReport), which derives them entirely
  * from the same pam_reports shown in the table below -- never a separately
- * computed figure -- so this page never needs (and never performs) its own
- * aggregation.
+ * computed figure -- so this component never needs (and never performs) its
+ * own aggregation.
+ *
+ * Phase 8: relocated from the standalone /weekly-team-report page (now a
+ * redirect) into an internal "Weekly Team" view inside Overview -- same
+ * component, same behavior, same data source, just a different host page.
  */
-export default function WeeklyTeamReport() {
-  const [weekStart, setWeekStart] = useState(getDefaultWeekStart());
+export function WeeklyTeamView({ initialWeekStart }: { initialWeekStart?: string } = {}) {
+  const [weekStart, setWeekStart] = useState(initialWeekStart ?? getDefaultWeekStart());
   const [selected, setSelected] = useState<{ id: string; name: string } | null>(null);
 
   const { data: report, isLoading, isError, error } = useGetWeeklyTeamReport({ week_start: weekStart });
@@ -72,10 +76,10 @@ export default function WeeklyTeamReport() {
 
   return (
     <div className="flex h-full w-full relative">
-      <div className="flex-1 p-6 space-y-6 overflow-auto">
+      <div className="flex-1 space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Team weekly report</h1>
+            <h2 className="text-lg font-semibold tracking-tight">Weekly team report</h2>
             <p className="text-sm text-muted-foreground mt-1">Who's on track, where pipeline is moving, and what needs your attention.</p>
           </div>
           <WeekSelector value={weekStart} onChange={setWeekStart} />
@@ -250,7 +254,7 @@ export default function WeeklyTeamReport() {
       </div>
 
       {selected && (
-        <div className="w-[720px] border-l border-border/50 bg-card flex flex-col h-full shadow-[-10px_0_30px_rgba(0,0,0,0.03)] overflow-hidden">
+        <div className="w-[720px] border-l border-border/50 bg-card flex flex-col h-full shadow-[-10px_0_30px_rgba(0,0,0,0.03)] overflow-hidden fixed right-0 top-0 bottom-0 z-40">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 bg-muted/10 shrink-0">
             <h3 className="font-medium">{selected.name}'s weekly report</h3>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setSelected(null)} data-testid="button-close-drilldown">

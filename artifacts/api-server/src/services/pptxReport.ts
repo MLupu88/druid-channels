@@ -7,92 +7,32 @@ import pptxgenjsImport from "pptxgenjs";
 const PptxGenJS = (pptxgenjsImport as unknown as { default?: typeof pptxgenjsImport }).default ?? pptxgenjsImport;
 import { buildHeadOfChannelsData, buildKpiDetailWithFx, type ResolvedTerritory } from "./kpiService";
 import { resolvePeriodRange, METRIC_REGISTRY, isMoneyMetric } from "./kpiRegistry";
-import type { SupportedCurrency, FxInfo } from "./fx";
-import { DRUID_LOGO_DATA_URI } from "../lib/druidLogo";
-
-const BRAND_NAVY = "0F2A4A";
-const BRAND_GREY = "6B7280";
-const GOOD_COLOR = "1E9E5A";
-const BAD_COLOR = "D14343";
-const STATUS_COLOR: Record<string, string> = { green: "1E9E5A", amber: "D19A0A", red: "D14343", on_track: "1E9E5A" };
-const LOGO_ASPECT_RATIO = 245 / 941; // source PNG is 941x245
-const FOOTER_LABEL = "DRUID · Channels and alliances";
-
-function dataStatusLabel(status: string): string {
-  switch (status) {
-    case "CONNECTED": return "Connected";
-    case "MANUAL": return "Manual";
-    case "DEMO": return "Demo data";
-    default: return "Not connected";
-  }
-}
-
-function dataStatusColor(status: string): string {
-  if (status === "DEMO") return "D19A0A";
-  if (status === "NOT_CONNECTED") return BRAND_GREY;
-  return GOOD_COLOR;
-}
-
-// Deterministic English-locale formatting regardless of server environment
-// locale config -- fixed "en-US", never Intl.NumberFormat(undefined, ...).
-function formatCount(value: number | null): string {
-  if (value === null) return "--";
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
-}
-
-function formatMoney(value: number | null, currency: SupportedCurrency): string {
-  if (value === null) return "--";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
-}
+import type { SupportedCurrency } from "./fx";
+import {
+  BRAND_NAVY,
+  BRAND_GREY,
+  GOOD_COLOR,
+  BAD_COLOR,
+  STATUS_COLOR,
+  LOGO_ASPECT_RATIO,
+  DRUID_LOGO_DATA_URI,
+  dataStatusLabel,
+  dataStatusColor,
+  formatCount,
+  formatMoney,
+  formatValue as formatValueRaw,
+  formatTrend,
+  formatStatus,
+  formatFreshness,
+  fxDescriptionLine,
+  createSlideBuilder,
+} from "../lib/pptxLayout";
 
 // Counts remain plain numbers; only the 3 money metrics ever get currency
 // formatting -- reuses kpiRegistry's own isMoneyMetric so this never drifts
 // from what kpiService itself treats as a money value.
 function formatValue(value: number | null, metricKey: string, currency: SupportedCurrency): string {
-  return isMoneyMetric(metricKey) ? formatMoney(value, currency) : formatCount(value);
-}
-
-function formatTrend(trend: string | null): string {
-  if (!trend) return "--";
-  return trend.charAt(0).toUpperCase() + trend.slice(1);
-}
-
-function formatStatus(status: string | null): string {
-  if (!status) return "--";
-  return status.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-}
-
-// Deterministic UTC timestamp for the "data freshness" callout -- never
-// depends on server timezone/locale config.
-function formatFreshness(iso: string): string {
-  const d = new Date(iso);
-  return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
-}
-
-// Describes the Frankfurter *reference* rate only. Deliberately never uses
-// the word "live" anywhere in this string, per the locked wording
-// requirement -- this is a daily reference rate for reporting, not a
-// market execution rate.
-function fxDescriptionLine(fx: FxInfo): string {
-  if (fx.currency === "USD") {
-    return "All figures are shown in USD, the currency this app stores commercial values in natively -- no conversion was applied.";
-  }
-  const asOf = fx.as_of ?? "an unknown date";
-  const staleNote = fx.stale
-    ? " The most recent successful Frankfurter lookup could not be refreshed at export time, so this is the last rate retrieved and stored (marked stale)."
-    : "";
-  return `Figures are converted from USD using the Frankfurter (frankfurter.app) daily reference exchange rate for ${fx.currency} as of ${asOf} (1 USD = ${fx.usd_to_currency_rate.toFixed(4)} ${fx.currency}). This is a daily reference rate for reporting purposes only, not a market execution rate.${staleNote}`;
-}
-
-interface TableCell {
-  text: string;
-  color?: string;
-  bold?: boolean;
-}
-
-interface TableColumn<T> {
-  header: string;
-  cell: (row: T) => TableCell;
+  return formatValueRaw(value, isMoneyMetric(metricKey), currency);
 }
 
 export interface QuarterlyReportOptions {
@@ -144,47 +84,10 @@ export async function buildQuarterlyReportPptx({ periodKey, target, currency }: 
   pptx.layout = "WIDE";
 
   const contextSubtitle = `${periodInfo.label} · ${target.territoryName} · ${fx.currency}`;
-
-  // Every slide is tracked here so a consistent footer (brand label + page
-  // number / total) can be stamped across the whole deck in one pass at the
-  // end, once the final slide count is known -- content slides can be
-  // conditional (e.g. PAM contribution), so the total isn't known upfront.
-  const allSlides: ReturnType<typeof pptx.addSlide>[] = [];
-
-  const addSectionHeader = (title: string, subtitle: string = contextSubtitle) => {
-    const slide = pptx.addSlide();
-    allSlides.push(slide);
-    slide.background = { color: "FFFFFF" };
-    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.333, h: 1.4, fill: { color: BRAND_NAVY } });
-    slide.addText(title, { x: 0.6, y: 0.35, w: 12, h: 0.7, fontSize: 26, bold: true, color: "FFFFFF" });
-    slide.addText(subtitle, { x: 0.6, y: 0.95, w: 12, h: 0.4, fontSize: 13, color: "C9D6EA" });
-    return slide;
-  };
-
-  const addTableSlide = <T,>(title: string, columns: TableColumn<T>[], rows: T[]) => {
-    const slide = addSectionHeader(title);
-    const header = columns.map((col) => ({
-      text: col.header,
-      options: { bold: true, fill: { color: "EEF2FA" }, color: BRAND_NAVY, fontSize: 11 },
-    }));
-    const body = rows.map((row) =>
-      columns.map((col) => {
-        const cell = col.cell(row);
-        return { text: cell.text, options: { color: cell.color ?? "1F2937", bold: Boolean(cell.bold), fontSize: 11 } };
-      }),
-    );
-    slide.addTable([header, ...body], {
-      x: 0.6, y: 1.6, w: 12.1, h: 5.2,
-      fontSize: 11,
-      border: { type: "solid", color: "E5E7EB", pt: 0.5 },
-      autoPage: false,
-    });
-    return slide;
-  };
+  const { addSectionHeader, addTableSlide, addRawSlide, stampFooters } = createSlideBuilder(pptx, contextSubtitle);
 
   // 1. Cover / reporting context
-  const cover = pptx.addSlide();
-  allSlides.push(cover);
+  const cover = addRawSlide();
   cover.background = { color: BRAND_NAVY };
   const logoW = 2.4;
   cover.addImage({ data: DRUID_LOGO_DATA_URI, x: 0.6, y: 0.6, w: logoW, h: logoW * LOGO_ASPECT_RATIO });
@@ -348,8 +251,7 @@ export async function buildQuarterlyReportPptx({ periodKey, target, currency }: 
   );
 
   // 9. Closing
-  const closing = pptx.addSlide();
-  allSlides.push(closing);
+  const closing = addRawSlide();
   closing.background = { color: BRAND_NAVY };
   closing.addText("Thank you", { x: 0.6, y: 3.0, w: 12, h: 0.8, fontSize: 30, bold: true, color: "FFFFFF" });
   closing.addText("DRUID — Channels and alliances", { x: 0.6, y: 3.8, w: 12, h: 0.5, fontSize: 14, color: "C9D6EA" });
@@ -357,10 +259,7 @@ export async function buildQuarterlyReportPptx({ periodKey, target, currency }: 
   // Footer / slide-number hierarchy: every slide gets a small, consistent
   // brand label + "page / total" in the bottom-right, added last now that
   // the final (possibly-conditional) slide count is known.
-  allSlides.forEach((slide, i) => {
-    slide.addText(FOOTER_LABEL, { x: 0.6, y: 7.15, w: 6, h: 0.3, fontSize: 9, color: "9AA7BD" });
-    slide.addText(`${i + 1} / ${allSlides.length}`, { x: 12.13, y: 7.15, w: 0.8, h: 0.3, fontSize: 9, color: "9AA7BD", align: "right" });
-  });
+  stampFooters();
 
   return (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
 }

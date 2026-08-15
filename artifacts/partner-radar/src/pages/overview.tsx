@@ -15,11 +15,15 @@ import {
   useListUsers,
   getListUsersQueryKey,
   exportQuarterlyPptx,
+  exportManagementPptx,
   ApiError,
   type AiChannelBrief,
   type AiBriefEvidenceItem,
   type User,
 } from '@workspace/api-client-react';
+import { useSearch, useLocation } from 'wouter';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { WeeklyTeamView } from '@/components/weekly-team-view';
 import {
   Table,
   TableBody,
@@ -386,6 +390,16 @@ export default function Overview() {
   // separate concern that shouldn't silently start tracking canEditTargets
   // if that check's definition ever changes.
   const canViewTeamData = activeUser?.role === 'head_of_channels' || activeUser?.role === 'admin';
+  // Phase 8: Overview is the Head/Admin management reporting hub -- an
+  // internal "Weekly Team" view alongside the existing "Performance" view,
+  // driven by a ?view= query param (never a separate route/nav item, and
+  // never available to a PAM: Team Weekly Report is Head/Admin-only, same
+  // as before this relocation).
+  const locationSearch = useSearch();
+  const [, setLocation] = useLocation();
+  const view: 'performance' | 'weekly-team' =
+    isGlobalUser && new URLSearchParams(locationSearch).get('view') === 'weekly-team' ? 'weekly-team' : 'performance';
+  const setView = (next: 'performance' | 'weekly-team') => setLocation(next === 'performance' ? '/' : '/?view=weekly-team');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: territories } = useListTerritories();
@@ -397,6 +411,7 @@ export default function Overview() {
   const [currency, setCurrency] = useState<Currency>('USD');
   const [selectedKpi, setSelectedKpi] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingManagement, setIsExportingManagement] = useState(false);
   const [editTargetOpen, setEditTargetOpen] = useState(false);
   const [targetValueInput, setTargetValueInput] = useState('');
   const [targetNoteInput, setTargetNoteInput] = useState('');
@@ -584,18 +599,65 @@ export default function Overview() {
     }
   };
 
-  return (
-    <div className="flex h-full w-full relative">
-      <div className="flex-1 p-6 space-y-6 overflow-auto">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Global partner development and channel performance.
-            </p>
-          </div>
+  // Phase 8: the management report deck -- built server-side from the exact
+  // same payload GET /reporting/management/summary returns, so it is never
+  // a Performance-view-only or Weekly-Team-view-only export; available from
+  // either view, per the "PPT export is an Overview action, not a
+  // navigation destination" instruction.
+  const handleExportManagement = async () => {
+    setIsExportingManagement(true);
+    try {
+      const blob = await exportManagementPptx({ territory: scopedTerritory, currency });
+      const territoryLabel = territory === 'global' ? 'global' : (territories?.find((t) => t.id === territory)?.name ?? territory);
+      const fileName = `druid-management-report-${territoryLabel.toLowerCase().replace(/\s+/g, '-')}.pptx`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: 'Export ready', description: 'Your management report has downloaded.' });
+    } catch (err) {
+      let description = 'Something went wrong generating the report. Please try again.';
+      if (err instanceof ApiError) {
+        if (err.status === 400) description = err.message || 'Invalid export request -- check the selected territory or currency.';
+        else if (err.status === 403) description = 'You do not have access to export this territory.';
+        else if (err.status === 503) description = 'The exchange rate is temporarily unavailable. Try again shortly, or export in USD.';
+        else description = err.message || description;
+      }
+      toast({ title: 'Export failed', description, variant: 'destructive' });
+    } finally {
+      setIsExportingManagement(false);
+    }
+  };
 
-          <div className="flex items-center gap-3">
+  // Shared chrome for both the Performance and Weekly Team views -- period/
+  // territory/currency selectors are Performance-specific (Weekly Team has
+  // its own week selector), but the view switcher and both PPT export
+  // actions apply regardless of which view is active.
+  const headerRow = (
+    <div className="flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {view === 'weekly-team' ? 'Weekly PAM reporting, team-wide.' : 'Global partner development and channel performance.'}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        {isGlobalUser && (
+          <Tabs value={view} onValueChange={(v) => setView(v as 'performance' | 'weekly-team')}>
+            <TabsList>
+              <TabsTrigger value="performance" data-testid="tab-performance">Performance</TabsTrigger>
+              <TabsTrigger value="weekly-team" data-testid="tab-weekly-team">Weekly Team</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+
+        {view === 'performance' && (
+          <>
             <PeriodSelector value={period} onChange={setPeriod} />
 
             <Select value={territory} onValueChange={setTerritory}>
@@ -635,8 +697,42 @@ export default function Overview() {
                 {isExporting ? 'Exporting…' : 'Export PowerPoint'}
               </Button>
             )}
-          </div>
+          </>
+        )}
+
+        {/* Phase 8: management report export -- an Overview action available
+            from either view, not a navigation destination of its own. */}
+        {isGlobalUser && (
+          <Button
+            variant="outline"
+            className="bg-card"
+            onClick={handleExportManagement}
+            disabled={isExportingManagement}
+            data-testid="button-export-management-pptx"
+          >
+            {isExportingManagement ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+            {isExportingManagement ? 'Exporting…' : 'Export Management Report'}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
+  if (view === 'weekly-team') {
+    return (
+      <div className="flex h-full w-full relative">
+        <div className="flex-1 p-6 space-y-6 overflow-auto">
+          {headerRow}
+          <WeeklyTeamView />
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full w-full relative">
+      <div className="flex-1 p-6 space-y-6 overflow-auto">
+        {headerRow}
 
         {/* Phase 4: PAM-only action queue, prominent at the top of the PAM's
             own Overview -- the Head of Channels Overview is unchanged. */}

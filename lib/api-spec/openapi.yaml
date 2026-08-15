@@ -60,6 +60,8 @@ tags:
     description: Machine-to-machine, read-only leadership snapshot for the Aniri/Channel Chief agent. Service-token authenticated only -- never a human session, never direct DB access, never an LLM call.
   - name: weekly-reporting
     description: Phase 7 -- weekly PAM operating reports and the Head/Admin consolidated team view. Every commercial/recruitment/marketing figure is computed by calling the existing canonical services (kpiService, targetService, partnerRecruitmentService, partnerRelationshipService, campaignService), never a second KPI engine. A draft/current week is always live; a submitted week is a permanent, immutable frozen snapshot.
+  - name: management-reporting
+    description: Phase 8 -- Head/Admin management reporting. A composition layer only, over Phase 7's weekly reporting and the canonical kpiService/targetService/partnerRecruitmentService/campaignService -- introduces no second KPI engine. report_context/weekly/quarter_to_date/comparisons/management_insights/data_quality are kept explicitly separate so a selected historical week is never confused with the always-current quarter-to-date figures alongside it.
 
 paths:
   /auth/login:
@@ -1888,6 +1890,37 @@ paths:
                 type: string
                 format: binary
 
+  /exports/management-pptx:
+    get:
+      operationId: exportManagementPptx
+      tags: [exports]
+      summary: Export the Phase 8 Head/Admin management report (selected week + WoW + current QTD + weekly PAM insights) as a PowerPoint deck. Built from the exact same payload as GET /reporting/management/summary -- nothing in this deck is calculated separately from the Overview management view.
+      parameters:
+        - name: week_start
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: currency
+          in: query
+          schema:
+            type: string
+            enum: [USD, EUR, GBP]
+            default: USD
+      responses:
+        "200":
+          description: PowerPoint file
+          content:
+            application/vnd.openxmlformats-officedocument.presentationml.presentation:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: week_start is not a canonical Monday, or currency is invalid
+
   /ai-channel-brief:
     get:
       operationId: getAiChannelBrief
@@ -2423,6 +2456,38 @@ paths:
                 $ref: "#/components/schemas/WeeklyTeamReport"
         "400":
           description: week_start is not a canonical Monday
+
+  /reporting/management/summary:
+    get:
+      operationId: getManagementReportSummary
+      tags: [management-reporting]
+      summary: Phase 8 -- Head/Admin management report. weekly is the SELECTED week's team report (Phase 7's getTeamWeeklyReport, untouched semantics -- submission state, frozen/live, commentary, attention). quarter_to_date is ALWAYS the current quarter as of generation, never a historical reconstruction for the selected week -- see report_context.quarter_to_date_note. comparisons.week_over_week compares the selected week to the immediately preceding canonical week using the canonical range helpers directly (never two team-report calls); open pipeline has no reliable historical reconstruction (no status-history table exists), so it is reported as a current-state figure only, not a week-over-week delta.
+      parameters:
+        - name: week_start
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: territory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: currency
+          in: query
+          schema:
+            type: string
+            enum: [USD, EUR, GBP]
+            default: USD
+      responses:
+        "200":
+          description: Management report summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagementReportSummary"
+        "400":
+          description: week_start is not a canonical Monday
+        "403":
+          description: caller lacks access to the requested territory
 
 components:
   schemas:
@@ -4203,6 +4268,26 @@ components:
           type: string
         updated_at:
           type: string
+        fx:
+          $ref: "#/components/schemas/FxInfo"
+
+    ManagementCommercialQtd:
+      type: object
+      description: buildHeadOfChannelsData() return shape verbatim, as consumed by ManagementQuarterToDateSection.commercial -- camelCase property names preserved because this represents the service return value directly, not the HTTP-shaped HeadOfChannelsKpis contract.
+      required: [partnerDevelopment, weeklyCommercial, weeklyMarketing, fx]
+      properties:
+        partnerDevelopment:
+          type: array
+          items:
+            $ref: "#/components/schemas/KpiRow"
+        weeklyCommercial:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyKpiRow"
+        weeklyMarketing:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketingKpiRow"
         fx:
           $ref: "#/components/schemas/FxInfo"
 
@@ -6060,3 +6145,244 @@ components:
         attention_summary:
           $ref: "#/components/schemas/WeeklyTeamAttentionSummary"
           description: Deterministic notes about missing/incomplete/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as "unknown".
+
+    ManagementReportContext:
+      type: object
+      description: Explicit time semantics so weekly and quarter_to_date are never confused -- week_start is the selected/current week; quarter_to_date_period_key is ALWAYS the current quarter as of generated_at, regardless of week_start.
+      required:
+        - generated_at
+        - week_start
+        - week_end_exclusive
+        - previous_week_start
+        - quarter_to_date_period_key
+        - quarter_to_date_period_label
+        - quarter_to_date_note
+        - territory_id
+        - territory_name
+        - currency
+        - fx
+      properties:
+        generated_at:
+          type: string
+        week_start:
+          type: string
+        week_end_exclusive:
+          type: string
+        previous_week_start:
+          type: string
+          description: The immediately preceding canonical Monday -- the week comparisons.week_over_week compares week_start against.
+        quarter_to_date_period_key:
+          type: string
+        quarter_to_date_period_label:
+          type: string
+        quarter_to_date_note:
+          type: string
+          description: 'Always present, e.g. "quarter_to_date reflects the current quarter as of generated_at, not a historical reconstruction for the selected week" -- especially load-bearing when week_start is a past week.'
+        territory_id:
+          type: ["string", "null"]
+        territory_name:
+          type: string
+        currency:
+          type: string
+          enum: [USD, EUR, GBP]
+        fx:
+          $ref: "#/components/schemas/FxInfo"
+
+    ManagementWeeklySection:
+      type: object
+      required: [team_weekly_report]
+      properties:
+        team_weekly_report:
+          $ref: "#/components/schemas/WeeklyTeamReport"
+          description: Verbatim getTeamWeeklyReport(week_start) -- Phase 7 semantics untouched. Sole source for PAM submission state, frozen/live snapshot handling, wins/progress/risks/blockers/priorities/help commentary, and weekly attention indicators.
+
+    ManagementPeriodMoneySnapshot:
+      type: object
+      required: [won_revenue_usd, opportunities_created_count]
+      properties:
+        won_revenue_usd:
+          $ref: "#/components/schemas/WeeklySourcedInfluencedAmount"
+        opportunities_created_count:
+          type: number
+
+    ManagementOpenPipelineAvailability:
+      type: object
+      description: Open pipeline has no reliable point-in-time reconstruction (partner_opportunities carries only a live status column, no status-history table) -- never fabricated as a week-over-week delta. current_open_pipeline_usd is a CURRENT-STATE figure only.
+      required: [available, note, current_open_pipeline_usd]
+      properties:
+        available:
+          type: boolean
+          description: Always false in Phase 8 -- reserved for a future phase that adds point-in-time pipeline reconstruction.
+        note:
+          type: string
+        current_open_pipeline_usd:
+          $ref: "#/components/schemas/WeeklySourcedInfluencedAmount"
+
+    ManagementComparisons:
+      type: object
+      required: [week_over_week]
+      properties:
+        week_over_week:
+          type: object
+          required: [current_week, previous_week, delta, open_pipeline]
+          properties:
+            current_week:
+              $ref: "#/components/schemas/ManagementPeriodMoneySnapshot"
+            previous_week:
+              $ref: "#/components/schemas/ManagementPeriodMoneySnapshot"
+            delta:
+              $ref: "#/components/schemas/ManagementPeriodMoneySnapshot"
+              description: current_week minus previous_week, same shape (values may be negative).
+            open_pipeline:
+              $ref: "#/components/schemas/ManagementOpenPipelineAvailability"
+
+    ManagementRecruitmentCurrentState:
+      type: object
+      description: Live snapshot of partner_recruitments.stage distribution, as of "now" -- NOT period-bound, never presented as something that happened during quarter_to_date.
+      required: [as_of, by_stage]
+      properties:
+        as_of:
+          type: string
+        by_stage:
+          type: object
+          additionalProperties:
+            type: number
+          description: Keyed by RecruitmentStage (accepted, contacting, engaged, agreement, signed, on_hold, not_pursuing).
+
+    ManagementRecruitmentPeriodTransitions:
+      type: object
+      description: Genuine stage-movement EVENTS sourced from partner_recruitment_history within the quarter-to-date window -- never the current stage distribution re-labeled as period activity.
+      required: [period_start, period_end_exclusive, new_recruitments_count, stage_transitions_count, signed_count]
+      properties:
+        period_start:
+          type: string
+        period_end_exclusive:
+          type: string
+        new_recruitments_count:
+          type: number
+          description: Recruitments created (null -> accepted) inside the window.
+        stage_transitions_count:
+          type: number
+          description: Genuine stage-to-stage movement events inside the window, excluding the initial creation event.
+        signed_count:
+          type: number
+          description: Reuses the canonical signed_partners metric (kpiService.computeMetric) for the same period/scope -- never recomputed from history independently.
+
+    ManagementRecruitmentSection:
+      type: object
+      required: [current_state, period_transitions]
+      properties:
+        current_state:
+          $ref: "#/components/schemas/ManagementRecruitmentCurrentState"
+        period_transitions:
+          $ref: "#/components/schemas/ManagementRecruitmentPeriodTransitions"
+
+    ManagementMarketingSection:
+      type: object
+      description: Team+quarter-to-date-scoped extension of the existing campaignService.computeCommercialImpact + weeklyReportingService.unionLinkedOpportunityIds dedup -- no new attribution/dedup rule.
+      required: [activity_count, unique_linked_opportunity_count, open_pipeline_usd, won_revenue_usd]
+      properties:
+        activity_count:
+          type: number
+        unique_linked_opportunity_count:
+          type: number
+        open_pipeline_usd:
+          type: number
+        won_revenue_usd:
+          type: number
+
+    ManagementQuarterToDateSection:
+      type: object
+      required: [commercial, targets, recruitment, marketing, pam_comparison]
+      properties:
+        commercial:
+          $ref: "#/components/schemas/ManagementCommercialQtd"
+          description: buildHeadOfChannelsData(quarter_to_date_period_key, territory, currency) verbatim.
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamTargetRow"
+        recruitment:
+          $ref: "#/components/schemas/ManagementRecruitmentSection"
+        marketing:
+          $ref: "#/components/schemas/ManagementMarketingSection"
+        pam_comparison:
+          $ref: "#/components/schemas/KpiDetail"
+          description: buildKpiDetailWithFx("closed_revenue", ...) verbatim, including pam_contribution, reconciles, and reconciliation_note -- the Global total and the sum of displayed PAM rows are never forced to match; when they legitimately differ (e.g. an unowned territory), reconciles is false and reconciliation_note explains it. Never a fabricated equality.
+
+    ManagementInsightCategory:
+      type: string
+      enum: [target, recruitment, marketing, submission, help_request, commercial, risk]
+
+    ManagementInsightSeverity:
+      type: string
+      enum: [info, attention, risk]
+
+    ManagementInsight:
+      type: object
+      description: Deterministic, rule-based -- no LLM. Wording is factual and metric-backed only (e.g. "Anna is at 68% of quarterly target."); never a subjective grade or invented interpretation.
+      required: [id, category, severity, text, pam_user_id, related_metric_key]
+      properties:
+        id:
+          type: string
+        category:
+          $ref: "#/components/schemas/ManagementInsightCategory"
+        severity:
+          $ref: "#/components/schemas/ManagementInsightSeverity"
+        text:
+          type: string
+        pam_user_id:
+          type: ["string", "null"]
+        related_metric_key:
+          type: ["string", "null"]
+
+    ManagementWeeklyReportCompleteness:
+      type: object
+      required: [submitted_count, draft_count, outstanding_count, outstanding_pam_names]
+      properties:
+        submitted_count:
+          type: number
+        draft_count:
+          type: number
+        outstanding_count:
+          type: number
+          description: Current PAMs with no persisted weekly_pam_reports row at all for the selected week (neither draft nor submitted).
+        outstanding_pam_names:
+          type: array
+          items:
+            type: string
+
+    ManagementDataQuality:
+      type: object
+      required: [has_demo_data, fx_description_line, weekly_report_completeness, historical_data_caveats]
+      properties:
+        has_demo_data:
+          type: boolean
+        fx_description_line:
+          type: string
+        weekly_report_completeness:
+          $ref: "#/components/schemas/ManagementWeeklyReportCompleteness"
+        historical_data_caveats:
+          type: array
+          items:
+            type: string
+          description: Explicit notes for genuinely absent historical data (e.g. no submitted weekly reports before a given date) -- never a silently fabricated zero.
+
+    ManagementReportSummary:
+      type: object
+      required: [report_context, weekly, quarter_to_date, comparisons, management_insights, data_quality]
+      properties:
+        report_context:
+          $ref: "#/components/schemas/ManagementReportContext"
+        weekly:
+          $ref: "#/components/schemas/ManagementWeeklySection"
+        quarter_to_date:
+          $ref: "#/components/schemas/ManagementQuarterToDateSection"
+        comparisons:
+          $ref: "#/components/schemas/ManagementComparisons"
+        management_insights:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManagementInsight"
+        data_quality:
+          $ref: "#/components/schemas/ManagementDataQuality"

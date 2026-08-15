@@ -1577,6 +1577,16 @@ export interface HeadOfChannelsKpis {
   fx: FxInfo;
 }
 
+/**
+ * buildHeadOfChannelsData() return shape verbatim, as consumed by ManagementQuarterToDateSection.commercial -- camelCase property names preserved because this represents the service return value directly, not the HTTP-shaped HeadOfChannelsKpis contract.
+ */
+export interface ManagementCommercialQtd {
+  partnerDevelopment: KpiRow[];
+  weeklyCommercial: WeeklyKpiRow[];
+  weeklyMarketing: MarketingKpiRow[];
+  fx: FxInfo;
+}
+
 export type SourceType = typeof SourceType[keyof typeof SourceType];
 
 
@@ -3030,6 +3040,181 @@ export interface WeeklyTeamReport {
   attention_summary: WeeklyTeamAttentionSummary;
 }
 
+export type ManagementReportContextCurrency = typeof ManagementReportContextCurrency[keyof typeof ManagementReportContextCurrency];
+
+
+export const ManagementReportContextCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
+/**
+ * Explicit time semantics so weekly and quarter_to_date are never confused -- week_start is the selected/current week; quarter_to_date_period_key is ALWAYS the current quarter as of generated_at, regardless of week_start.
+ */
+export interface ManagementReportContext {
+  generated_at: string;
+  week_start: string;
+  week_end_exclusive: string;
+  /** The immediately preceding canonical Monday -- the week comparisons.week_over_week compares week_start against. */
+  previous_week_start: string;
+  quarter_to_date_period_key: string;
+  quarter_to_date_period_label: string;
+  /** Always present, e.g. "quarter_to_date reflects the current quarter as of generated_at, not a historical reconstruction for the selected week" -- especially load-bearing when week_start is a past week. */
+  quarter_to_date_note: string;
+  /** @nullable */
+  territory_id: string | null;
+  territory_name: string;
+  currency: ManagementReportContextCurrency;
+  fx: FxInfo;
+}
+
+export interface ManagementWeeklySection {
+  /** Verbatim getTeamWeeklyReport(week_start) -- Phase 7 semantics untouched. Sole source for PAM submission state, frozen/live snapshot handling, wins/progress/risks/blockers/priorities/help commentary, and weekly attention indicators. */
+  team_weekly_report: WeeklyTeamReport;
+}
+
+export interface ManagementPeriodMoneySnapshot {
+  won_revenue_usd: WeeklySourcedInfluencedAmount;
+  opportunities_created_count: number;
+}
+
+/**
+ * Open pipeline has no reliable point-in-time reconstruction (partner_opportunities carries only a live status column, no status-history table) -- never fabricated as a week-over-week delta. current_open_pipeline_usd is a CURRENT-STATE figure only.
+ */
+export interface ManagementOpenPipelineAvailability {
+  /** Always false in Phase 8 -- reserved for a future phase that adds point-in-time pipeline reconstruction. */
+  available: boolean;
+  note: string;
+  current_open_pipeline_usd: WeeklySourcedInfluencedAmount;
+}
+
+export type ManagementComparisonsWeekOverWeek = {
+  current_week: ManagementPeriodMoneySnapshot;
+  previous_week: ManagementPeriodMoneySnapshot;
+  /** current_week minus previous_week, same shape (values may be negative). */
+  delta: ManagementPeriodMoneySnapshot;
+  open_pipeline: ManagementOpenPipelineAvailability;
+};
+
+export interface ManagementComparisons {
+  week_over_week: ManagementComparisonsWeekOverWeek;
+}
+
+/**
+ * Keyed by RecruitmentStage (accepted, contacting, engaged, agreement, signed, on_hold, not_pursuing).
+ */
+export type ManagementRecruitmentCurrentStateByStage = {[key: string]: number};
+
+/**
+ * Live snapshot of partner_recruitments.stage distribution, as of "now" -- NOT period-bound, never presented as something that happened during quarter_to_date.
+ */
+export interface ManagementRecruitmentCurrentState {
+  as_of: string;
+  /** Keyed by RecruitmentStage (accepted, contacting, engaged, agreement, signed, on_hold, not_pursuing). */
+  by_stage: ManagementRecruitmentCurrentStateByStage;
+}
+
+/**
+ * Genuine stage-movement EVENTS sourced from partner_recruitment_history within the quarter-to-date window -- never the current stage distribution re-labeled as period activity.
+ */
+export interface ManagementRecruitmentPeriodTransitions {
+  period_start: string;
+  period_end_exclusive: string;
+  /** Recruitments created (null -> accepted) inside the window. */
+  new_recruitments_count: number;
+  /** Genuine stage-to-stage movement events inside the window, excluding the initial creation event. */
+  stage_transitions_count: number;
+  /** Reuses the canonical signed_partners metric (kpiService.computeMetric) for the same period/scope -- never recomputed from history independently. */
+  signed_count: number;
+}
+
+export interface ManagementRecruitmentSection {
+  current_state: ManagementRecruitmentCurrentState;
+  period_transitions: ManagementRecruitmentPeriodTransitions;
+}
+
+/**
+ * Team+quarter-to-date-scoped extension of the existing campaignService.computeCommercialImpact + weeklyReportingService.unionLinkedOpportunityIds dedup -- no new attribution/dedup rule.
+ */
+export interface ManagementMarketingSection {
+  activity_count: number;
+  unique_linked_opportunity_count: number;
+  open_pipeline_usd: number;
+  won_revenue_usd: number;
+}
+
+export interface ManagementQuarterToDateSection {
+  /** buildHeadOfChannelsData(quarter_to_date_period_key, territory, currency) verbatim. */
+  commercial: ManagementCommercialQtd;
+  targets: TeamTargetRow[];
+  recruitment: ManagementRecruitmentSection;
+  marketing: ManagementMarketingSection;
+  /** buildKpiDetailWithFx("closed_revenue", ...) verbatim, including pam_contribution, reconciles, and reconciliation_note -- the Global total and the sum of displayed PAM rows are never forced to match; when they legitimately differ (e.g. an unowned territory), reconciles is false and reconciliation_note explains it. Never a fabricated equality. */
+  pam_comparison: KpiDetail;
+}
+
+export type ManagementInsightCategory = typeof ManagementInsightCategory[keyof typeof ManagementInsightCategory];
+
+
+export const ManagementInsightCategory = {
+  target: 'target',
+  recruitment: 'recruitment',
+  marketing: 'marketing',
+  submission: 'submission',
+  help_request: 'help_request',
+  commercial: 'commercial',
+  risk: 'risk',
+} as const;
+
+export type ManagementInsightSeverity = typeof ManagementInsightSeverity[keyof typeof ManagementInsightSeverity];
+
+
+export const ManagementInsightSeverity = {
+  info: 'info',
+  attention: 'attention',
+  risk: 'risk',
+} as const;
+
+/**
+ * Deterministic, rule-based -- no LLM. Wording is factual and metric-backed only (e.g. "Anna is at 68% of quarterly target."); never a subjective grade or invented interpretation.
+ */
+export interface ManagementInsight {
+  id: string;
+  category: ManagementInsightCategory;
+  severity: ManagementInsightSeverity;
+  text: string;
+  /** @nullable */
+  pam_user_id: string | null;
+  /** @nullable */
+  related_metric_key: string | null;
+}
+
+export interface ManagementWeeklyReportCompleteness {
+  submitted_count: number;
+  draft_count: number;
+  /** Current PAMs with no persisted weekly_pam_reports row at all for the selected week (neither draft nor submitted). */
+  outstanding_count: number;
+  outstanding_pam_names: string[];
+}
+
+export interface ManagementDataQuality {
+  has_demo_data: boolean;
+  fx_description_line: string;
+  weekly_report_completeness: ManagementWeeklyReportCompleteness;
+  /** Explicit notes for genuinely absent historical data (e.g. no submitted weekly reports before a given date) -- never a silently fabricated zero. */
+  historical_data_caveats: string[];
+}
+
+export interface ManagementReportSummary {
+  report_context: ManagementReportContext;
+  weekly: ManagementWeeklySection;
+  quarter_to_date: ManagementQuarterToDateSection;
+  comparisons: ManagementComparisons;
+  management_insights: ManagementInsight[];
+  data_quality: ManagementDataQuality;
+}
+
 export type ListProspectsParams = {
 /**
  * @nullable
@@ -3388,6 +3573,27 @@ export const ExportQuarterlyPptxCurrency = {
   GBP: 'GBP',
 } as const;
 
+export type ExportManagementPptxParams = {
+/**
+ * @nullable
+ */
+week_start?: string | null;
+/**
+ * @nullable
+ */
+territory?: string | null;
+currency?: ExportManagementPptxCurrency;
+};
+
+export type ExportManagementPptxCurrency = typeof ExportManagementPptxCurrency[keyof typeof ExportManagementPptxCurrency];
+
+
+export const ExportManagementPptxCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
+
 export type GetAiChannelBriefParams = {
 /**
  * @nullable
@@ -3511,4 +3717,25 @@ export type GetWeeklyTeamReportParams = {
  */
 week_start?: string | null;
 };
+
+export type GetManagementReportSummaryParams = {
+/**
+ * @nullable
+ */
+week_start?: string | null;
+/**
+ * @nullable
+ */
+territory?: string | null;
+currency?: GetManagementReportSummaryCurrency;
+};
+
+export type GetManagementReportSummaryCurrency = typeof GetManagementReportSummaryCurrency[keyof typeof GetManagementReportSummaryCurrency];
+
+
+export const GetManagementReportSummaryCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+} as const;
 
