@@ -23,12 +23,16 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus } from 'lucide-react';
 import { WorkspaceSubNav } from '@/components/workspace-subnav';
 import { REPORTING_SUBNAV_ITEMS } from '@/lib/navigation';
+import { PageHeader } from '@/components/page-header';
+import { statusTone } from '@/lib/status-tone';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { Users } from 'lucide-react';
 
 function ProgressBadge({ row }: { row: TeamTargetRow }) {
   if (row.status === 'no_target') {
     return <Badge variant="outline" className="font-normal text-muted-foreground">No target set</Badge>;
   }
-  const styles = row.status === 'ahead' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200';
+  const styles = row.status === 'ahead' ? statusTone('success') : statusTone('warning');
   const label = row.status === 'ahead' ? 'Ahead' : 'Behind';
   return (
     <Badge variant="outline" className={`font-normal ${styles}`}>
@@ -62,13 +66,11 @@ export default function TeamTargets() {
   return (
     <div className="p-6 space-y-6">
       <WorkspaceSubNav items={REPORTING_SUBNAV_ITEMS} />
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Team Targets</h1>
-          <p className="text-sm text-muted-foreground mt-1">What each PAM has been asked to achieve this period, and how they're doing against it.</p>
-        </div>
-        <PeriodSelector value={period} onChange={setPeriod} />
-      </div>
+      <PageHeader
+        title="Team Targets"
+        description="What each PAM has been asked to achieve this period, and how they're doing against it."
+        actions={<PeriodSelector value={period} onChange={setPeriod} />}
+      />
 
       <div className="space-y-3">
         <h2 className="text-sm font-medium text-muted-foreground">Territory Potential</h2>
@@ -119,7 +121,17 @@ export default function TeamTargets() {
                   </TableRow>
                 ))
               ) : (
-                <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">No PAMs own a territory yet -- assign one from Settings &gt; Team.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={7} className="p-0">
+                    <Empty className="border-none py-12">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon"><Users /></EmptyMedia>
+                        <EmptyTitle>No PAMs own a territory yet</EmptyTitle>
+                        <EmptyDescription>Assign one from Settings &gt; Team.</EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  </TableCell>
+                </TableRow>
               )}
             </TableBody>
           </Table>

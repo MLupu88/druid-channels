@@ -28,11 +28,14 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, ChevronDown, X, Upload } from 'lucide-react';
+import { Plus, ChevronDown, X, Upload, Inbox, AlertCircle } from 'lucide-react';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatMoney, type Currency } from '@/lib/kpi-format';
+import { PageHeader } from '@/components/page-header';
+import { statusTone } from '@/lib/status-tone';
 
 const ATTRIBUTION_LABELS: Record<string, string> = {
   partner_sourced: 'Partner-Sourced',
@@ -50,9 +53,9 @@ function AttributionBadge({ type }: { type: string }) {
 
 function OppStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    open: 'bg-blue-50 text-blue-700 border-blue-200',
-    won: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    lost: 'bg-slate-100 text-slate-600 border-slate-200',
+    open: statusTone('info'),
+    won: statusTone('success'),
+    lost: statusTone('neutral'),
   };
   return <Badge variant="outline" className={`font-normal ${styles[status] ?? ''}`}>{STATUS_LABELS[status] ?? status}</Badge>;
 }
@@ -127,28 +130,26 @@ export default function Opportunities() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Opportunities</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {isGlobalUser ? 'Partner-sourced and partner-influenced deals across the team.' : 'Partner-sourced and partner-influenced deals you’re actively working.'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isGlobalUser && (
-            <Link href="/opportunities/import">
-              <Button size="sm" variant="outline" className="gap-1.5" data-testid="button-import-opportunities">
-                <Upload className="h-4 w-4" /> Import historical opportunities
+      <PageHeader
+        title="Opportunities"
+        description={isGlobalUser ? 'Partner-sourced and partner-influenced deals across the team.' : 'Partner-sourced and partner-influenced deals you’re actively working.'}
+        actions={
+          <>
+            {isGlobalUser && (
+              <Link href="/opportunities/import">
+                <Button size="sm" variant="outline" className="gap-1.5" data-testid="button-import-opportunities">
+                  <Upload className="h-4 w-4" /> Import historical opportunities
+                </Button>
+              </Link>
+            )}
+            {canMutate && (
+              <Button size="sm" className="gap-1.5" data-testid="button-add-opportunity" onClick={() => { setEditing(null); setFormOpen(true); }}>
+                <Plus className="h-4 w-4" /> Add opportunity
               </Button>
-            </Link>
-          )}
-          {canMutate && (
-            <Button size="sm" className="gap-1.5" data-testid="button-add-opportunity" onClick={() => { setEditing(null); setFormOpen(true); }}>
-              <Plus className="h-4 w-4" /> Add opportunity
-            </Button>
-          )}
-        </div>
-      </div>
+            )}
+          </>
+        }
+      />
 
       <div className="flex items-center gap-3 flex-wrap">
         <Select value={status} onValueChange={(v) => setStatus(v as 'all' | OpportunityStatus)}>
@@ -210,7 +211,17 @@ export default function Opportunities() {
               {isLoading ? (
                 <TableRow><TableCell colSpan={9}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
               ) : isError ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">Could not load opportunities. Please try again.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={9} className="p-0">
+                    <Empty className="border-none py-12">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon"><AlertCircle /></EmptyMedia>
+                        <EmptyTitle>Could not load opportunities</EmptyTitle>
+                        <EmptyDescription>Please try again.</EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  </TableCell>
+                </TableRow>
               ) : rows.length > 0 ? (
                 rows.map((o) => (
                   <TableRow
@@ -230,11 +241,23 @@ export default function Opportunities() {
                   </TableRow>
                 ))
               ) : (
-                <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
-                  {canMutate
-                    ? "No opportunities yet. Add the partner-sourced or partner-influenced deals you're actively working."
-                    : 'No opportunities yet. Partner-sourced and partner-influenced deals created by PAMs will appear here.'}
-                </TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={9} className="p-0">
+                    <Empty className="border-none py-12">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon"><Inbox /></EmptyMedia>
+                        {/* Kept as one literal string per role (not split into
+                            a separate title) -- tests/opportunitiesUiScope.test.ts
+                            asserts on the exact, contiguous copy. */}
+                        <EmptyDescription>
+                          {canMutate
+                            ? "No opportunities yet. Add the partner-sourced or partner-influenced deals you're actively working."
+                            : 'No opportunities yet. Partner-sourced and partner-influenced deals created by PAMs will appear here.'}
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  </TableCell>
+                </TableRow>
               )}
             </TableBody>
           </Table>

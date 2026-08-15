@@ -29,11 +29,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { X, ExternalLink, Plus, Upload } from 'lucide-react';
+import { X, ExternalLink, Plus, Upload, Building2 } from 'lucide-react';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/auth-context';
 import { WorkspaceSubNav } from '@/components/workspace-subnav';
 import { getPartnersSubNavItems } from '@/lib/navigation';
+import { PageHeader } from '@/components/page-header';
+import { statusTone } from '@/lib/status-tone';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -57,9 +60,9 @@ const PRECISION_LABELS: Record<string, string> = {
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    dormant: 'bg-amber-50 text-amber-700 border-amber-200',
-    closed: 'bg-slate-100 text-slate-600 border-slate-200',
+    active: statusTone('success'),
+    dormant: statusTone('warning'),
+    closed: statusTone('neutral'),
   };
   return <Badge variant="outline" className={`font-normal ${styles[status] ?? ''}`}>{STATUS_LABELS[status] ?? status}</Badge>;
 }
@@ -192,21 +195,19 @@ export function PortfolioView({ territoryId, pamUserId }: { territoryId?: string
     <div className="flex h-full w-full relative">
       <div className="flex-1 p-6 space-y-6 overflow-auto">
         <WorkspaceSubNav items={getPartnersSubNavItems(isGlobalUser)} />
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Portfolio</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {isGlobalUser ? 'What is happening across the channel organization.' : 'What you need to do with your partners.'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <PeriodSelector value={period} onChange={setPeriod} />
-            <Link href="/portfolio/import">
-              <Button variant="outline" size="sm" className="gap-1.5"><Upload className="h-4 w-4" /> Import my book</Button>
-            </Link>
-            <Button size="sm" className="gap-1.5" onClick={() => setManualAddOpen(true)}><Plus className="h-4 w-4" /> Add partner</Button>
-          </div>
-        </div>
+        <PageHeader
+          title="Portfolio"
+          description={isGlobalUser ? 'What is happening across the channel organization.' : 'What you need to do with your partners.'}
+          actions={
+            <>
+              <PeriodSelector value={period} onChange={setPeriod} />
+              <Link href="/portfolio/import">
+                <Button variant="outline" size="sm" className="gap-1.5"><Upload className="h-4 w-4" /> Import my book</Button>
+              </Link>
+              <Button size="sm" className="gap-1.5" onClick={() => setManualAddOpen(true)}><Plus className="h-4 w-4" /> Add partner</Button>
+            </>
+          }
+        />
 
         {summary && (
           <div className="grid grid-cols-4 gap-3">
@@ -287,7 +288,17 @@ export function PortfolioView({ territoryId, pamUserId }: { territoryId?: string
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">No partners in the portfolio yet -- import your book or add one manually.</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={8} className="p-0">
+                      <Empty className="border-none py-12">
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon"><Building2 /></EmptyMedia>
+                          <EmptyTitle>No partners in the portfolio yet</EmptyTitle>
+                          <EmptyDescription>Import your book or add one manually.</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    </TableCell>
+                  </TableRow>
                 )}
               </TableBody>
             </Table>

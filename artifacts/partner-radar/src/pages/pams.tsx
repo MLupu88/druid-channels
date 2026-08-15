@@ -8,6 +8,7 @@ import { X } from 'lucide-react';
 import { PamWorkspace } from '@/pages/pam-workspace';
 import { WorkspaceSubNav } from '@/components/workspace-subnav';
 import { REPORTING_SUBNAV_ITEMS } from '@/lib/navigation';
+import { PageHeader } from '@/components/page-header';
 
 export default function Pams() {
   const { data: users, isLoading } = useListUsers();
@@ -21,10 +22,7 @@ export default function Pams() {
     <div className="flex h-full w-full relative">
       <div className="flex-1 p-6 space-y-6 overflow-auto">
         <WorkspaceSubNav items={REPORTING_SUBNAV_ITEMS} />
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">PAMs</h1>
-          <p className="text-sm text-muted-foreground mt-1">Your channels and alliances team, by territory.</p>
-        </div>
+        <PageHeader title="PAMs" description="Your channels and alliances team, by territory." />
 
         <div className="border border-border/60 rounded-md bg-card max-w-3xl">
           <Table>

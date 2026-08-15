@@ -77,6 +77,9 @@ import { format } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
 import { WorkspaceSubNav } from '@/components/workspace-subnav';
 import { getPartnersSubNavItems } from '@/lib/navigation';
+import { PageHeader } from '@/components/page-header';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { statusTone } from '@/lib/status-tone';
 import type { ProspectDecisionInputDecision, ScanConfig, ScanRun, ProspectNextAction, ListProspectsFreshness } from '@workspace/api-client-react';
 import {
   inferDiscoveryPhase,
@@ -142,10 +145,10 @@ function PriorityBadge({ priority }: { priority: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    new: "bg-blue-50 text-blue-700 border-blue-200",
-    accepted: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    new: statusTone('info'),
+    accepted: statusTone('success'),
     rejected: "bg-muted text-muted-foreground border-border",
-    deferred: "bg-amber-50 text-amber-700 border-amber-200",
+    deferred: statusTone('warning'),
     pushed_to_hubspot: "bg-orange-50 text-orange-700 border-orange-200",
   };
   return (
@@ -544,14 +547,11 @@ export default function Prospects() {
     <div className="flex flex-col h-full w-full overflow-hidden relative">
       <div className="flex-none p-4 border-b border-border/50 bg-card z-10 space-y-3">
         <WorkspaceSubNav items={getPartnersSubNavItems(isGlobalUser)} />
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Discovery</h1>
-            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
-              {renderScanStatus()}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
+        <PageHeader
+          title="Discovery"
+          description={<span className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">{renderScanStatus()}</span>}
+          actions={
+            <>
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 text-muted-foreground" disabled={!targetScanConfig}>
@@ -604,8 +604,9 @@ export default function Prospects() {
               <Filter className="h-4 w-4 mr-2" />
               Run discovery scan
             </Button>
-          </div>
-        </div>
+            </>
+          }
+        />
 
         {targetScanConfig?.last_run && (isScanActive(targetScanConfig.last_run.status) || targetScanConfig.last_run.status === 'failed') && (
           <DiscoveryProgressPanel
@@ -736,8 +737,14 @@ export default function Prospects() {
               ))
             ) : prospects?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
-                  No prospects found matching your filters.
+                <TableCell colSpan={10} className="p-0">
+                  <Empty className="border-none py-10">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon"><Search /></EmptyMedia>
+                      <EmptyTitle>No prospects found</EmptyTitle>
+                      <EmptyDescription>No prospects match your filters.</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
                 </TableCell>
               </TableRow>
             ) : (

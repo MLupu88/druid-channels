@@ -68,6 +68,9 @@ import {
 import { format } from 'date-fns';
 import { WorkspaceSubNav } from '@/components/workspace-subnav';
 import { getPartnersSubNavItems } from '@/lib/navigation';
+import { PageHeader } from '@/components/page-header';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { statusTone } from '@/lib/status-tone';
 import type { ProspectDecisionInputDecision, ProspectNextAction, ListProspectsFreshness } from '@workspace/api-client-react';
 
 type NextActionFilter = 'all' | ProspectNextAction;
@@ -109,10 +112,10 @@ function PriorityBadge({ priority }: { priority: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    new: "bg-blue-50 text-blue-700 border-blue-200",
-    accepted: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    new: statusTone('info'),
+    accepted: statusTone('success'),
     rejected: "bg-muted text-muted-foreground border-border",
-    deferred: "bg-amber-50 text-amber-700 border-amber-200",
+    deferred: statusTone('warning'),
     pushed_to_hubspot: "bg-orange-50 text-orange-700 border-orange-200",
   };
   return (
@@ -309,10 +312,7 @@ export default function MyProspects() {
     <div className="flex flex-col h-full w-full overflow-hidden relative">
       <div className="flex-none p-4 border-b border-border/50 bg-card z-10 space-y-3">
         <WorkspaceSubNav items={getPartnersSubNavItems(false)} />
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">My Prospects</h1>
-          <p className="text-xs text-muted-foreground mt-1">Prospects assigned to you by Head of Channels. Review evidence and accept, defer, or reject.</p>
-        </div>
+        <PageHeader title="My Prospects" description="Prospects assigned to you by Head of Channels. Review evidence and accept, defer, or reject." />
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">
@@ -407,8 +407,14 @@ export default function MyProspects() {
               ))
             ) : prospects?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
-                  No prospects assigned to you yet.
+                <TableCell colSpan={8} className="p-0">
+                  <Empty className="border-none py-10">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon"><Search /></EmptyMedia>
+                      <EmptyTitle>No prospects assigned</EmptyTitle>
+                      <EmptyDescription>Nothing has been assigned to you yet.</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
                 </TableCell>
               </TableRow>
             ) : (

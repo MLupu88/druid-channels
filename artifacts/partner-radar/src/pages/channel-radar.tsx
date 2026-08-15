@@ -32,11 +32,14 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { X, ExternalLink, Loader2, Satellite, ShieldAlert, Link2, ChevronLeft, ChevronRight, Rows3, Ungroup } from 'lucide-react';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { computeRunRadarButtonState } from '@/lib/channel-radar-run';
 import { groupSignalsByEntity, computeListPageRange } from '@/lib/channel-radar-group';
+import { PageHeader } from '@/components/page-header';
+import { statusTone } from '@/lib/status-tone';
 
 const SIGNAL_TYPE_LABELS: Record<string, string> = {
   acquisition: 'Acquisition',
@@ -66,10 +69,10 @@ const PAGE_SIZE = 50;
 
 function ImplicationBadge({ implication }: { implication: string }) {
   const styles: Record<string, string> = {
-    opportunity: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    threat: 'bg-rose-50 text-rose-700 border-rose-200',
-    watch: 'bg-amber-50 text-amber-700 border-amber-200',
-    neutral: 'bg-slate-50 text-slate-700 border-slate-200',
+    opportunity: statusTone('success'),
+    threat: statusTone('danger'),
+    watch: statusTone('warning'),
+    neutral: statusTone('neutral'),
   };
   const labels: Record<string, string> = { opportunity: 'Opportunity', threat: 'Threat', watch: 'Watch', neutral: 'Neutral' };
   return <Badge variant="outline" className={`font-normal ${styles[implication] ?? ''}`}>{labels[implication] ?? implication}</Badge>;
@@ -77,17 +80,20 @@ function ImplicationBadge({ implication }: { implication: string }) {
 
 function ImpactBadge({ impact }: { impact: string }) {
   const styles: Record<string, string> = {
-    high: 'bg-rose-50 text-rose-700 border-rose-200',
-    medium: 'bg-amber-50 text-amber-700 border-amber-200',
-    low: 'bg-slate-50 text-slate-700 border-slate-200',
+    high: statusTone('danger'),
+    medium: statusTone('warning'),
+    low: statusTone('neutral'),
   };
   return <Badge variant="outline" className={`font-normal capitalize ${styles[impact] ?? ''}`}>{impact}</Badge>;
 }
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    new: 'bg-blue-50 text-blue-700 border-blue-200',
-    reviewed: 'bg-slate-50 text-slate-700 border-slate-200',
+    new: statusTone('info'),
+    reviewed: statusTone('neutral'),
+    // Deliberately not statusTone('neutral') -- the faded text (slate-400
+    // vs. neutral's slate-700) is what visually signals "dismissed", not
+    // just another neutral status.
     dismissed: 'bg-slate-50 text-slate-400 border-slate-200',
   };
   return <Badge variant="outline" className={`font-normal capitalize ${styles[status] ?? ''}`}>{status}</Badge>;
@@ -267,30 +273,28 @@ export default function ChannelRadar() {
   return (
     <div className="flex h-full w-full relative">
       <div className="flex-1 p-6 space-y-6 overflow-auto">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Channel Radar</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Competitive and ecosystem intelligence -- what changed, why it matters, and what to do about it.
-            </p>
-          </div>
-          {runRadarButton.visible && (
-            <div className="flex flex-col items-end gap-1">
-              <Button
-                variant="outline"
-                onClick={handleRunRadar}
-                disabled={runRadarButton.disabled}
-                title={runRadarButton.title}
-              >
-                {runMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Satellite className="h-4 w-4 mr-2" />}
-                {runMutation.isPending ? 'Running…' : 'Run Radar'}
-              </Button>
-              {runRadarButton.disabled && runRadarButton.title && (
-                <p className="text-xs text-muted-foreground">{runRadarButton.title}</p>
-              )}
-            </div>
-          )}
-        </div>
+        <PageHeader
+          title="Channel Radar"
+          description="Competitive and ecosystem intelligence -- what changed, why it matters, and what to do about it."
+          actions={
+            runRadarButton.visible && (
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  variant="outline"
+                  onClick={handleRunRadar}
+                  disabled={runRadarButton.disabled}
+                  title={runRadarButton.title}
+                >
+                  {runMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Satellite className="h-4 w-4 mr-2" />}
+                  {runMutation.isPending ? 'Running…' : 'Run Radar'}
+                </Button>
+                {runRadarButton.disabled && runRadarButton.title && (
+                  <p className="text-xs text-muted-foreground">{runRadarButton.title}</p>
+                )}
+              </div>
+            )
+          }
+        />
 
         <div className="grid grid-cols-5 gap-3">
           <Card className="shadow-none border-border/70">
@@ -462,7 +466,17 @@ export default function ChannelRadar() {
                     rows.map(renderRow)
                   )
                 ) : (
-                  <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">No signals yet -- run Radar for a territory to start.</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={9} className="p-0">
+                      <Empty className="border-none py-12">
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon"><Satellite /></EmptyMedia>
+                          <EmptyTitle>No signals yet</EmptyTitle>
+                          <EmptyDescription>Run Radar for a territory to start.</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    </TableCell>
+                  </TableRow>
                 )}
               </TableBody>
             </Table>

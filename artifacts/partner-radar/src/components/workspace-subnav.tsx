@@ -21,13 +21,18 @@ export function WorkspaceSubNav({ items, className }: { items: WorkspaceSubNavIt
       }}
       className={className}
     >
-      <TabsList>
-        {items.map((item) => (
-          <TabsTrigger key={item.value} value={item.value} data-testid={`tab-${item.value}`}>
-            {item.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
+      {/* overflow-x-auto: TabsList doesn't wrap -- on a narrow viewport
+          (mobile drawer sidebar) 4 tabs can exceed the content width, so it
+          scrolls horizontally instead of overflowing the page. */}
+      <div className="overflow-x-auto">
+        <TabsList>
+          {items.map((item) => (
+            <TabsTrigger key={item.value} value={item.value} data-testid={`tab-${item.value}`}>
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </div>
     </Tabs>
   );
 }

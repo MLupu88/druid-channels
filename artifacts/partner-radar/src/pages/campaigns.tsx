@@ -47,7 +47,10 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 import { WorkspaceSubNav } from '@/components/workspace-subnav';
 import { getPartnersSubNavItems } from '@/lib/navigation';
-import { Plus, Pencil, Trash2, MoreVertical, ExternalLink } from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
+import { statusTone } from '@/lib/status-tone';
+import { Plus, Pencil, Trash2, MoreVertical, ExternalLink, AlertCircle, CalendarClock } from 'lucide-react';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,8 +86,8 @@ function TypeBadge({ type }: { type: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    planned: "bg-blue-50 text-blue-700 border-blue-200",
-    live: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    planned: statusTone('info'),
+    live: statusTone('success'),
     completed: "bg-muted text-muted-foreground border-border",
   };
   return (
@@ -332,20 +335,18 @@ export default function Campaigns() {
 
   return (
     <div className="flex flex-col h-full w-full bg-background relative">
-      <div className="flex-none px-6 pt-6">
+      <div className="flex-none px-6 pt-6 pb-4 space-y-3">
         <WorkspaceSubNav items={getPartnersSubNavItems(isGlobalUser)} />
-      </div>
-      <div className="flex-none p-6 pb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Marketing Activities</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Joint campaigns, events, webinars, and other partner activities — with optional links to real opportunities.
-          </p>
-        </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New activity
-        </Button>
+        <PageHeader
+          title="Marketing Activities"
+          description="Joint campaigns, events, webinars, and other partner activities — with optional links to real opportunities."
+          actions={
+            <Button onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New activity
+            </Button>
+          }
+        />
       </div>
 
       <div className="flex-none px-6 pb-4 flex items-center gap-3">
@@ -413,17 +414,29 @@ export default function Campaigns() {
                 ))
               ) : isError ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
-                    Could not load activities.{' '}
-                    <button className="underline underline-offset-2 hover:text-foreground" onClick={() => refetch()}>
-                      Try again
-                    </button>
+                  <TableCell colSpan={10} className="p-0">
+                    <Empty className="border-none py-10">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon"><AlertCircle /></EmptyMedia>
+                        <EmptyTitle>Could not load activities</EmptyTitle>
+                      </EmptyHeader>
+                      <EmptyContent>
+                        <button className="underline underline-offset-2 hover:text-foreground text-sm" onClick={() => refetch()}>
+                          Try again
+                        </button>
+                      </EmptyContent>
+                    </Empty>
                   </TableCell>
                 </TableRow>
               ) : campaigns?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
-                    No activities yet.
+                  <TableCell colSpan={10} className="p-0">
+                    <Empty className="border-none py-10">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon"><CalendarClock /></EmptyMedia>
+                        <EmptyTitle>No activities yet</EmptyTitle>
+                      </EmptyHeader>
+                    </Empty>
                   </TableCell>
                 </TableRow>
               ) : (

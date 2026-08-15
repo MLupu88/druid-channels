@@ -32,7 +32,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { X, ExternalLink, AlertTriangle } from 'lucide-react';
+import { X, ExternalLink, AlertTriangle, Handshake } from 'lucide-react';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,8 @@ import {
 import { useAuth } from '@/contexts/auth-context';
 import { WorkspaceSubNav } from '@/components/workspace-subnav';
 import { getPartnersSubNavItems } from '@/lib/navigation';
+import { PageHeader } from '@/components/page-header';
+import { statusTone } from '@/lib/status-tone';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -85,13 +88,13 @@ function StageBadge({ stage }: { stage: string }) {
 
 function PriorityBadge({ priority }: { priority: string }) {
   return priority === 'A'
-    ? <Badge variant="outline" className="font-normal bg-emerald-50 text-emerald-700 border-emerald-200">Priority A</Badge>
-    : <Badge variant="outline" className="font-normal bg-amber-50 text-amber-700 border-amber-200">Priority B</Badge>;
+    ? <Badge variant="outline" className={`font-normal ${statusTone('success')}`}>Priority A</Badge>
+    : <Badge variant="outline" className={`font-normal ${statusTone('warning')}`}>Priority B</Badge>;
 }
 
 function StalledBadge() {
   return (
-    <Badge variant="outline" className="font-normal bg-rose-50 text-rose-700 border-rose-200 gap-1">
+    <Badge variant="outline" className={`font-normal gap-1 ${statusTone('danger')}`}>
       <AlertTriangle className="h-3 w-3" /> Stalled
     </Badge>
   );
@@ -205,12 +208,7 @@ export default function Recruitment() {
     <div className="flex h-full w-full relative">
       <div className="flex-1 p-6 space-y-6 overflow-auto">
         <WorkspaceSubNav items={getPartnersSubNavItems(isGlobalUser)} />
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Recruitment</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Accepted Discovery prospects, moving from first contact to Signed.
-          </p>
-        </div>
+        <PageHeader title="Recruitment" description="Accepted Discovery prospects, moving from first contact to Signed." />
 
         <div className="grid grid-cols-5 gap-3">
           {SUMMARY_STAGES.map((s) => (
@@ -295,7 +293,17 @@ export default function Recruitment() {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">No recruitments yet -- accept a qualified Discovery prospect to start one.</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={9} className="p-0">
+                      <Empty className="border-none py-12">
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon"><Handshake /></EmptyMedia>
+                          <EmptyTitle>No recruitments yet</EmptyTitle>
+                          <EmptyDescription>Accept a qualified Discovery prospect to start one.</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    </TableCell>
+                  </TableRow>
                 )}
               </TableBody>
             </Table>

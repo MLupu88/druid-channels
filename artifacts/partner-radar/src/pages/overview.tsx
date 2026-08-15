@@ -42,7 +42,9 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowDown, ArrowUp, Minus, X, Download, Loader2, Pencil, Sparkles, RefreshCw, Sun, Moon } from 'lucide-react';
+import { ArrowDown, ArrowUp, Minus, X, Download, Loader2, Pencil, Sparkles, RefreshCw, Sun, Moon, ChevronDown } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -357,16 +359,19 @@ function PamLocalTimeSection({ users }: { users: User[] | undefined }) {
   if (configuredPams.length === 0) return null;
 
   return (
-    <section className="space-y-3 max-w-5xl">
-      <h2 className="text-sm font-semibold text-foreground tracking-tight">PAM Local Time</h2>
+    <section className="space-y-2 max-w-5xl">
+      {/* Phase 11.3: demoted from the same section-heading weight as "Core
+          Channel Performance" to a small muted label -- a utility, not a
+          featured section. */}
+      <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">PAM Local Time</h2>
       <Card className="shadow-none border-border/70">
-        <CardContent className="p-4">
+        <CardContent className="p-3">
           <div className="flex flex-wrap gap-4">
             {configuredPams.map((pam) => (
               <PamClockCard key={pam.id} pam={pam} />
             ))}
           </div>
-          <p className="text-[11px] text-muted-foreground/70 mt-4 pt-3 border-t border-border/40">
+          <p className="text-[11px] text-muted-foreground/70 mt-3 pt-2 border-t border-border/40">
             <a href="https://time.now" target="_blank" rel="noreferrer" className="hover:text-foreground hover:underline">
               World Time API by Time.Now
             </a>
@@ -377,8 +382,18 @@ function PamLocalTimeSection({ users }: { users: User[] | undefined }) {
   );
 }
 
+// Phase 11.3: presentation-only, frontend-only identity check for the
+// "Aniri's Office" subtitle -- matched on the stable, server-issued
+// activeUser.email (never a free-text display name, never role alone,
+// which is shared by every Head/Admin). irina.dochitu@druidai.com is the
+// real seeded identity for this role (see api-server/src/scripts/seed.ts),
+// not an invented address. No backend change, no new permission system --
+// this affects nothing but which subtitle string renders.
+const ANIRI_OFFICE_EMAIL = 'irina.dochitu@druidai.com';
+
 export default function Overview() {
   const { user: activeUser, isGlobalUser } = useAuth();
+  const isAniriOffice = activeUser?.email?.toLowerCase() === ANIRI_OFFICE_EMAIL;
   // Mirrors backend requireAdmin's ADMIN_ROLES exactly (head_of_channels,
   // admin) -- kept as its own explicit check rather than reusing
   // isGlobalUser, since that flag's definition is about territory scoping
@@ -638,14 +653,14 @@ export default function Overview() {
   // its own week selector), but the view switcher and both PPT export
   // actions apply regardless of which view is active.
   const headerRow = (
-    <div className="flex items-center justify-between flex-wrap gap-3">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {view === 'weekly-team' ? 'Weekly PAM reporting, team-wide.' : 'Global partner development and channel performance.'}
-        </p>
-      </div>
-
+    <PageHeader
+      title="Overview"
+      description={
+        isAniriOffice
+          ? "Aniri's Office · Channel intelligence workspace"
+          : (view === 'weekly-team' ? 'Weekly PAM reporting, team-wide.' : 'Global partner development and channel performance.')
+      }
+      actions={
       <div className="flex items-center gap-3 flex-wrap">
         {isGlobalUser && (
           <Tabs value={view} onValueChange={(v) => setView(v as 'performance' | 'weekly-team')}>
@@ -699,39 +714,45 @@ export default function Overview() {
               </SelectContent>
             </Select>
 
-            {/* Role-separation hotfix: strategic PowerPoint export is
-                Head-of-Channels/Admin-only (see routes/exports.ts). */}
-            {isGlobalUser && (
-              <Button
-                variant="outline"
-                className="bg-card"
-                onClick={handleExport}
-                disabled={isExporting}
-                data-testid="button-export-pptx"
-              >
-                {isExporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-                {isExporting ? 'Exporting…' : 'Export PowerPoint'}
-              </Button>
-            )}
           </>
         )}
 
-        {/* Phase 8: management report export -- an Overview action available
-            from either view, not a navigation destination of its own. */}
+        {/* Phase 11.3: the quarterly PPTX (Performance-view only) and the
+            Phase 8 management report export were two separate always-visible
+            buttons -- consolidated into one Export control. Same handlers,
+            same role gate (Head/Admin-only, see routes/exports.ts), same
+            availability (management report from either view; quarterly PPTX
+            only while Performance is the active view). */}
         {isGlobalUser && (
-          <Button
-            variant="outline"
-            className="bg-card"
-            onClick={handleExportManagement}
-            disabled={isExportingManagement}
-            data-testid="button-export-management-pptx"
-          >
-            {isExportingManagement ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-            {isExportingManagement ? 'Exporting…' : 'Export Management Report'}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="bg-card" disabled={isExporting || isExportingManagement}>
+                {isExporting || isExportingManagement ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                {isExporting || isExportingManagement ? 'Exporting…' : 'Export'}
+                <ChevronDown className="h-4 w-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                disabled={view !== 'performance' || isExporting}
+                onClick={handleExport}
+                data-testid="button-export-pptx"
+              >
+                Quarterly PowerPoint
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={isExportingManagement}
+                onClick={handleExportManagement}
+                data-testid="button-export-management-pptx"
+              >
+                Management Report
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
-    </div>
+      }
+    />
   );
 
   if (view === 'weekly-team') {
@@ -766,21 +787,6 @@ export default function Overview() {
           <CommercialPerformancePam weeklyCommercial={kpis?.weekly_commercial} currency={currency} />
         )}
 
-        {canViewTeamData && <PamLocalTimeSection users={teamUsers} />}
-
-        {/* Role-separation hotfix: AI Channel Brief is Head-of-Channels/Admin-only. */}
-        {isGlobalUser && (
-        <div className="max-w-5xl">
-          <AiChannelBriefPanel
-            brief={aiBrief}
-            isLoading={isLoadingAiBrief}
-            onRegenerate={handleRegenerateAiBrief}
-            isRegenerating={regenerateAiBriefMutation.isPending}
-            metricLabelByKey={metricLabelByKey}
-          />
-        </div>
-        )}
-
         {isLoadingKpis ? (
           <div className="space-y-6">
             <Skeleton className="h-[200px] w-full rounded-md" />
@@ -792,15 +798,19 @@ export default function Overview() {
             <section className="space-y-3">
               <h2 className="text-sm font-semibold text-foreground tracking-tight">Core Channel Performance</h2>
 
-              {/* Table 1: Partner development */}
-              <Card className="shadow-none border-border/70">
-                <CardHeader className="py-4 px-5 border-b border-border/60 bg-muted/20">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-medium">Partner development</CardTitle>
+              {/* Phase 11.3: the 3 tables below were 3 separate, equally-
+                  weighted Cards (each with its own bordered+shaded header) --
+                  now one Card with divided sections and a lighter inline
+                  header per section, so they read as one KPI review rather
+                  than 3 competing panels. Data/columns/click-through to the
+                  detail slide-over are untouched. */}
+              <Card className="shadow-none border-border/70 divide-y divide-border/60">
+                {/* Table 1: Partner development */}
+                <div>
+                  <div className="flex items-center gap-2 px-5 py-3">
+                    <h3 className="text-sm font-medium text-foreground">Partner development</h3>
                     <CoreBadge />
                   </div>
-                </CardHeader>
-                <CardContent className="p-0">
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
@@ -825,18 +835,14 @@ export default function Overview() {
                       ))}
                     </TableBody>
                   </Table>
-                </CardContent>
-              </Card>
+                </div>
 
-              {/* Table 2: Weekly commercial performance -- Current / Last Week / Target / Trend */}
-              <Card className="shadow-none border-border/70">
-                <CardHeader className="py-4 px-5 border-b border-border/60 bg-muted/20">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-medium">Weekly commercial performance</CardTitle>
+                {/* Table 2: Weekly commercial performance -- Current / Last Week / Target / Trend */}
+                <div>
+                  <div className="flex items-center gap-2 px-5 py-3">
+                    <h3 className="text-sm font-medium text-foreground">Weekly commercial performance</h3>
                     <CoreBadge />
                   </div>
-                </CardHeader>
-                <CardContent className="p-0">
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
@@ -868,18 +874,14 @@ export default function Overview() {
                       ))}
                     </TableBody>
                   </Table>
-                </CardContent>
-              </Card>
+                </div>
 
-              {/* Table 3: Weekly channel marketing -- This Week / Trend only, no visible Last Week (locked semantics) */}
-              <Card className="shadow-none border-border/70">
-                <CardHeader className="py-4 px-5 border-b border-border/60 bg-muted/20">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-medium">Weekly channel marketing</CardTitle>
+                {/* Table 3: Weekly channel marketing -- This Week / Trend only, no visible Last Week (locked semantics) */}
+                <div>
+                  <div className="flex items-center gap-2 px-5 py-3">
+                    <h3 className="text-sm font-medium text-foreground">Weekly channel marketing</h3>
                     <CoreBadge />
                   </div>
-                </CardHeader>
-                <CardContent className="p-0">
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
@@ -907,13 +909,35 @@ export default function Overview() {
                       ))}
                     </TableBody>
                   </Table>
-                </CardContent>
+                </div>
               </Card>
             </section>
           </div>
         ) : (
           <div className="text-center py-12 text-muted-foreground">No data available.</div>
         )}
+
+        {/* Phase 11.3: AI Channel Brief moved after the core KPI review
+            (supporting intelligence, not the first thing seen) -- panel
+            itself untouched, and deliberately NOT nested inside the `kpis ?`
+            branch above so it still renders (with its own loading/empty
+            states) independent of KPI load state, exactly as before. */}
+        {isGlobalUser && (
+          <div className="max-w-5xl">
+            <AiChannelBriefPanel
+              brief={aiBrief}
+              isLoading={isLoadingAiBrief}
+              onRegenerate={handleRegenerateAiBrief}
+              isRegenerating={regenerateAiBriefMutation.isPending}
+              metricLabelByKey={metricLabelByKey}
+            />
+          </div>
+        )}
+
+        {/* Phase 11.3: secondary utility, deliberately last and visually
+            quiet -- see PamLocalTimeSection's own reduced heading treatment
+            below. */}
+        {canViewTeamData && <PamLocalTimeSection users={teamUsers} />}
       </div>
 
       {/* Right Side Slide-over Panel for Details */}
