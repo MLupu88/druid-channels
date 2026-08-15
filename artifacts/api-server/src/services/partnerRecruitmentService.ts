@@ -111,6 +111,29 @@ export async function acceptForRecruitment(
   });
 }
 
+// Phase 11.1: partner_recruitments.prospectId has onDelete: cascade against
+// prospects.id (see partner_recruitments.ts), so partner_recruitment_history
+// cascades again from there -- a naive prospect delete can silently wipe a
+// recruitment's full stage-change history, including a signed partner's
+// trail. This guard blocks that at the application layer, before Postgres's
+// cascade ever runs, regardless of stage (including terminal ones) -- once
+// a prospect has been handed off to Recruitment, it stops being something
+// Discovery can delete outright; the recruitment record's own lifecycle
+// (see isValidTransition above) is the only way to move it out of the way.
+export class ProspectHasRecruitmentError extends Error {}
+
+export async function assertProspectHasNoRecruitment(prospectId: string): Promise<void> {
+  const [existing] = await db
+    .select({ id: partnerRecruitmentsTable.id })
+    .from(partnerRecruitmentsTable)
+    .where(eq(partnerRecruitmentsTable.prospectId, prospectId));
+  if (existing) {
+    throw new ProspectHasRecruitmentError(
+      "This prospect is already part of the recruitment process and cannot be permanently deleted. Update the recruitment stage instead.",
+    );
+  }
+}
+
 export interface TransitionOptions {
   note?: string | null;
   notPursuingReason?: (typeof NOT_PURSUING_REASONS)[number] | null;

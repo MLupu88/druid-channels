@@ -417,6 +417,17 @@ export default function Prospects() {
         setSelectedId(null);
         toast({ title: 'Prospect deleted' });
       },
+      onError: (err: any) => {
+        // Phase 11.1: the backend blocks deletion once this prospect has an
+        // associated recruitment record (409) -- surface its explanation
+        // rather than a generic failure, and keep the dialog open so the
+        // user isn't left guessing whether anything happened.
+        toast({
+          variant: 'destructive',
+          title: 'Could not delete prospect',
+          description: err?.data?.error ?? err?.message ?? 'The prospect could not be deleted.',
+        });
+      },
     },
   });
 
@@ -1146,6 +1157,8 @@ export default function Prospects() {
             <DialogTitle>Delete {detail?.company.name}?</DialogTitle>
             <DialogDescription>
               This permanently removes the prospect and its activity history. This cannot be undone.
+              Prospects already in the recruitment process can't be deleted this way — update the
+              recruitment stage instead.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

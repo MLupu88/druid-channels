@@ -26,7 +26,7 @@ import {
 import { eq, and, gte, sql, count, max, inArray, desc, asc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, assertOwnUserAccess, ForbiddenScopeError } from "../services/authz";
-import { acceptForRecruitment } from "../services/partnerRecruitmentService";
+import { acceptForRecruitment, assertProspectHasNoRecruitment, ProspectHasRecruitmentError } from "../services/partnerRecruitmentService";
 
 const router: IRouter = Router();
 
@@ -693,6 +693,16 @@ router.delete("/prospects/:id", requireAuth, async (req, res): Promise<void> => 
   } catch (err) {
     if (err instanceof ForbiddenScopeError) {
       res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+
+  try {
+    await assertProspectHasNoRecruitment(id);
+  } catch (err) {
+    if (err instanceof ProspectHasRecruitmentError) {
+      res.status(409).json({ error: err.message });
       return;
     }
     throw err;

@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:authz": "node --test tests/authz.test.mjs",
     "test:role-separation": "tsx --test tests/roleSeparation.test.ts",
+    "test:prospect-delete-guard": "tsx --test tests/prospectDeleteGuard.test.ts",
     "test:company-identity": "tsx --test tests/companyIdentity.test.ts",
     "test:discovery-dedupe": "tsx --test tests/discoveryDedupe.test.ts",
     "test:discovery-eligibility": "tsx --test tests/discoveryEligibility.test.ts",

@@ -316,6 +316,8 @@ paths:
                 $ref: "#/components/schemas/DeleteResult"
         "404":
           description: Not found
+        "409":
+          description: Prospect already has a recruitment record and cannot be permanently deleted
 
   /prospects/{id}/decision:
     post:
