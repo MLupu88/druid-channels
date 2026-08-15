@@ -6,7 +6,7 @@ import {
   RECRUITMENT_STAGES,
   NOT_PURSUING_REASONS,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and, inArray, gte, lt } from "drizzle-orm";
 import { createRelationshipIfMissing, recordRecruitmentSignedEvent } from "./partnerRelationshipService";
 
 // Stage 4: the recruitment PROCESS for one accepted Discovery prospect.
@@ -192,4 +192,88 @@ export async function transitionRecruitmentStage(
 
     return updated!;
   });
+}
+
+// ---- Phase 8: management-reporting funnel views ---------------------------
+//
+// Deliberately two separate, non-interchangeable views -- never blur a live
+// snapshot with a period's worth of movement:
+//   - current_state: where the pipeline stands RIGHT NOW (live, not
+//     period-bound).
+//   - period_transitions: what actually MOVED during an explicit period,
+//     sourced from the append-only partner_recruitment_history table --
+//     the exact same "genuine movement" query weeklyReportingService.ts's
+//     buildRecruitmentSection already uses for one PAM/one week, generalized
+//     to an arbitrary territory scope and date range.
+
+export interface RecruitmentScope {
+  // null = unrestricted (Global); otherwise the exact territory id set to
+  // include -- same "explicit list, no implicit fallback" convention as
+  // kpiService.OpportunityScope's "territory"/"pam" variants.
+  territoryIds: string[] | null;
+}
+
+export interface RecruitmentCurrentState {
+  as_of: string;
+  by_stage: Record<RecruitmentStage, number>;
+}
+
+function emptyStageCounts(): Record<RecruitmentStage, number> {
+  return Object.fromEntries(RECRUITMENT_STAGES.map((s) => [s, 0])) as Record<RecruitmentStage, number>;
+}
+
+export async function computeRecruitmentCurrentState(scope: RecruitmentScope): Promise<RecruitmentCurrentState> {
+  const rows = await db
+    .select({ stage: partnerRecruitmentsTable.stage })
+    .from(partnerRecruitmentsTable)
+    .where(scope.territoryIds ? inArray(partnerRecruitmentsTable.territoryId, scope.territoryIds) : undefined);
+
+  const by_stage = emptyStageCounts();
+  for (const r of rows) by_stage[r.stage as RecruitmentStage]++;
+  return { as_of: new Date().toISOString(), by_stage };
+}
+
+export interface RecruitmentPeriodTransitions {
+  period_start: string;
+  period_end_exclusive: string;
+  new_recruitments_count: number;
+  stage_transitions_count: number;
+}
+
+export async function computeRecruitmentPeriodTransitions(
+  scope: RecruitmentScope,
+  periodStart: string,
+  periodEndExclusive: string,
+): Promise<RecruitmentPeriodTransitions> {
+  const recruitments = await db
+    .select({ id: partnerRecruitmentsTable.id })
+    .from(partnerRecruitmentsTable)
+    .where(scope.territoryIds ? inArray(partnerRecruitmentsTable.territoryId, scope.territoryIds) : undefined);
+  const recruitmentIds = recruitments.map((r) => r.id);
+
+  if (recruitmentIds.length === 0) {
+    return { period_start: periodStart, period_end_exclusive: periodEndExclusive, new_recruitments_count: 0, stage_transitions_count: 0 };
+  }
+
+  const rangeStart = new Date(periodStart + "T00:00:00.000Z");
+  const rangeEndExcl = new Date(periodEndExclusive + "T00:00:00.000Z");
+  const historyRowsInRange = await db
+    .select({ fromStage: partnerRecruitmentHistoryTable.fromStage, toStage: partnerRecruitmentHistoryTable.toStage })
+    .from(partnerRecruitmentHistoryTable)
+    .where(
+      and(
+        inArray(partnerRecruitmentHistoryTable.recruitmentId, recruitmentIds),
+        gte(partnerRecruitmentHistoryTable.createdAt, rangeStart),
+        lt(partnerRecruitmentHistoryTable.createdAt, rangeEndExcl),
+      ),
+    );
+
+  // The initial null -> "accepted" row is a creation event, not a
+  // transition between two stages -- counted separately as
+  // new_recruitments_count, same distinction weeklyReportingService.ts
+  // draws for new_candidates_count vs stage_transitions_count.
+  const new_recruitments_count = historyRowsInRange.filter((h) => h.fromStage === null).length;
+  const stage_transitions_count = historyRowsInRange.filter((h) => h.fromStage !== null && h.fromStage !== h.toStage).length;
+
+  return { period_start: periodStart, period_end_exclusive: periodEndExclusive, new_recruitments_count, stage_transitions_count };
 }

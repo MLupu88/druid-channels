@@ -26,6 +26,7 @@ import territoryPotentialRouter from "./territory_potential";
 import opportunitiesRouter from "./opportunities";
 import channelChiefRouter from "./channel_chief";
 import weeklyReportingRouter from "./weekly_reporting";
+import managementReportingRouter from "./management_reporting";
 
 const router: IRouter = Router();
 
@@ -56,5 +57,6 @@ router.use(territoryPotentialRouter);
 router.use(opportunitiesRouter);
 router.use(channelChiefRouter);
 router.use(weeklyReportingRouter);
+router.use(managementReportingRouter);
 
 export default router;

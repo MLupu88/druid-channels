@@ -67,7 +67,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
         { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
         { href: '/team-targets', label: 'Team Targets', icon: Target },
-        { href: '/weekly-team-report', label: 'Team Weekly Report', icon: CalendarCheck },
         { href: '/pams', label: 'PAMs', icon: Users },
         { href: '/activities', label: 'Marketing Activities', icon: ListOrdered },
       ]

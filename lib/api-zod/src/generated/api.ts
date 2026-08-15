@@ -2830,6 +2830,20 @@ export const ExportQuarterlyPptxResponse = zod.unknown()
 
 
 /**
+ * @summary Export the Phase 8 Head/Admin management report (selected week + WoW + current QTD + weekly PAM insights) as a PowerPoint deck. Built from the exact same payload as GET /reporting/management/summary -- nothing in this deck is calculated separately from the Overview management view.
+ */
+export const exportManagementPptxQueryCurrencyDefault = `USD`;
+
+export const ExportManagementPptxQueryParams = zod.object({
+  "week_start": zod.coerce.string().nullish(),
+  "territory": zod.coerce.string().nullish(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']).default(exportManagementPptxQueryCurrencyDefault)
+})
+
+export const ExportManagementPptxResponse = zod.unknown()
+
+
+/**
  * @summary Get the current AI Channel Brief state and cached content (if any) for a period/territory/currency scope
  */
 export const getAiChannelBriefQueryCurrencyDefault = `USD`;
@@ -4119,6 +4133,396 @@ export const GetWeeklyTeamReportResponse = zod.object({
   "relationships_needing_attention_count": zod.number(),
   "pams_behind_target": zod.number().describe('Counts a PAM once regardless of how many of their territories are behind target.')
 }).describe('Deterministic notes about missing\/incomplete\/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as \"unknown\".')
+})
+
+
+/**
+ * @summary Phase 8 -- Head/Admin management report. weekly is the SELECTED week's team report (Phase 7's getTeamWeeklyReport, untouched semantics -- submission state, frozen/live, commentary, attention). quarter_to_date is ALWAYS the current quarter as of generation, never a historical reconstruction for the selected week -- see report_context.quarter_to_date_note. comparisons.week_over_week compares the selected week to the immediately preceding canonical week using the canonical range helpers directly (never two team-report calls); open pipeline has no reliable historical reconstruction (no status-history table exists), so it is reported as a current-state figure only, not a week-over-week delta.
+ */
+export const getManagementReportSummaryQueryCurrencyDefault = `USD`;
+
+export const GetManagementReportSummaryQueryParams = zod.object({
+  "week_start": zod.coerce.string().nullish(),
+  "territory": zod.coerce.string().nullish(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']).default(getManagementReportSummaryQueryCurrencyDefault)
+})
+
+export const GetManagementReportSummaryResponse = zod.object({
+  "report_context": zod.object({
+  "generated_at": zod.string(),
+  "week_start": zod.string(),
+  "week_end_exclusive": zod.string(),
+  "previous_week_start": zod.string().describe('The immediately preceding canonical Monday -- the week comparisons.week_over_week compares week_start against.'),
+  "quarter_to_date_period_key": zod.string(),
+  "quarter_to_date_period_label": zod.string(),
+  "quarter_to_date_note": zod.string().describe('Always present, e.g. \"quarter_to_date reflects the current quarter as of generated_at, not a historical reconstruction for the selected week\" -- especially load-bearing when week_start is a past week.'),
+  "territory_id": zod.string().nullable(),
+  "territory_name": zod.string(),
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "fx": zod.object({
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "usd_to_currency_rate": zod.number(),
+  "as_of": zod.string().nullable(),
+  "source": zod.string().nullable(),
+  "stale": zod.boolean()
+})
+}).describe('Explicit time semantics so weekly and quarter_to_date are never confused -- week_start is the selected\/current week; quarter_to_date_period_key is ALWAYS the current quarter as of generated_at, regardless of week_start.'),
+  "weekly": zod.object({
+  "team_weekly_report": zod.object({
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "generated_at": zod.string(),
+  "report_state_summary": zod.object({
+  "submitted_count": zod.number(),
+  "draft_count": zod.number()
+}),
+  "pams_with_multiple_territories": zod.array(zod.string()),
+  "team_commercial": zod.object({
+  "open_pipeline_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunity_count_open": zod.number(),
+  "opportunities_created_count": zod.number(),
+  "deals_won_count": zod.number(),
+  "conflicts": zod.array(zod.object({
+  "kind": zod.enum(['open_pipeline', 'won_revenue']),
+  "opportunity_id": zod.string(),
+  "entries": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number(),
+  "as_of": zod.string()
+}))
+}).describe('Surfaced when the same opportunity was sighted with different attribution\/value across two PAMs\' reports (e.g. a reassignment mid-week) -- the team totals use a deterministic most-recent-sighting tie-break, but the conflict itself is always exposed here rather than silently resolved.'))
+}),
+  "team_marketing": zod.object({
+  "activity_count": zod.number(),
+  "commercial_impact": zod.object({
+  "unique_linked_opportunity_count": zod.number(),
+  "open_pipeline_usd": zod.number(),
+  "won_revenue_usd": zod.number()
+}),
+  "conflicts": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "entries": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "usd_value": zod.number(),
+  "as_of": zod.string()
+}))
+}))
+}),
+  "pam_reports": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "territory_ids": zod.array(zod.string()),
+  "territory_names": zod.array(zod.string()),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "status": zod.enum(['draft', 'submitted']),
+  "submitted_at": zod.string().nullable(),
+  "snapshot_generated_at": zod.string().nullable(),
+  "metrics": zod.object({
+  "snapshot_version": zod.number(),
+  "week_start": zod.string(),
+  "week_end": zod.string(),
+  "territory_ids": zod.array(zod.string()).describe('One entry per territory the PAM canonically owns (may be more than one -- territories.owner_user_id has no DB uniqueness constraint). A single-territory PAM has an array of length 1.'),
+  "territory_names": zod.array(zod.string()),
+  "pam_user_id": zod.string(),
+  "generated_at": zod.string(),
+  "commercial": zod.object({
+  "open_pipeline_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunity_count_open": zod.number(),
+  "opportunities_created_count": zod.number(),
+  "deals_won_count": zod.number(),
+  "targets": zod.array(zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "metric_key": zod.string(),
+  "period_key": zod.string(),
+  "target_value": zod.number().nullable(),
+  "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
+  "progress_percent": zod.number().nullable(),
+  "status": zod.enum(['ahead', 'behind', 'no_target'])
+}).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
+  "contributing_open_pipeline": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number()
+})).describe('Per-opportunity backing data behind open_pipeline_usd -- lets team-level aggregation dedupe by opportunity_id across PAM reports without a live re-query for a frozen\/submitted PAM. Not meaningful presented directly to a PAM.'),
+  "contributing_won_revenue": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "attribution_type": zod.enum(['partner_sourced', 'partner_influenced']),
+  "usd_value": zod.number(),
+  "closed_at": zod.string()
+})),
+  "contributing_opportunities_created": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "opportunity_date": zod.string()
+}))
+}),
+  "recruitment": zod.object({
+  "new_candidates_count": zod.number(),
+  "stage_transitions_count": zod.number().describe('Genuine stage-movement events in the week, from the canonical partner_recruitment_history table -- excludes the initial recruitment-creation event.'),
+  "signed_this_week_count": zod.number().describe('From the canonical signed_at field (partner_recruitments.stage = \"signed\") -- the same date kpiService\'s Signed Partners KPI uses.'),
+  "stalled_items": zod.array(zod.object({
+  "recruitment_id": zod.string(),
+  "company_name": zod.string(),
+  "stage": zod.string(),
+  "days_in_stage": zod.number()
+})),
+  "needing_attention_relationships": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_name": zod.string(),
+  "last_interaction_at": zod.string().nullable()
+}))
+}),
+  "marketing": zod.object({
+  "activities": zod.array(zod.object({
+  "campaign_id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "partner_company_name": zod.string().nullable(),
+  "status": zod.string(),
+  "linked_opportunity_count": zod.number()
+})),
+  "activity_count": zod.number(),
+  "commercial_impact": zod.object({
+  "unique_linked_opportunity_count": zod.number().describe('Every distinct linked opportunity, regardless of status (open\/won\/lost) -- deduplicated across every activity linked in the week, so an opportunity linked from more than one activity counts exactly once.'),
+  "open_pipeline_usd": zod.number(),
+  "won_revenue_usd": zod.number(),
+  "contributing_opportunities": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "usd_value": zod.number()
+}))
+})
+}),
+  "attention": zod.array(zod.object({
+  "kind": zod.enum(['stalled_recruitment', 'relationship_needs_attention', 'target_gap']),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "ref_id": zod.string().nullable()
+}))
+}).describe('The structured, Phase 8-consumable weekly figures -- computed live for a draft report, frozen permanently at submit time for a submitted one.'),
+  "commentary": zod.object({
+  "wins_progress": zod.string().nullable(),
+  "risks_blockers": zod.string().nullable(),
+  "priorities_next_week": zod.string().nullable(),
+  "help_needed": zod.string().nullable(),
+  "commentary_updated_at": zod.string().nullable()
+})
+}).and(zod.object({
+  "pam_name": zod.string(),
+  "current_role": zod.string().describe('The PAM\'s CURRENT role, not their role at report time (not tracked). A historical report is still shown even if this no longer reads \"pam\".')
+})).describe('A WeeklyPamReport plus the PAM\'s display name and current role, as shown in the Head\/Admin team view\'s pam_reports list.')),
+  "help_requests": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "pam_name": zod.string(),
+  "help_needed": zod.string()
+})),
+  "attention_summary": zod.object({
+  "stalled_recruitment_count": zod.number(),
+  "relationships_needing_attention_count": zod.number(),
+  "pams_behind_target": zod.number().describe('Counts a PAM once regardless of how many of their territories are behind target.')
+}).describe('Deterministic notes about missing\/incomplete\/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as \"unknown\".')
+}).describe('Verbatim getTeamWeeklyReport(week_start) -- Phase 7 semantics untouched. Sole source for PAM submission state, frozen\/live snapshot handling, wins\/progress\/risks\/blockers\/priorities\/help commentary, and weekly attention indicators.')
+}),
+  "quarter_to_date": zod.object({
+  "commercial": zod.object({
+  "partnerDevelopment": zod.array(zod.object({
+  "metric_key": zod.string(),
+  "metric": zod.string(),
+  "current": zod.number().nullable(),
+  "target": zod.number().nullable(),
+  "status": zod.union([zod.literal('green'),zod.literal('amber'),zod.literal('red'),zod.literal('on_track'),zod.literal(null)]).nullable(),
+  "what_changed": zod.string().nullish(),
+  "explanation": zod.string().nullish(),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED'])
+})),
+  "weeklyCommercial": zod.array(zod.object({
+  "metric_key": zod.string(),
+  "metric": zod.string(),
+  "current": zod.number().nullable(),
+  "last_week": zod.number().nullable(),
+  "target": zod.number().nullable(),
+  "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullable(),
+  "explanation": zod.string().nullish(),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED'])
+})),
+  "weeklyMarketing": zod.array(zod.object({
+  "metric_key": zod.string(),
+  "metric": zod.string(),
+  "this_week": zod.number().nullable(),
+  "last_week": zod.number().nullish(),
+  "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullable(),
+  "explanation": zod.string().nullish(),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED'])
+})),
+  "fx": zod.object({
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "usd_to_currency_rate": zod.number(),
+  "as_of": zod.string().nullable(),
+  "source": zod.string().nullable(),
+  "stale": zod.boolean()
+})
+}).describe('buildHeadOfChannelsData(quarter_to_date_period_key, territory, currency) verbatim.'),
+  "targets": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "pam_name": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "metric_key": zod.string(),
+  "metric_label": zod.string(),
+  "target_value": zod.number().nullable(),
+  "target_id": zod.string().nullable().describe('Set when a target row already exists for this PAM\/territory\/metric\/period -- null means \"no target set\", used by Team Targets to offer create-vs-edit.'),
+  "actual_value": zod.number().nullable().describe('From the same canonical KPI computation Overview uses -- never recomputed separately.'),
+  "progress_percent": zod.number().nullable().describe('Null when there is no target to measure progress against -- never computed as if target were 0.'),
+  "status": zod.enum(['ahead', 'behind', 'no_target'])
+})),
+  "recruitment": zod.object({
+  "current_state": zod.object({
+  "as_of": zod.string(),
+  "by_stage": zod.record(zod.string(), zod.number()).describe('Keyed by RecruitmentStage (accepted, contacting, engaged, agreement, signed, on_hold, not_pursuing).')
+}).describe('Live snapshot of partner_recruitments.stage distribution, as of \"now\" -- NOT period-bound, never presented as something that happened during quarter_to_date.'),
+  "period_transitions": zod.object({
+  "period_start": zod.string(),
+  "period_end_exclusive": zod.string(),
+  "new_recruitments_count": zod.number().describe('Recruitments created (null -> accepted) inside the window.'),
+  "stage_transitions_count": zod.number().describe('Genuine stage-to-stage movement events inside the window, excluding the initial creation event.'),
+  "signed_count": zod.number().describe('Reuses the canonical signed_partners metric (kpiService.computeMetric) for the same period\/scope -- never recomputed from history independently.')
+}).describe('Genuine stage-movement EVENTS sourced from partner_recruitment_history within the quarter-to-date window -- never the current stage distribution re-labeled as period activity.')
+}),
+  "marketing": zod.object({
+  "activity_count": zod.number(),
+  "unique_linked_opportunity_count": zod.number(),
+  "open_pipeline_usd": zod.number(),
+  "won_revenue_usd": zod.number()
+}).describe('Team+quarter-to-date-scoped extension of the existing campaignService.computeCommercialImpact + weeklyReportingService.unionLinkedOpportunityIds dedup -- no new attribution\/dedup rule.'),
+  "pam_comparison": zod.object({
+  "metric_key": zod.string(),
+  "metric": zod.string(),
+  "period": zod.string(),
+  "territory": zod.string(),
+  "current": zod.number().nullish(),
+  "target": zod.number().nullish(),
+  "last_week": zod.number().nullish(),
+  "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullish(),
+  "status": zod.union([zod.literal('green'),zod.literal('amber'),zod.literal('red'),zod.literal('on_track'),zod.literal(null)]).nullish(),
+  "data_status": zod.enum(['CONNECTED', 'MANUAL', 'DEMO', 'NOT_CONNECTED']),
+  "data_source": zod.string().nullish(),
+  "last_updated": zod.string().nullish(),
+  "what_changed": zod.string().nullish(),
+  "explanation": zod.string().nullish(),
+  "by_territory": zod.array(zod.object({
+  "territory_id": zod.string().nullable(),
+  "territory_name": zod.string(),
+  "value": zod.number()
+})),
+  "records": zod.array(zod.object({
+  "label": zod.string(),
+  "value": zod.number(),
+  "date": zod.string().nullish()
+})),
+  "reconciles": zod.boolean(),
+  "reconciliation_note": zod.string().nullish(),
+  "target_to_date": zod.number().nullable(),
+  "full_period_target": zod.number().nullable(),
+  "full_period_target_label": zod.enum(['Full-quarter target', 'Full-year target']),
+  "variance": zod.number().nullable(),
+  "pam_contribution": zod.array(zod.object({
+  "pam_user_id": zod.string().nullable(),
+  "pam_name": zod.string().nullable(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "value": zod.number()
+})),
+  "fx": zod.object({
+  "currency": zod.enum(['USD', 'EUR', 'GBP']),
+  "usd_to_currency_rate": zod.number(),
+  "as_of": zod.string().nullable(),
+  "source": zod.string().nullable(),
+  "stale": zod.boolean()
+})
+}).describe('buildKpiDetailWithFx(\"closed_revenue\", ...) verbatim, including pam_contribution, reconciles, and reconciliation_note -- the Global total and the sum of displayed PAM rows are never forced to match; when they legitimately differ (e.g. an unowned territory), reconciles is false and reconciliation_note explains it. Never a fabricated equality.')
+}),
+  "comparisons": zod.object({
+  "week_over_week": zod.object({
+  "current_week": zod.object({
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunities_created_count": zod.number()
+}),
+  "previous_week": zod.object({
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunities_created_count": zod.number()
+}),
+  "delta": zod.object({
+  "won_revenue_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+}),
+  "opportunities_created_count": zod.number()
+}).describe('current_week minus previous_week, same shape (values may be negative).'),
+  "open_pipeline": zod.object({
+  "available": zod.boolean().describe('Always false in Phase 8 -- reserved for a future phase that adds point-in-time pipeline reconstruction.'),
+  "note": zod.string(),
+  "current_open_pipeline_usd": zod.object({
+  "sourced": zod.number(),
+  "influenced": zod.number(),
+  "total": zod.number()
+})
+}).describe('Open pipeline has no reliable point-in-time reconstruction (partner_opportunities carries only a live status column, no status-history table) -- never fabricated as a week-over-week delta. current_open_pipeline_usd is a CURRENT-STATE figure only.')
+})
+}),
+  "management_insights": zod.array(zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['target', 'recruitment', 'marketing', 'submission', 'help_request', 'commercial', 'risk']),
+  "severity": zod.enum(['info', 'attention', 'risk']),
+  "text": zod.string(),
+  "pam_user_id": zod.string().nullable(),
+  "related_metric_key": zod.string().nullable()
+}).describe('Deterministic, rule-based -- no LLM. Wording is factual and metric-backed only (e.g. \"Anna is at 68% of quarterly target.\"); never a subjective grade or invented interpretation.')),
+  "data_quality": zod.object({
+  "has_demo_data": zod.boolean(),
+  "fx_description_line": zod.string(),
+  "weekly_report_completeness": zod.object({
+  "submitted_count": zod.number(),
+  "draft_count": zod.number(),
+  "outstanding_count": zod.number().describe('Current PAMs with no persisted weekly_pam_reports row at all for the selected week (neither draft nor submitted).'),
+  "outstanding_pam_names": zod.array(zod.string())
+}),
+  "historical_data_caveats": zod.array(zod.string()).describe('Explicit notes for genuinely absent historical data (e.g. no submitted weekly reports before a given date) -- never a silently fabricated zero.')
+})
 })
 
 

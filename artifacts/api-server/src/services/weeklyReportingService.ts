@@ -98,6 +98,16 @@ export function weekEndExclusive(weekStartDate: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+// The immediately preceding canonical Monday -- Phase 8's week-over-week
+// comparison partner for a given week_start. Exported alongside
+// weekEndExclusive so managementReportingService.ts shares the same week
+// date-math rather than re-deriving it.
+export function weekStartBefore(weekStartDate: string): string {
+  const d = new Date(weekStartDate + "T00:00:00.000Z");
+  d.setUTCDate(d.getUTCDate() - 7);
+  return d.toISOString().slice(0, 10);
+}
+
 // Inclusive Sunday end date, for display only -- internal filtering always
 // uses weekEndExclusive above, never this.
 function weekEndInclusive(weekStartDate: string): string {
@@ -137,15 +147,19 @@ export function unionLinkedOpportunityIds(impactByCampaign: Map<string, Campaign
 // real canonical status (open/won/lost) and USD value -- the per-opportunity
 // backing data behind a PAM's marketing commercial_impact totals, and the
 // only place team-level aggregation needs to dedupe from (never a live
-// re-query for an already-frozen/submitted PAM's opportunities).
-async function fetchMarketingContributingOpportunities(opportunityIds: Set<string>): Promise<WeeklyMarketingContributingOpportunity[]> {
+// re-query for an already-frozen/submitted PAM's opportunities). Exported
+// (alongside unionLinkedOpportunityIds and summarizeMarketingImpact below)
+// so Phase 8's managementReportingService.ts can reuse this exact
+// attribution/dedup recipe for a team+quarter-to-date scope instead of
+// re-deriving a second marketing calculation.
+export async function fetchMarketingContributingOpportunities(opportunityIds: Set<string>): Promise<WeeklyMarketingContributingOpportunity[]> {
   if (opportunityIds.size === 0) return [];
   const oppRows = await db.select().from(partnerOpportunitiesTable).where(inArray(partnerOpportunitiesTable.id, [...opportunityIds]));
   const rateByCurrency = await buildUsdRateMap(oppRows.map((o) => o.currency));
   return oppRows.map((o) => ({ opportunity_id: o.id, status: o.status, usd_value: usdValueOf(o, rateByCurrency) }));
 }
 
-function summarizeMarketingImpact(entries: WeeklyMarketingContributingOpportunity[]): { openPipelineUsd: number; wonRevenueUsd: number } {
+export function summarizeMarketingImpact(entries: WeeklyMarketingContributingOpportunity[]): { openPipelineUsd: number; wonRevenueUsd: number } {
   let openPipelineUsd = 0;
   let wonRevenueUsd = 0;
   for (const e of entries) {
