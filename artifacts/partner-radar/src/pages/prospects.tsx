@@ -75,6 +75,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
+import { WorkspaceSubNav } from '@/components/workspace-subnav';
+import { getPartnersSubNavItems } from '@/lib/navigation';
 import type { ProspectDecisionInputDecision, ScanConfig, ScanRun, ProspectNextAction, ListProspectsFreshness } from '@workspace/api-client-react';
 import {
   inferDiscoveryPhase,
@@ -541,6 +543,7 @@ export default function Prospects() {
   return (
     <div className="flex flex-col h-full w-full overflow-hidden relative">
       <div className="flex-none p-4 border-b border-border/50 bg-card z-10 space-y-3">
+        <WorkspaceSubNav items={getPartnersSubNavItems(isGlobalUser)} />
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Discovery</h1>

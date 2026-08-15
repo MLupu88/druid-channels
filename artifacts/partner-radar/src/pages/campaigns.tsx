@@ -45,6 +45,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
+import { WorkspaceSubNav } from '@/components/workspace-subnav';
+import { getPartnersSubNavItems } from '@/lib/navigation';
 import { Plus, Pencil, Trash2, MoreVertical, ExternalLink } from 'lucide-react';
 import {
   DropdownMenu,
@@ -330,6 +332,9 @@ export default function Campaigns() {
 
   return (
     <div className="flex flex-col h-full w-full bg-background relative">
+      <div className="flex-none px-6 pt-6">
+        <WorkspaceSubNav items={getPartnersSubNavItems(isGlobalUser)} />
+      </div>
       <div className="flex-none p-6 pb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Marketing Activities</h1>

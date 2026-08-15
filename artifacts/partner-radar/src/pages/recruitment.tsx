@@ -42,6 +42,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/auth-context';
+import { WorkspaceSubNav } from '@/components/workspace-subnav';
+import { getPartnersSubNavItems } from '@/lib/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -202,6 +204,7 @@ export default function Recruitment() {
   return (
     <div className="flex h-full w-full relative">
       <div className="flex-1 p-6 space-y-6 overflow-auto">
+        <WorkspaceSubNav items={getPartnersSubNavItems(isGlobalUser)} />
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Recruitment</h1>
           <p className="text-sm text-muted-foreground mt-1">

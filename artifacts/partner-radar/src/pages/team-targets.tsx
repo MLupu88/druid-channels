@@ -21,6 +21,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus } from 'lucide-react';
+import { WorkspaceSubNav } from '@/components/workspace-subnav';
+import { REPORTING_SUBNAV_ITEMS } from '@/lib/navigation';
 
 function ProgressBadge({ row }: { row: TeamTargetRow }) {
   if (row.status === 'no_target') {
@@ -59,6 +61,7 @@ export default function TeamTargets() {
 
   return (
     <div className="p-6 space-y-6">
+      <WorkspaceSubNav items={REPORTING_SUBNAV_ITEMS} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Team Targets</h1>

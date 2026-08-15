@@ -66,6 +66,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from 'date-fns';
+import { WorkspaceSubNav } from '@/components/workspace-subnav';
+import { getPartnersSubNavItems } from '@/lib/navigation';
 import type { ProspectDecisionInputDecision, ProspectNextAction, ListProspectsFreshness } from '@workspace/api-client-react';
 
 type NextActionFilter = 'all' | ProspectNextAction;
@@ -306,6 +308,7 @@ export default function MyProspects() {
   return (
     <div className="flex flex-col h-full w-full overflow-hidden relative">
       <div className="flex-none p-4 border-b border-border/50 bg-card z-10 space-y-3">
+        <WorkspaceSubNav items={getPartnersSubNavItems(false)} />
         <div>
           <h1 className="text-xl font-semibold tracking-tight">My Prospects</h1>
           <p className="text-xs text-muted-foreground mt-1">Prospects assigned to you by Head of Channels. Review evidence and accept, defer, or reject.</p>

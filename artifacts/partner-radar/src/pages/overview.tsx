@@ -656,6 +656,22 @@ export default function Overview() {
           </Tabs>
         )}
 
+        {/* Phase 11.2: My Weekly Report is PAM self-service, not
+            management oversight (see audit) -- it stays its own route with
+            its own submission flow, untouched. This is only a navigational
+            affordance so it's reachable from the PAM's operational home
+            instead of an isolated sidebar item: selecting the tab navigates
+            to the existing /my-weekly-report route, it never renders that
+            page's content inline the way Weekly Team does above. */}
+        {!isGlobalUser && (
+          <Tabs value="overview" onValueChange={(v) => v === 'my-weekly-report' && setLocation('/my-weekly-report')}>
+            <TabsList>
+              <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+              <TabsTrigger value="my-weekly-report" data-testid="tab-my-weekly-report">My Weekly Report</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+
         {view === 'performance' && (
           <>
             <PeriodSelector value={period} onChange={setPeriod} />

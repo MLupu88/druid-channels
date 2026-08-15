@@ -32,6 +32,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { X, ExternalLink, Plus, Upload } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/auth-context';
+import { WorkspaceSubNav } from '@/components/workspace-subnav';
+import { getPartnersSubNavItems } from '@/lib/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -189,6 +191,7 @@ export function PortfolioView({ territoryId, pamUserId }: { territoryId?: string
   return (
     <div className="flex h-full w-full relative">
       <div className="flex-1 p-6 space-y-6 overflow-auto">
+        <WorkspaceSubNav items={getPartnersSubNavItems(isGlobalUser)} />
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Portfolio</h1>

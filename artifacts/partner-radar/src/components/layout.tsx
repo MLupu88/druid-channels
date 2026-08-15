@@ -16,21 +16,14 @@ import {
 } from '@/components/ui/sidebar';
 import {
   LayoutDashboard,
-  Users,
-  Briefcase,
-  ListOrdered,
   Settings,
   ChevronDown,
-  Radio,
-  Handshake,
   Satellite,
   LogOut,
   UserCircle,
   Building2,
-  Target,
-  ListChecks,
   DollarSign,
-  CalendarCheck
+  ClipboardList
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -48,6 +41,12 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ElementType;
+  // Phase 11.2: additional routes that belong to this workspace but have
+  // their own sidebar-less URLs (e.g. Partners' Discovery/Recruitment/
+  // Portfolio/Activities tabs) -- highlighted as active without the
+  // sidebar itself needing a separate entry per route. Never affects
+  // routing/auth, only which nav item is drawn as current.
+  activePaths?: string[];
 }
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -58,36 +57,45 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return name.split(' ').map(n => n[0]).join('').substring(0, 2);
   };
 
+  // Phase 11.2: Discovery/My Prospects, Recruitment, Portfolio, and
+  // Activities are one Partners workspace now (see lib/navigation.ts's
+  // getPartnersSubNavItems, rendered as in-page tabs on each of those four
+  // pages) -- collapsed here to a single sidebar entry, landing on
+  // Portfolio, with the other three routes marked active via activePaths
+  // rather than each keeping its own sidebar button. Same treatment for
+  // Reporting: Team Targets and PAMs (global-only) no longer need
+  // independent sidebar entries; Weekly Team stays exactly where Phase 8
+  // put it, inside Overview, and is reachable from Reporting's own subnav
+  // (see REPORTING_SUBNAV_ITEMS) rather than duplicated here.
+  const partnersActivePaths = ['/new-partners', '/recruitment', '/portfolio', '/portfolio/import', '/activities'];
+
   const navItems: NavItem[] = isGlobalUser
     ? [
         { href: '/', label: 'Overview', icon: LayoutDashboard },
-        { href: '/new-partners', label: 'Discovery', icon: Radio },
-        { href: '/recruitment', label: 'Recruitment', icon: Handshake },
-        { href: '/portfolio', label: 'Portfolio', icon: Building2 },
+        { href: '/portfolio', label: 'Partners', icon: Building2, activePaths: partnersActivePaths },
         { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
-        { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
-        { href: '/team-targets', label: 'Team Targets', icon: Target },
-        { href: '/pams', label: 'PAMs', icon: Users },
-        { href: '/activities', label: 'Marketing Activities', icon: ListOrdered },
+        { href: '/channel-radar', label: 'Radar', icon: Satellite },
+        { href: '/team-targets', label: 'Reporting', icon: ClipboardList, activePaths: ['/team-targets', '/pams'] },
       ]
     : [
         // Role-separation hotfix: a PAM is an execution role, not a
         // Discovery operator -- Discovery is replaced by "My Prospects"
         // (same route, a role-conditional component -- see App.tsx).
-        // Phase 10: Channel Radar is now included here too -- a PAM has
+        // Phase 10: Channel Radar is included here too -- a PAM has
         // read-only access to their own territory's persisted intelligence
         // (see routes/channel_radar.ts); they still cannot configure it,
         // trigger a run, or review/dismiss signals (the page itself hides
         // those controls for a non-global user).
+        // Phase 11.2: My Workspace's own summary content is now superseded
+        // by Overview (the PAM's operational home) and dropped from the
+        // sidebar -- the /my-workspace route itself is untouched and still
+        // works if visited directly. My Weekly Report moves into Overview
+        // as a tab (see overview.tsx) rather than staying an isolated
+        // sidebar item; its route is unchanged too.
         { href: '/', label: 'Overview', icon: LayoutDashboard },
-        { href: '/new-partners', label: 'My Prospects', icon: ListChecks },
-        { href: '/recruitment', label: 'Recruitment', icon: Handshake },
-        { href: '/portfolio', label: 'Portfolio', icon: Building2 },
+        { href: '/portfolio', label: 'Partners', icon: Building2, activePaths: partnersActivePaths },
         { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
-        { href: '/channel-radar', label: 'Channel Radar', icon: Satellite },
-        { href: '/my-workspace', label: 'My workspace', icon: Briefcase },
-        { href: '/my-weekly-report', label: 'My Weekly Report', icon: CalendarCheck },
-        { href: '/activities', label: 'Marketing Activities', icon: ListOrdered },
+        { href: '/channel-radar', label: 'Radar', icon: Satellite },
       ];
 
   return (
@@ -117,16 +125,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {navItems.map((item) => (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton asChild isActive={location === item.href} tooltip={item.label}>
-                        <Link href={item.href}>
-                          <item.icon />
-                          <span>{item.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
+                  {navItems.map((item) => {
+                    const isActive = location === item.href || (item.activePaths?.includes(location) ?? false);
+                    return (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
+                          <Link href={item.href}>
+                            <item.icon />
+                            <span>{item.label}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
