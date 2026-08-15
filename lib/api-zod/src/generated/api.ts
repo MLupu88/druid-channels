@@ -367,15 +367,21 @@ export const UpdateProspectResponse = zod.object({
 
 
 /**
- * @summary Delete a prospect
+ * @summary Remove a prospect from working results (safe delete -- blocked once a recruitment exists)
  */
 export const DeleteProspectParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const DeleteProspectBody = zod.object({
+  "reason": zod.enum(['not_relevant', 'wrong_match', 'duplicate', 'bad_source', 'other']).optional().describe('Why a PAM is removing this prospect from their working results. \"duplicate\" is valid here (a redundant result) but is never a valid reason to create a discovery exclusion -- see DiscoveryExclusionReason.'),
+  "exclude_company": zod.boolean().optional().describe('When true, also prevents Discovery from suggesting this company\'s domain again in this territory. Ignored (never creates an exclusion) when reason is \"duplicate\" -- a duplicate result does not mean the underlying company is illegitimate.')
+}).describe('Optional -- omit entirely for the original plain delete behavior.')
+
 export const DeleteProspectResponse = zod.object({
   "id": zod.string(),
-  "deleted": zod.boolean()
+  "deleted": zod.boolean(),
+  "excluded": zod.boolean().describe('True only if exclude_company was requested, honored (reason was not \"duplicate\"), and the exclusion was created.')
 })
 
 
@@ -2269,6 +2275,53 @@ export const TestConnectionResponse = zod.object({
   "has_credential": zod.boolean(),
   "last_tested_at": zod.string().nullish(),
   "last_error": zod.string().nullish()
+})
+
+
+/**
+ * @summary List active "don't suggest this company again" exclusions (admin-only)
+ */
+export const ListDiscoveryExclusionsResponseItem = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "domain": zod.string(),
+  "company_id": zod.string().nullish(),
+  "company_name": zod.string().nullish(),
+  "reason": zod.enum(['not_relevant', 'wrong_match', 'bad_source', 'other']).describe('Reasons that justify blocking future Discovery for a domain. Deliberately excludes \"duplicate\" -- see DeleteProspectInput.'),
+  "note": zod.string().nullish(),
+  "created_by_user_id": zod.string().nullish(),
+  "created_by_name": zod.string().nullish(),
+  "created_at": zod.coerce.date(),
+  "active": zod.boolean(),
+  "restored_at": zod.coerce.date().nullish(),
+  "restored_by_user_id": zod.string().nullish()
+})
+export const ListDiscoveryExclusionsResponse = zod.array(ListDiscoveryExclusionsResponseItem)
+
+
+/**
+ * @summary Restore an excluded company/domain so Discovery can surface it again (admin-only)
+ */
+export const RestoreDiscoveryExclusionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const RestoreDiscoveryExclusionResponse = zod.object({
+  "id": zod.string(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "domain": zod.string(),
+  "company_id": zod.string().nullish(),
+  "company_name": zod.string().nullish(),
+  "reason": zod.enum(['not_relevant', 'wrong_match', 'bad_source', 'other']).describe('Reasons that justify blocking future Discovery for a domain. Deliberately excludes \"duplicate\" -- see DeleteProspectInput.'),
+  "note": zod.string().nullish(),
+  "created_by_user_id": zod.string().nullish(),
+  "created_by_name": zod.string().nullish(),
+  "created_at": zod.coerce.date(),
+  "active": zod.boolean(),
+  "restored_at": zod.coerce.date().nullish(),
+  "restored_by_user_id": zod.string().nullish()
 })
 
 

@@ -300,20 +300,26 @@ paths:
     delete:
       operationId: deleteProspect
       tags: [prospects]
-      summary: Delete a prospect
+      summary: Remove a prospect from working results (safe delete -- blocked once a recruitment exists)
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteProspectInput"
       responses:
         "200":
           description: Deleted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DeleteResult"
+                $ref: "#/components/schemas/DeleteProspectResult"
         "404":
           description: Not found
         "409":
@@ -1484,6 +1490,42 @@ paths:
                 $ref: "#/components/schemas/Connection"
         "404":
           description: Not found
+
+  /discovery-exclusions:
+    get:
+      operationId: listDiscoveryExclusions
+      tags: [discoveryExclusions]
+      summary: List active "don't suggest this company again" exclusions (admin-only)
+      responses:
+        "200":
+          description: Active exclusions, most recent first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscoveryExclusion"
+
+  /discovery-exclusions/{id}/restore:
+    post:
+      operationId: restoreDiscoveryExclusion
+      tags: [discoveryExclusions]
+      summary: Restore an excluded company/domain so Discovery can surface it again (admin-only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Restored exclusion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryExclusion"
+        "404":
+          description: Not found, or already restored
 
   /metric-mappings:
     get:
@@ -3966,6 +4008,80 @@ components:
           type: string
         deleted:
           type: boolean
+
+    ProspectRemovalReason:
+      type: string
+      description: Why a PAM is removing this prospect from their working results. "duplicate" is valid here (a redundant result) but is never a valid reason to create a discovery exclusion -- see DiscoveryExclusionReason.
+      enum: [not_relevant, wrong_match, duplicate, bad_source, other]
+
+    DeleteProspectInput:
+      type: object
+      description: Optional -- omit entirely for the original plain delete behavior.
+      properties:
+        reason:
+          $ref: "#/components/schemas/ProspectRemovalReason"
+        exclude_company:
+          type: boolean
+          description: When true, also prevents Discovery from suggesting this company's domain again in this territory. Ignored (never creates an exclusion) when reason is "duplicate" -- a duplicate result does not mean the underlying company is illegitimate.
+
+    DeleteProspectResult:
+      type: object
+      required: [id, deleted, excluded]
+      properties:
+        id:
+          type: string
+        deleted:
+          type: boolean
+        excluded:
+          type: boolean
+          description: True only if exclude_company was requested, honored (reason was not "duplicate"), and the exclusion was created.
+
+    DiscoveryExclusionReason:
+      type: string
+      description: Reasons that justify blocking future Discovery for a domain. Deliberately excludes "duplicate" -- see DeleteProspectInput.
+      enum: [not_relevant, wrong_match, bad_source, other]
+
+    DiscoveryExclusion:
+      type: object
+      required: [id, territory_id, territory_name, domain, reason, created_at, active]
+      properties:
+        id:
+          type: string
+        territory_id:
+          type: string
+        territory_name:
+          type: string
+        domain:
+          type: string
+        company_id:
+          type: string
+          nullable: true
+        company_name:
+          type: string
+          nullable: true
+        reason:
+          $ref: "#/components/schemas/DiscoveryExclusionReason"
+        note:
+          type: string
+          nullable: true
+        created_by_user_id:
+          type: string
+          nullable: true
+        created_by_name:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+        restored_at:
+          type: string
+          format: date-time
+          nullable: true
+        restored_by_user_id:
+          type: string
+          nullable: true
 
     UserEditInput:
       type: object

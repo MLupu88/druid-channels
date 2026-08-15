@@ -19,6 +19,7 @@ import * as searchProvider from "./discoveryProviders/search";
 import * as extractionProvider from "./discoveryProviders/extraction";
 import * as aiProvider from "./discoveryProviders/ai";
 import { toRegistrableDomain, isKnownNonCorporateDomain } from "./companyIdentity";
+import { loadActiveExclusionDomains, isDomainExcluded } from "./discoveryExclusions";
 import {
   decideNextBatch,
   computeNewCandidateYield,
@@ -835,6 +836,15 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
     // was: after qualification, before persistence, never affecting whether
     // it's counted toward resultsFound (candidates.length) below.
     const excludedDomains = (config.excludedDomains as string[]) ?? [];
+    // Phase 11.5A: PAM-created "don't suggest this company again" exclusions
+    // -- a separate, deterministic guard from config.excludedDomains above
+    // (admin-maintained free-text list), loaded once per run, same
+    // territory scope. Checked twice below: as early as the evidence
+    // domain is known (before the DeepSeek/extraction cost), and again at
+    // the same point excludedDomains is checked (using the resolved
+    // canonical domain, since evidence can legitimately come from a
+    // third-party source whose own domain was never excluded).
+    const discoveryExclusionDomains = await loadActiveExclusionDomains(territory.id);
     const candidates: Candidate[] = [];
     // Cross-query dedup: the same URL can legitimately surface from more
     // than one query variant (see buildAutomaticQueries) -- only qualify it
@@ -916,6 +926,21 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
           batchUnique++;
 
           const evidenceDomain = extractDomain(result.url);
+
+          // Phase 11.5A: earliest safe exclusion check -- before the
+          // extraction/DeepSeek qualification cost below. Matched on the
+          // registrable domain, same normalization companies.domain itself
+          // uses, so "www.example.com" and "app.example.com" both match an
+          // exclusion for "example.com". This can only under-match, never
+          // over-match: if this evidence is a third-party source (e.g. a
+          // press-release wire) rather than the company's own site,
+          // evidenceDomain won't equal the excluded company's domain here --
+          // the second check below (after identity resolution, on the
+          // actual resolved company domain) is what guarantees correctness
+          // in that case; this one is purely a cost-saving fast path.
+          if (isDomainExcluded(toRegistrableDomain(evidenceDomain) ?? evidenceDomain, discoveryExclusionDomains)) {
+            continue;
+          }
 
           const isKnownDomain = knownDomainRecords.has(evidenceDomain);
           if (isKnownDomain) {
@@ -1046,7 +1071,12 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
           // persistCandidate call, same transaction/dedupe/evidence/
           // canonicalization behavior as the pre-hotfix batched call; only
           // WHEN it runs has changed.
-          if (!isExcludedDomain(candidate.domain, excludedDomains)) {
+          // candidate.domain is always the resolved, registrable company
+          // domain (see resolveCandidateCompanyIdentity) -- the correctness
+          // net for the early evidenceDomain check above: an exclusion is
+          // never missed just because the evidence happened to come from a
+          // third-party source.
+          if (!isExcludedDomain(candidate.domain, excludedDomains) && !isDomainExcluded(candidate.domain, discoveryExclusionDomains)) {
             const created = await persistCandidate(candidate, qualificationResult, territory, "connected");
             if (created) prospectsCreated++;
           }
@@ -1382,6 +1412,11 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
     const dataStatus: "demo" | "connected" = liveResult ? "connected" : "demo";
     const candidates = liveResult?.candidates ?? generateDemoCandidates(config, territory);
     const excludedDomains = (config.excludedDomains as string[]) ?? [];
+    // Phase 11.5A: only reached by the demo path below (the live path
+    // already applied this inside attemptLiveDiscovery) -- kept consistent
+    // so a PAM's exclusion is honored the same way regardless of whether a
+    // scan happened to run live or demo.
+    const discoveryExclusionDomains = liveResult ? null : await loadActiveExclusionDomains(territory.id);
 
     // Product decision (hotfix): a live candidate is already persisted the
     // moment it clears qualification + identity resolution, inside
@@ -1399,6 +1434,7 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
       qualifiedCount = 0;
       for (const candidate of candidates) {
         if (isExcludedDomain(candidate.domain, excludedDomains)) continue;
+        if (discoveryExclusionDomains && isDomainExcluded(candidate.domain, discoveryExclusionDomains)) continue;
         const qualification = qualifyChecks(candidate.checks, config.minChecksRequired);
         if (!qualification.priority) continue;
 

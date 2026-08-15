@@ -44,7 +44,10 @@ import type {
   CreateScanConfigInput,
   CreateTerritoryInput,
   CreateUserInput,
+  DeleteProspectInput,
+  DeleteProspectResult,
   DeleteResult,
+  DiscoveryExclusion,
   ExportManagementPptxParams,
   ExportQuarterlyPptxParams,
   GetAiChannelBriefParams,
@@ -1005,16 +1008,17 @@ export const getDeleteProspectUrl = (id: string,) => {
 }
 
 /**
- * @summary Delete a prospect
+ * @summary Remove a prospect from working results (safe delete -- blocked once a recruitment exists)
  */
-export const deleteProspect = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<DeleteResult> => {
+export const deleteProspect = async (id: string,
+    deleteProspectInput?: DeleteProspectInput, options?: Parameters<typeof customFetch>[1]): Promise<DeleteProspectResult> => {
 
-  return customFetch<DeleteResult>(getDeleteProspectUrl(id),
+  return customFetch<DeleteProspectResult>(getDeleteProspectUrl(id),
   {
     ...options,
-    method: 'DELETE'
-
-
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(deleteProspectInput)
   }
 );}
 
@@ -1023,8 +1027,8 @@ export const deleteProspect = async (id: string, options?: Parameters<typeof cus
 
 
 export const getDeleteProspectMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProspect>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteProspect>>, TError,{id: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProspect>>, TError,{id: string;data?: BodyType<DeleteProspectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteProspect>>, TError,{id: string;data?: BodyType<DeleteProspectInput>}, TContext> => {
 
 const mutationKey = ['deleteProspect'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -1036,10 +1040,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteProspect>>, {id: string}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteProspect>>, {id: string;data?: BodyType<DeleteProspectInput>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  deleteProspect(id,requestOptions)
+          return  deleteProspect(id,data,requestOptions)
         }
 
 
@@ -1050,18 +1054,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteProspectMutationResult = NonNullable<Awaited<ReturnType<typeof deleteProspect>>>
-
+    export type DeleteProspectMutationBody = BodyType<DeleteProspectInput> | undefined
     export type DeleteProspectMutationError = ErrorType<void>
 
     /**
- * @summary Delete a prospect
+ * @summary Remove a prospect from working results (safe delete -- blocked once a recruitment exists)
  */
 export const useDeleteProspect = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProspect>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProspect>>, TError,{id: string;data?: BodyType<DeleteProspectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteProspect>>,
         TError,
-        {id: string},
+        {id: string;data?: BodyType<DeleteProspectInput>},
         TContext
       > => {
       return useMutation(getDeleteProspectMutationOptions(options));
@@ -4499,6 +4503,154 @@ export const useTestConnection = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getTestConnectionMutationOptions(options));
+    }
+
+export const getListDiscoveryExclusionsUrl = () => {
+
+
+
+
+  return `/api/discovery-exclusions`
+}
+
+/**
+ * @summary List active "don't suggest this company again" exclusions (admin-only)
+ */
+export const listDiscoveryExclusions = async ( options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryExclusion[]> => {
+
+  return customFetch<DiscoveryExclusion[]>(getListDiscoveryExclusionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDiscoveryExclusionsQueryKey = () => {
+    return [
+    `/api/discovery-exclusions`
+    ] as const;
+    }
+
+
+export const getListDiscoveryExclusionsQueryOptions = <TData = Awaited<ReturnType<typeof listDiscoveryExclusions>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDiscoveryExclusions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDiscoveryExclusionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDiscoveryExclusions>>> = ({ signal }) => listDiscoveryExclusions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDiscoveryExclusions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDiscoveryExclusionsQueryResult = NonNullable<Awaited<ReturnType<typeof listDiscoveryExclusions>>>
+export type ListDiscoveryExclusionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List active "don't suggest this company again" exclusions (admin-only)
+ */
+
+export function useListDiscoveryExclusions<TData = Awaited<ReturnType<typeof listDiscoveryExclusions>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDiscoveryExclusions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDiscoveryExclusionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRestoreDiscoveryExclusionUrl = (id: string,) => {
+
+
+
+
+  return `/api/discovery-exclusions/${id}/restore`
+}
+
+/**
+ * @summary Restore an excluded company/domain so Discovery can surface it again (admin-only)
+ */
+export const restoreDiscoveryExclusion = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<DiscoveryExclusion> => {
+
+  return customFetch<DiscoveryExclusion>(getRestoreDiscoveryExclusionUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRestoreDiscoveryExclusionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreDiscoveryExclusion>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof restoreDiscoveryExclusion>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['restoreDiscoveryExclusion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof restoreDiscoveryExclusion>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  restoreDiscoveryExclusion(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RestoreDiscoveryExclusionMutationResult = NonNullable<Awaited<ReturnType<typeof restoreDiscoveryExclusion>>>
+
+    export type RestoreDiscoveryExclusionMutationError = ErrorType<void>
+
+    /**
+ * @summary Restore an excluded company/domain so Discovery can surface it again (admin-only)
+ */
+export const useRestoreDiscoveryExclusion = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreDiscoveryExclusion>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof restoreDiscoveryExclusion>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRestoreDiscoveryExclusionMutationOptions(options));
     }
 
 export const getListMetricMappingsUrl = () => {

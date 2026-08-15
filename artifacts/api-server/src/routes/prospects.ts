@@ -21,12 +21,14 @@ import {
   ListRecentProspectActivityResponse,
   UpdateProspectBody,
   UpdateProspectResponse,
+  DeleteProspectBody,
   DeleteProspectResponse,
 } from "@workspace/api-zod";
 import { eq, and, gte, sql, count, max, inArray, desc, asc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, assertOwnUserAccess, ForbiddenScopeError } from "../services/authz";
 import { acceptForRecruitment, assertProspectHasNoRecruitment, ProspectHasRecruitmentError } from "../services/partnerRecruitmentService";
+import { excludeCompanyForTerritory } from "../services/discoveryExclusions";
 
 const router: IRouter = Router();
 
@@ -679,6 +681,16 @@ router.patch("/prospects/:id", requireAuth, async (req, res): Promise<void> => {
 router.delete("/prospects/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
+  // Phase 11.5A: body is genuinely optional (no Content-Type/body sent at
+  // all still parses as {} and validates fine) -- omitting it entirely
+  // reproduces the exact original plain-delete behavior.
+  const parsedBody = DeleteProspectBody.safeParse(req.body ?? {});
+  if (!parsedBody.success) {
+    res.status(400).json({ error: parsedBody.error.message });
+    return;
+  }
+  const { reason, exclude_company } = parsedBody.data;
+
   const [existing] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, id));
   if (!existing) {
     res.status(404).json({ error: "Prospect not found" });
@@ -688,7 +700,11 @@ router.delete("/prospects/:id", requireAuth, async (req, res): Promise<void> => 
   try {
     await assertRecordTerritoryAccess(req.actingUser!, existing.territoryId, null);
     // Role-separation hotfix: a PAM may only delete prospects explicitly
-    // assigned to them -- territory membership alone is not enough.
+    // assigned to them -- territory membership alone is not enough. Also
+    // the natural scope for Phase 11.5A exclusion CREATION below: whatever
+    // authorization already permits removing this prospect is exactly what
+    // permits excluding its company for the same territory -- no separate
+    // RBAC concept needed.
     assertOwnUserAccess(req.actingUser!, existing.assignedUserId);
   } catch (err) {
     if (err instanceof ForbiddenScopeError) {
@@ -708,10 +724,41 @@ router.delete("/prospects/:id", requireAuth, async (req, res): Promise<void> => 
     throw err;
   }
 
-  await db.delete(prospectActivityTable).where(eq(prospectActivityTable.prospectId, id));
-  await db.delete(prospectsTable).where(eq(prospectsTable.id, id));
+  // Phase 11.5A: the delete and the (optional) exclusion it may create run
+  // in one transaction -- if excludeCompanyForTerritory throws for any
+  // reason, the prospect delete rolls back too, rather than leaving the
+  // prospect gone with no exclusion and a misleading 500 response (the
+  // client would otherwise have no way to know whether "remove and don't
+  // suggest again" actually happened).
+  const excluded = await db.transaction(async (tx) => {
+    // Resolved before the prospect row is gone -- discovery_exclusions is
+    // keyed by domain (and, when known, companyId for display), never by
+    // prospectId, so this must be captured now.
+    const [company] = await tx.select({ domain: companiesTable.domain }).from(companiesTable).where(eq(companiesTable.id, existing.companyId));
 
-  res.json(DeleteProspectResponse.parse({ id, deleted: true }));
+    await tx.delete(prospectActivityTable).where(eq(prospectActivityTable.prospectId, id));
+    await tx.delete(prospectsTable).where(eq(prospectsTable.id, id));
+
+    // "duplicate" never creates an exclusion (see excludeCompanyForTerritory's
+    // own comment) -- a duplicate RESULT doesn't mean the underlying company
+    // is illegitimate; only the redundant prospect row is removed.
+    if (exclude_company && reason !== "duplicate" && company?.domain) {
+      await excludeCompanyForTerritory(
+        {
+          territoryId: existing.territoryId,
+          domain: company.domain,
+          companyId: existing.companyId,
+          reason: reason ?? "other",
+          createdByUserId: req.actingUser!.id,
+        },
+        tx,
+      );
+      return true;
+    }
+    return false;
+  });
+
+  res.json(DeleteProspectResponse.parse({ id, deleted: true, excluded }));
 });
 
 router.post("/prospects/:id/hubspot", requireAuth, async (req, res): Promise<void> => {

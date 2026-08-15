@@ -1322,6 +1322,66 @@ export interface DeleteResult {
   deleted: boolean;
 }
 
+/**
+ * Why a PAM is removing this prospect from their working results. "duplicate" is valid here (a redundant result) but is never a valid reason to create a discovery exclusion -- see DiscoveryExclusionReason.
+ */
+export type ProspectRemovalReason = typeof ProspectRemovalReason[keyof typeof ProspectRemovalReason];
+
+
+export const ProspectRemovalReason = {
+  not_relevant: 'not_relevant',
+  wrong_match: 'wrong_match',
+  duplicate: 'duplicate',
+  bad_source: 'bad_source',
+  other: 'other',
+} as const;
+
+/**
+ * Optional -- omit entirely for the original plain delete behavior.
+ */
+export interface DeleteProspectInput {
+  reason?: ProspectRemovalReason;
+  /** When true, also prevents Discovery from suggesting this company's domain again in this territory. Ignored (never creates an exclusion) when reason is "duplicate" -- a duplicate result does not mean the underlying company is illegitimate. */
+  exclude_company?: boolean;
+}
+
+export interface DeleteProspectResult {
+  id: string;
+  deleted: boolean;
+  /** True only if exclude_company was requested, honored (reason was not "duplicate"), and the exclusion was created. */
+  excluded: boolean;
+}
+
+/**
+ * Reasons that justify blocking future Discovery for a domain. Deliberately excludes "duplicate" -- see DeleteProspectInput.
+ */
+export type DiscoveryExclusionReason = typeof DiscoveryExclusionReason[keyof typeof DiscoveryExclusionReason];
+
+
+export const DiscoveryExclusionReason = {
+  not_relevant: 'not_relevant',
+  wrong_match: 'wrong_match',
+  bad_source: 'bad_source',
+  other: 'other',
+} as const;
+
+export interface DiscoveryExclusion {
+  id: string;
+  territory_id: string;
+  territory_name: string;
+  domain: string;
+  company_id?: string | null;
+  company_name?: string | null;
+  reason: DiscoveryExclusionReason;
+  note?: string | null;
+  created_by_user_id?: string | null;
+  created_by_name?: string | null;
+  created_at: string;
+  active: boolean;
+  restored_at?: string | null;
+  restored_by_user_id?: string | null;
+}
+
 export interface UserEditInput {
   /** @minLength 1 */
   name?: string;

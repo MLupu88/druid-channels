@@ -27,6 +27,7 @@ import opportunitiesRouter from "./opportunities";
 import channelChiefRouter from "./channel_chief";
 import weeklyReportingRouter from "./weekly_reporting";
 import managementReportingRouter from "./management_reporting";
+import discoveryExclusionsRouter from "./discovery_exclusions";
 
 const router: IRouter = Router();
 
@@ -58,5 +59,6 @@ router.use(opportunitiesRouter);
 router.use(channelChiefRouter);
 router.use(weeklyReportingRouter);
 router.use(managementReportingRouter);
+router.use(discoveryExclusionsRouter);
 
 export default router;

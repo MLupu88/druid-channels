@@ -21,6 +21,9 @@ import {
   usePreviewMetricMapping,
   useListManualMetricValues,
   useUpsertManualMetricValue,
+  useListDiscoveryExclusions,
+  useRestoreDiscoveryExclusion,
+  getListDiscoveryExclusionsQueryKey,
   getListUsersQueryKey,
   getListTerritoriesQueryKey,
   getListScanConfigsQueryKey,
@@ -1538,6 +1541,93 @@ function ChannelRadarTab() {
   );
 }
 
+// Phase 11.5A: admin-only visibility/restore for PAM-created "don't
+// suggest this company again" exclusions (see DELETE /prospects/:id's
+// exclude_company option). Deliberately plain business language -- no
+// domain-matching internals, no bulk actions, no raw IDs as the primary
+// UX. Restoring makes the company eligible for Discovery again.
+function ExcludedResearchResultsSection() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: exclusions, isLoading } = useListDiscoveryExclusions();
+
+  const restoreMutation = useRestoreDiscoveryExclusion({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListDiscoveryExclusionsQueryKey() });
+        toast({ title: 'Company restored', description: 'It can be suggested by Discovery again.' });
+      },
+      onError: (err: any) => {
+        toast({
+          variant: 'destructive',
+          title: 'Could not restore',
+          description: err?.data?.error ?? err?.message ?? 'The exclusion could not be restored.',
+        });
+      },
+    },
+  });
+
+  const REASON_LABELS: Record<string, string> = {
+    not_relevant: 'Not a relevant partner',
+    wrong_match: 'Wrong company or bad match',
+    bad_source: 'Bad source or garbage result',
+    other: 'Other',
+  };
+
+  return (
+    <div>
+      <h3 className="text-sm font-medium mb-1">Excluded research results</h3>
+      <p className="text-xs text-muted-foreground mb-4">
+        Companies a PAM marked "don't suggest again." Discovery skips them until restored here.
+      </p>
+      {isLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      ) : !exclusions || exclusions.length === 0 ? (
+        <p className="text-sm text-muted-foreground border border-dashed border-border/60 rounded-md p-4">
+          No companies are currently excluded from research.
+        </p>
+      ) : (
+        <div className="border border-border/60 rounded-md bg-card overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Company / domain</TableHead>
+                <TableHead>Reason</TableHead>
+                <TableHead>Excluded by</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead className="text-right">&nbsp;</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {exclusions.map((e) => (
+                <TableRow key={e.id}>
+                  <TableCell className="font-medium">{e.company_name ?? e.domain}</TableCell>
+                  <TableCell className="text-muted-foreground">{REASON_LABELS[e.reason] ?? e.reason}</TableCell>
+                  <TableCell className="text-muted-foreground">{e.created_by_name ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{new Date(e.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => restoreMutation.mutate({ id: e.id })}
+                      disabled={restoreMutation.isPending}
+                    >
+                      Restore
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConnectionsDataTab() {
   const { data: connections, isLoading: connectionsLoading } = useListConnections();
   const { data: mappings, isLoading: mappingsLoading } = useListMetricMappings();
@@ -1604,6 +1694,8 @@ function ConnectionsDataTab() {
           </Table>
         </div>
       </div>
+
+      <ExcludedResearchResultsSection />
 
       {editingMapping && (
         <MetricMappingDrawer mapping={editingMapping} onClose={() => setEditingMapping(null)} />

@@ -71,7 +71,8 @@ import { getPartnersSubNavItems } from '@/lib/navigation';
 import { PageHeader } from '@/components/page-header';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { statusTone } from '@/lib/status-tone';
-import type { ProspectDecisionInputDecision, ProspectNextAction, ListProspectsFreshness } from '@workspace/api-client-react';
+import type { ProspectDecisionInputDecision, ProspectNextAction, ListProspectsFreshness, ProspectRemovalReason } from '@workspace/api-client-react';
+import { RemoveProspectDialog } from '@/components/remove-prospect-dialog';
 
 type NextActionFilter = 'all' | ProspectNextAction;
 type FreshnessFilter = 'all' | Exclude<ListProspectsFreshness, null>;
@@ -286,9 +287,9 @@ export default function MyProspects() {
     });
   };
 
-  const handleDelete = () => {
+  const handleDelete = ({ reason, excludeCompany }: { reason: ProspectRemovalReason; excludeCompany: boolean }) => {
     if (!selectedId) return;
-    deleteMutation.mutate({ id: selectedId });
+    deleteMutation.mutate({ id: selectedId, data: { reason, exclude_company: excludeCompany } });
   };
 
   const handleDecision = (decision: ProspectDecisionInputDecision) => {
@@ -837,25 +838,13 @@ export default function MyProspects() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Delete {detail?.company.name}?</DialogTitle>
-            <DialogDescription>
-              This permanently removes the prospect and its activity history. This cannot be undone.
-              Prospects already in the recruitment process can't be deleted this way — update the
-              recruitment stage instead.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete prospect
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RemoveProspectDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        companyName={detail?.company.name}
+        isPending={deleteMutation.isPending}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

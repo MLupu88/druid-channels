@@ -20,6 +20,5 @@ export interface ChannelChiefSnapshot {
   portfolio: ChannelChiefPortfolioSummary;
   discovery: ChannelChiefDiscoverySummary;
   activity: ChannelChiefActivitySummary;
-  /** Deterministic notes about missing/incomplete/structurally-absent data (e.g. no company-wide target). Never a substitute for treating an empty list as "unknown". */
   data_quality_notes: string[];
 }
