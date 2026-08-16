@@ -73,11 +73,121 @@ export function normalizeUrl(rawUrl: string): string {
   return `${hostname}${pathname}${query}`;
 }
 
+// Phase 11.6E: conservative, deterministic garbage removal applied to a
+// crawled page's raw text BEFORE boundExtractedText/computeContentHash --
+// see refreshDruidContextSources below, the only caller. This is NOT
+// summarization and never uses an LLM: it only strips extraction noise
+// (SVG path dumps, embedded data-URI blobs, obviously-repeated chrome
+// lines) and applies narrow, deterministic whitespace normalization
+// (collapsing repeated horizontal whitespace and excess blank lines) that
+// Tavily's "text" format sometimes lets through.
+//
+// This preserves meaningful prose/content -- no semantic extraction, no
+// summarization, nothing that could discard real DRUID product/business
+// text -- but it is NOT a claim that every input is byte-identical to its
+// output. Whitespace/formatting normalization can and does change bytes
+// even within otherwise-real content (e.g. a sentence with a stray double
+// space is re-flowed to a single space). Only text that happens to contain
+// none of the patterns below (no double-spaces, no blank-line runs, no
+// consecutive duplicate lines, etc.) round-trips byte-for-byte unchanged
+// (verified by tests/druidContextCleanup.test.ts).
+//
+// Deliberately narrow and pattern-based rather than "smart": every rule
+// here only ever removes a whole line (or a self-contained inline blob),
+// never rewrites/truncates the middle of a real sentence, and every rule
+// is anchored to a pattern real prose essentially cannot match (see each
+// step's own comment for why).
+
+// Inline base64/data-URI blobs (e.g. an inlined SVG or image the raw HTML
+// converter didn't fully strip) -- these are never meaningful text, and
+// the pattern (a data: URI, MIME type, base64 payload) cannot occur inside
+// real prose by coincidence.
+const DATA_URI_PATTERN = /data:[a-z0-9.+-]+\/[a-z0-9.+-]+;base64,[a-zA-Z0-9+/=]+/gi;
+
+// A line made up ALMOST ENTIRELY of SVG path-command letters (M L C Z Q A
+// H V, both cases), digits, and path punctuation (. , - space) is an SVG
+// "d" attribute dump, not prose -- real English sentences always contain
+// letters far outside that tiny set (e, t, r, n, i, o, ...), so this can
+// only false-positive on a pathological line of almost nothing but the
+// letters MLCZQAHV, which does not occur in real DRUID product copy.
+// Requires a minimum length so a short real fragment (e.g. a lone "A." or
+// "Q&A" heading) is never caught by accident.
+const SVG_PATH_LINE = /^[MLCZQAHVmlczqahv0-9.,\-\s]{40,}$/;
+
+// A small, explicit, exact-match (after trim/case-fold) blocklist of
+// generic site-chrome phrases -- deliberately NOT a fuzzy "contains
+// cookie" heuristic, which could wrongly strip a real sentence that
+// happens to mention cookies/privacy in a legitimate business context.
+// Every entry here is a phrase that is ONLY ever site chrome when it is
+// the ENTIRE line, never a substring rule.
+const BOILERPLATE_LINE_BLOCKLIST = new Set([
+  "accept all cookies",
+  "accept cookies",
+  "reject all cookies",
+  "cookie policy",
+  "cookie settings",
+  "privacy policy",
+  "terms of service",
+  "terms and conditions",
+  "all rights reserved",
+  "skip to content",
+  "skip to main content",
+]);
+
+function isBoilerplateLine(line: string): boolean {
+  const normalized = line.trim().toLowerCase().replace(/[.©]/g, "").trim();
+  if (BOILERPLATE_LINE_BLOCKLIST.has(normalized)) return true;
+  // "© 2026 DRUID AI. All rights reserved." / "Copyright 2026 DRUID" style
+  // copyright lines -- anchored to the start of the line so a real
+  // sentence that happens to mention a year is never affected.
+  if (/^(©|copyright)\s*\d{4}\b/i.test(line.trim())) return true;
+  return false;
+}
+
+export function cleanExtractedText(text: string): string {
+  if (!text) return text;
+
+  const withoutDataUris = text.replace(DATA_URI_PATTERN, "");
+
+  const rawLines = withoutDataUris.split("\n");
+  const keptLines: string[] = [];
+  for (const rawLine of rawLines) {
+    // Collapse repeated horizontal whitespace within the line only --
+    // never touches newlines, so paragraph structure is untouched.
+    const line = rawLine.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/g, "");
+    const trimmed = line.trim();
+
+    if (trimmed.length >= 40 && SVG_PATH_LINE.test(trimmed)) continue;
+    if (trimmed.length > 0 && isBoilerplateLine(trimmed)) continue;
+
+    // Collapse a line that is an exact repeat of the immediately preceding
+    // KEPT non-blank line (e.g. a nav item Tavily's extractor emitted
+    // twice back to back) -- only ever removes a consecutive duplicate,
+    // never a line that's merely similar, and never a blank line (blank
+    // lines are handled separately below so paragraph spacing survives).
+    const previousKept = keptLines[keptLines.length - 1];
+    if (trimmed.length > 0 && previousKept !== undefined && previousKept.trim() === trimmed) continue;
+
+    keptLines.push(line);
+  }
+
+  // Collapse 3+ consecutive blank lines down to a single blank line
+  // (one paragraph break) -- never removes a single blank line between
+  // two real paragraphs.
+  const collapsedBlankRuns = keptLines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
+
+  return collapsedBlankRuns.trim();
+}
+
 // A safety cap on what gets persisted/shown for review -- Tavily's basic
 // extract_depth content is already reasonably sized, so this rarely
 // actually truncates; it exists to bound worst-case row size and UI
 // rendering, same philosophy as discoveryProviders/extraction.ts's
-// MAX_TEXT_LENGTH.
+// MAX_TEXT_LENGTH. Operates on the already-cleaned text (see
+// refreshDruidContextSources) -- cleanup happens first so truncation never
+// cuts off mid-blob-that-should-have-been-removed-anyway.
 const MAX_EXTRACTED_TEXT_LENGTH = 8_000;
 
 export function boundExtractedText(text: string): string {
@@ -118,7 +228,23 @@ export async function refreshDruidContextSources(
 
   for (const page of pages) {
     const normalizedUrl = normalizeUrl(page.url);
-    const boundedText = boundExtractedText(page.text);
+    // Phase 11.6E: deterministic garbage removal runs BEFORE bounding/
+    // hashing -- the persisted extractedText and the contentHash/versioning
+    // key are both over the cleaned text, never the raw crawl output.
+    //
+    // Version-transition note: existing druid_context_sources rows are
+    // NEVER rewritten by this change (no migration/backfill exists) -- an
+    // existing row's content_hash was computed from the OLD, uncleaned
+    // text. So on the FIRST refresh after this feature ships, a page whose
+    // only real-world change is exactly the kind of noise cleanExtractedText
+    // now strips will still (correctly, given the stored comparison target)
+    // produce a hash that does NOT match that old raw-text row, and a new
+    // pending_review version is created -- this is expected and acceptable,
+    // not a defect. From that point on, once a CLEANED version of a page
+    // exists in the table, later crawls whose cleaned text is unchanged
+    // hash-match THAT version normally and only bump last_seen_at, exactly
+    // as the pre-existing versioning logic (untouched here) already did.
+    const boundedText = boundExtractedText(cleanExtractedText(page.text));
     const contentHash = computeContentHash(boundedText);
 
     const [existing] = await db

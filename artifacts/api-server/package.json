@@ -16,6 +16,7 @@
     "test:druid-facts-authz": "tsx --test tests/druidFactsAuthz.test.ts",
     "test:format-trusted-druid-context": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/formatTrustedDruidContext.test.ts",
     "test:druid-context-ingestion-provider": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/druidContextIngestionProvider.test.ts",
+    "test:druid-context-cleanup": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/druidContextCleanup.test.ts",
     "test:druid-context-sources": "tsx --test tests/druidContextSources.test.ts",
     "test:druid-context-sources-authz": "tsx --test tests/druidContextSourcesAuthz.test.ts",
     "test:company-identity": "tsx --test tests/companyIdentity.test.ts",

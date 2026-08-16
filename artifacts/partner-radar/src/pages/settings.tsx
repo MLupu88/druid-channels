@@ -2117,7 +2117,7 @@ function DruidFactsSection() {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <h3 className="text-sm font-medium">DRUID facts</h3>
+        <h3 className="text-section-title">DRUID facts</h3>
         <Button size="sm" onClick={() => setEditingFact(null)}>
           <Plus className="h-4 w-4 mr-1" /> Add fact
         </Button>
@@ -2208,11 +2208,27 @@ function DruidContextSourceStatusBadge({ status }: { status: string }) {
   return <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-normal">Pending review</Badge>;
 }
 
+// Phase 11.6E: best-effort readable label derived FROM the real source_url
+// -- e.g. "druidai.com" -- never a separate title field (the schema has
+// none, see lib/db/src/schema/druid_context_sources.ts) and never
+// fabricated; falls back to the raw URL if it somehow fails to parse.
+function sourceDomainLabel(sourceUrl: string): string {
+  try {
+    return new URL(sourceUrl).hostname.replace(/^www\./, '');
+  } catch {
+    return sourceUrl;
+  }
+}
+
 function CreateFactFromSourceDialog({ source, onClose }: { source: DruidContextSource; onClose: () => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [category, setCategory] = useState<string>('product');
-  const [factText, setFactText] = useState(source.extracted_text.slice(0, 500));
+  // Phase 11.6E: starts EMPTY -- previously prefilled with
+  // source.extracted_text.slice(0, 500), which meant the reviewer had to
+  // delete/rewrite almost everything manually. The source itself stays
+  // fully visible, read-only, right above this field instead.
+  const [factText, setFactText] = useState('');
   const [sourceNote, setSourceNote] = useState('');
 
   const createMutation = useCreateFactFromDruidContextSource({
@@ -2231,14 +2247,31 @@ function CreateFactFromSourceDialog({ source, onClose }: { source: DruidContextS
 
   return (
     <Dialog open onOpenChange={(open) => !open && !createMutation.isPending && onClose()}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="sm:max-w-[640px]">
         <DialogHeader>
           <DialogTitle>Create DRUID fact from source</DialogTitle>
           <DialogDescription>
-            Rewrite the extracted material into a concise, standalone fact. The new fact starts <strong>unverified</strong> -- it still needs the existing Verify action before it counts as trusted DRUID context.
+            The new fact starts <strong>unverified</strong> -- it still needs the existing Verify action in DRUID facts before it counts as trusted DRUID context.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {/* SOURCE -- read-only reference, never itself the fact */}
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70 mb-1.5">Source</p>
+            <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-1.5">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-sm font-medium text-foreground">{sourceDomainLabel(source.source_url)}</span>
+                <a href={source.source_url} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground underline break-all">
+                  {source.source_url}
+                </a>
+              </div>
+              <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
+                {source.extracted_text}
+              </p>
+            </div>
+          </div>
+
+          {/* FACT -- the authored business knowledge, distinct from the source above */}
           <div className="space-y-2">
             <Label>Category</Label>
             <Select value={category} onValueChange={setCategory}>
@@ -2254,7 +2287,16 @@ function CreateFactFromSourceDialog({ source, onClose }: { source: DruidContextS
           </div>
           <div className="space-y-2">
             <Label htmlFor="source-fact-text">Fact</Label>
-            <Textarea id="source-fact-text" rows={4} value={factText} onChange={(e) => setFactText(e.target.value)} />
+            <Textarea
+              id="source-fact-text"
+              rows={3}
+              value={factText}
+              onChange={(e) => setFactText(e.target.value)}
+              placeholder="Write the concise DRUID fact supported by this source."
+            />
+            <p className="text-xs text-muted-foreground">
+              One concise, source-supported statement that can safely be reused in DRUID qualification and recommendations -- not a copy of the source text above.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="source-fact-note">Source note (optional)</Label>
@@ -2316,7 +2358,7 @@ function DruidContextSourcesSection() {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <h3 className="text-sm font-medium">Source material</h3>
+        <h3 className="text-section-title">Source material</h3>
         <Button size="sm" variant="outline" disabled={refreshMutation.isPending} onClick={() => refreshMutation.mutate()}>
           {refreshMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
           Refresh from druidai.com
@@ -2395,8 +2437,15 @@ function DruidContextSourcesSection() {
 function DruidContextTab() {
   return (
     <div className="space-y-8">
+      {/* Phase 11.6E: DRUID facts (curated, verifiable knowledge) and
+          Source material (raw crawled evidence) are clearly separated
+          sections, matching the Connections/Metric setup divider pattern
+          from 11.6D -- source material must never read as if it were
+          itself trusted DRUID context. */}
       <DruidFactsSection />
-      <DruidContextSourcesSection />
+      <div className="border-t border-border/60 pt-8">
+        <DruidContextSourcesSection />
+      </div>
     </div>
   );
 }
