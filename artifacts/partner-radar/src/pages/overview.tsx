@@ -40,8 +40,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SectionCard, SectionCardHeader, SectionCardContent } from '@/components/section-card';
 import { ArrowDown, ArrowUp, Minus, X, Download, Loader2, Pencil, Sparkles, RefreshCw, Sun, Moon, ChevronDown } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { PageHeader } from '@/components/page-header';
@@ -142,11 +142,11 @@ function AiChannelBriefPanel({
 }) {
   if (isLoading) {
     return (
-      <Card className="shadow-none border-border/70">
-        <CardContent className="p-5">
+      <SectionCard>
+        <SectionCardContent>
           <Skeleton className="h-20 w-full" />
-        </CardContent>
-      </Card>
+        </SectionCardContent>
+      </SectionCard>
     );
   }
   if (!brief) return null;
@@ -154,16 +154,22 @@ function AiChannelBriefPanel({
   const notConfigured = brief.provider_status === 'not_configured';
 
   return (
-    <Card className="shadow-none border-border/70">
-      <CardHeader className="py-4 px-5 border-b border-border/60 bg-muted/20">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <CardTitle className="text-base font-medium">AI Channel Brief</CardTitle>
+    <SectionCard>
+      <SectionCardHeader
+        title={
+          <span className="flex items-center gap-2">
+            {/* Phase 11.6B: decorative icon accent, not text -- uses the raw
+                --brand DRUID green rather than the accessible-contrast
+                --primary shade, per the 11.6A brand/primary separation
+                (non-text accents may use the true brand color). */}
+            <Sparkles className="h-4 w-4 text-brand" />
+            AI Channel Brief
             <Badge variant="outline" className="text-primary/80 border-primary/30 bg-primary/5 font-medium text-[10px] tracking-wide px-1.5 py-0">
               AI-GENERATED
             </Badge>
-          </div>
+          </span>
+        }
+        actions={
           <Button
             variant="outline"
             size="sm"
@@ -174,9 +180,9 @@ function AiChannelBriefPanel({
             {isRegenerating ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
             {brief.state === 'never_generated' ? 'Generate brief' : 'Regenerate'}
           </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="p-5 space-y-4">
+        }
+      />
+      <SectionCardContent className="space-y-4">
         <p className="text-xs text-muted-foreground">
           AI-generated interpretation, based only on the connected/manual metrics referenced below -- not a substitute for reviewing the tables yourself.
         </p>
@@ -201,7 +207,7 @@ function AiChannelBriefPanel({
 
         {brief.content && (
           <div className="space-y-4">
-            <p className="text-sm leading-relaxed text-foreground">{brief.content.executive_summary}</p>
+            <p className="text-body">{brief.content.executive_summary}</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <AiBriefEvidenceList title="Risks" items={brief.content.risks} metricLabelByKey={metricLabelByKey} />
@@ -219,8 +225,8 @@ function AiChannelBriefPanel({
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </SectionCardContent>
+    </SectionCard>
   );
 }
 
@@ -354,31 +360,34 @@ function PamClockCard({ pam }: { pam: User }) {
 // Only PAMs with BOTH location_label and timezone explicitly configured
 // render a card -- no placeholder/guessed entries for the rest. Renders
 // nothing at all if no PAM has been configured yet.
+//
+// Phase 11.6B: condensed from a full section (heading + bordered Card +
+// separate bordered-top attribution footer) into one compact horizontal
+// strip -- moved high on the page (directly below the AI Channel Brief),
+// so it can no longer afford the earlier "large, quiet, last thing on the
+// page" treatment. Same data, same PamClockCard widget, same attribution
+// text -- only the surrounding chrome shrank to a single row.
 function PamLocalTimeSection({ users }: { users: User[] | undefined }) {
   const configuredPams = (users ?? []).filter((u) => u.role === 'pam' && u.active && u.location_label && u.timezone);
   if (configuredPams.length === 0) return null;
 
   return (
-    <section className="space-y-2 max-w-5xl">
-      {/* Phase 11.3: demoted from the same section-heading weight as "Core
-          Channel Performance" to a small muted label -- a utility, not a
-          featured section. */}
-      <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">PAM Local Time</h2>
-      <Card className="shadow-none border-border/70">
-        <CardContent className="p-3">
-          <div className="flex flex-wrap gap-4">
-            {configuredPams.map((pam) => (
-              <PamClockCard key={pam.id} pam={pam} />
-            ))}
-          </div>
-          <p className="text-[11px] text-muted-foreground/70 mt-3 pt-2 border-t border-border/40">
-            <a href="https://time.now" target="_blank" rel="noreferrer" className="hover:text-foreground hover:underline">
-              World Time API by Time.Now
-            </a>
-          </p>
-        </CardContent>
-      </Card>
-    </section>
+    <div className="max-w-5xl flex items-center gap-4 rounded-md border border-border/60 bg-card px-4 py-2.5 overflow-x-auto">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">PAM Local Time</span>
+      <div className="flex items-center gap-4 shrink-0">
+        {configuredPams.map((pam) => (
+          <PamClockCard key={pam.id} pam={pam} />
+        ))}
+      </div>
+      <a
+        href="https://time.now"
+        target="_blank"
+        rel="noreferrer"
+        className="text-[10px] text-muted-foreground/60 hover:text-foreground hover:underline ml-auto shrink-0 whitespace-nowrap"
+      >
+        World Time API by Time.Now
+      </a>
+    </div>
   );
 }
 
@@ -775,6 +784,29 @@ export default function Overview() {
             own Overview -- the Head of Channels Overview is unchanged. */}
         {!isGlobalUser && <PamActionQueue />}
 
+        {/* Phase 11.6B: AI Channel Brief and PAM Local Time moved here --
+            high on the page, directly after the header/action-queue tier
+            and before any KPI/commercial data ("what should I know" and
+            "what's the regional context" ahead of "what are the numbers",
+            per the explicit product requirement). Neither is nested inside
+            the `kpis ?` branch below, so both keep rendering (with their
+            own independent loading/empty states) regardless of KPI load
+            state -- unchanged from before this move, only the position
+            changed. */}
+        {isGlobalUser && (
+          <div className="max-w-5xl">
+            <AiChannelBriefPanel
+              brief={aiBrief}
+              isLoading={isLoadingAiBrief}
+              onRegenerate={handleRegenerateAiBrief}
+              isRegenerating={regenerateAiBriefMutation.isPending}
+              metricLabelByKey={metricLabelByKey}
+            />
+          </div>
+        )}
+
+        {canViewTeamData && <PamLocalTimeSection users={teamUsers} />}
+
         {/* Phase 5B-1: Irina annual target -> quarterly PAM allocations ->
             partner opportunities -> pipeline/closed revenue/attainment.
             Head/Admin get the full cascade + allocation management; a PAM
@@ -796,15 +828,16 @@ export default function Overview() {
         ) : kpis ? (
           <div className="space-y-6 max-w-5xl">
             <section className="space-y-3">
-              <h2 className="text-sm font-semibold text-foreground tracking-tight">Core Channel Performance</h2>
+              <h2 className="text-section-title">Core Channel Performance</h2>
 
               {/* Phase 11.3: the 3 tables below were 3 separate, equally-
                   weighted Cards (each with its own bordered+shaded header) --
                   now one Card with divided sections and a lighter inline
                   header per section, so they read as one KPI review rather
                   than 3 competing panels. Data/columns/click-through to the
-                  detail slide-over are untouched. */}
-              <Card className="shadow-none border-border/70 divide-y divide-border/60">
+                  detail slide-over are untouched. Phase 11.6B: Card ->
+                  SectionCard (11.6A foundation), same rendered classes. */}
+              <SectionCard className="divide-y divide-border/60">
                 {/* Table 1: Partner development */}
                 <div>
                   <div className="flex items-center gap-2 px-5 py-3">
@@ -910,34 +943,12 @@ export default function Overview() {
                     </TableBody>
                   </Table>
                 </div>
-              </Card>
+              </SectionCard>
             </section>
           </div>
         ) : (
           <div className="text-center py-12 text-muted-foreground">No data available.</div>
         )}
-
-        {/* Phase 11.3: AI Channel Brief moved after the core KPI review
-            (supporting intelligence, not the first thing seen) -- panel
-            itself untouched, and deliberately NOT nested inside the `kpis ?`
-            branch above so it still renders (with its own loading/empty
-            states) independent of KPI load state, exactly as before. */}
-        {isGlobalUser && (
-          <div className="max-w-5xl">
-            <AiChannelBriefPanel
-              brief={aiBrief}
-              isLoading={isLoadingAiBrief}
-              onRegenerate={handleRegenerateAiBrief}
-              isRegenerating={regenerateAiBriefMutation.isPending}
-              metricLabelByKey={metricLabelByKey}
-            />
-          </div>
-        )}
-
-        {/* Phase 11.3: secondary utility, deliberately last and visually
-            quiet -- see PamLocalTimeSection's own reduced heading treatment
-            below. */}
-        {canViewTeamData && <PamLocalTimeSection users={teamUsers} />}
       </div>
 
       {/* Right Side Slide-over Panel for Details */}

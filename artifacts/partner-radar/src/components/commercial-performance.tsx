@@ -8,7 +8,9 @@ import {
   useListTeamTargets,
 } from '@workspace/api-client-react';
 import type { AnnualCascade, PamAllocation, WeeklyKpiRow } from '@workspace/api-client-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardHeader, CardTitle } from '@/components/ui/card';
+import { SectionCard, SectionCardHeader, SectionCardContent } from '@/components/section-card';
+import { MetricTile } from '@/components/metric-tile';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -127,23 +129,23 @@ export function CommercialPerformanceHead({
   return (
     <section className="space-y-3 max-w-5xl" data-testid="section-commercial-performance-head">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground tracking-tight flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-primary" />
+        <h2 className="text-section-title flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-brand" />
           Commercial Performance -- {year}
         </h2>
       </div>
 
-      <Card className="shadow-none border-border/70">
-        <CardHeader className="py-4 px-5 border-b border-border/60 bg-muted/20">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-medium">Annual target &amp; attainment</CardTitle>
+      <SectionCard>
+        <SectionCardHeader
+          title="Annual target & attainment"
+          actions={
             <Button variant="outline" size="sm" onClick={() => setEditTargetOpen(true)} data-testid="button-edit-annual-target">
               <Pencil className="h-3.5 w-3.5 mr-1.5" />
               {cascade.annual_target === null ? 'Set annual target' : 'Edit annual target'}
             </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="p-5 space-y-4">
+          }
+        />
+        <SectionCardContent className="space-y-4">
           <p className="text-xs text-muted-foreground -mt-1" data-testid="text-annual-target-currency-note">
             Annual target, attainment, and allocation figures below are always shown in USD -- the pipeline/revenue tiles use your selected display currency ({currency}).
           </p>
@@ -156,7 +158,14 @@ export function CommercialPerformanceHead({
             />
             <StatTile label={`Sourced pipeline (${currency})`} value={formatMetricValue(sourced?.current, 'partner_sourced_pipeline', currency)} accentClassName="text-sky-700" />
             <StatTile label={`Influenced pipeline (${currency})`} value={formatMetricValue(influenced?.current, 'partner_influenced_pipeline', currency)} accentClassName="text-violet-700" />
-            <StatTile label={`Closed revenue (${currency})`} value={formatMetricValue(closedRevenue?.current, 'closed_revenue', currency)} />
+            {/* Phase 11.6B: Closed revenue is the one primary/dominant commercial
+                figure on this page (money first, per the 11.6 visual-system
+                direction) -- MetricTile's variant="primary" is the only tile
+                swapped from the local StatTile helper, since it's the only one
+                the product requirement calls out for visual dominance; the
+                rest keep their existing accent-colored StatTile treatment
+                unchanged. Same label/value expression as before. */}
+            <MetricTile label={`Closed revenue (${currency})`} value={formatMetricValue(closedRevenue?.current, 'closed_revenue', currency)} variant="primary" />
             <StatTile label="Opportunities" value={formatCount(opportunitiesCreated?.current)} />
           </div>
 
@@ -182,15 +191,22 @@ export function CommercialPerformanceHead({
               <span className="text-muted-foreground">Set an annual target to see unallocated/overallocated amounts.</span>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </SectionCardContent>
+      </SectionCard>
 
-      <Card className="shadow-none border-border/70">
+      {/* Phase 11.6B: this card's header keeps its original hand-written
+          CardHeader/CardTitle (not SectionCardHeader) specifically to
+          preserve the text-allocation-table-currency-note data-testid,
+          which tests/commercialCurrencyDisplay.test.ts asserts on as a
+          literal source string -- SectionCardHeader's description slot
+          doesn't accept a custom data-testid. Only the outer Card ->
+          SectionCard swap (identical rendered classes) applies here. */}
+      <SectionCard>
         <CardHeader className="py-4 px-5 border-b border-border/60 bg-muted/20">
           <CardTitle className="text-base font-medium">PAM quarterly allocations</CardTitle>
           <p className="text-xs text-muted-foreground" data-testid="text-allocation-table-currency-note">All amounts in USD.</p>
         </CardHeader>
-        <CardContent className="p-0">
+        <SectionCardContent noPadding>
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -245,8 +261,8 @@ export function CommercialPerformanceHead({
               </tfoot>
             )}
           </Table>
-        </CardContent>
-      </Card>
+        </SectionCardContent>
+      </SectionCard>
 
       {editTargetOpen && (
         <EditAnnualTargetDialog
@@ -445,12 +461,12 @@ export function CommercialPerformancePam({ weeklyCommercial, currency }: { weekl
 
   return (
     <section className="space-y-3 max-w-5xl" data-testid="section-commercial-performance-pam">
-      <h2 className="text-sm font-semibold text-foreground tracking-tight flex items-center gap-2">
-        <TrendingUp className="h-4 w-4 text-primary" />
+      <h2 className="text-section-title flex items-center gap-2">
+        <TrendingUp className="h-4 w-4 text-brand" />
         My Commercial Performance
       </h2>
-      <Card className="shadow-none border-border/70">
-        <CardContent className="p-5 space-y-4">
+      <SectionCard>
+        <SectionCardContent className="space-y-4">
           <p className="text-xs text-muted-foreground" data-testid="text-pam-target-currency-note">
             Quarter target and attainment are always shown in USD -- pipeline/revenue tiles use your selected display currency ({currency}).
           </p>
@@ -463,11 +479,11 @@ export function CommercialPerformancePam({ weeklyCommercial, currency }: { weekl
             />
             <StatTile label={`Sourced pipeline (${currency})`} value={formatMetricValue(sourced?.current, 'partner_sourced_pipeline', currency)} accentClassName="text-sky-700" />
             <StatTile label={`Influenced pipeline (${currency})`} value={formatMetricValue(influenced?.current, 'partner_influenced_pipeline', currency)} accentClassName="text-violet-700" />
-            <StatTile label={`Closed revenue (${currency})`} value={formatMetricValue(closedRevenue?.current, 'closed_revenue', currency)} />
+            <MetricTile label={`Closed revenue (${currency})`} value={formatMetricValue(closedRevenue?.current, 'closed_revenue', currency)} variant="primary" />
             <StatTile label="Opportunities" value={formatCount(opportunitiesCreated?.current)} />
           </div>
-        </CardContent>
-      </Card>
+        </SectionCardContent>
+      </SectionCard>
     </section>
   );
 }
