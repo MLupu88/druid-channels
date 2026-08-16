@@ -10,6 +10,17 @@
 // progress through the funnel, and a few badges (opportunity attribution
 // type, "pushed to HubSpot") use one-off categorical hues -- both are
 // distinct visual meanings, not duplication, so they keep their own maps.
+//
+// Phase 11.6A: this remains the single canonical success/warning/danger/
+// info/neutral mapping -- index.css now also carries a matching --attention/
+// --destructive design-token pair for components that want a token instead
+// of a literal (e.g. metric-tile.tsx's `attention` prop). The literal
+// Tailwind strings below are deliberately left unchanged in this slice:
+// migrating STATUS_TONE_CLASS onto the new tokens would shift the exact
+// rendered color on every page that already consumes it (Recruitment,
+// Portfolio, Campaigns, Opportunities, Channel Radar, Team Targets), which
+// belongs to whichever later 11.6 slice actually touches each of those
+// pages, not this foundation-only slice.
 export type StatusTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
 export const STATUS_TONE_CLASS: Record<StatusTone, string> = {

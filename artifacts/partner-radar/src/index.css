@@ -19,6 +19,21 @@
   --color-popover-foreground: hsl(var(--popover-foreground));
   --color-popover-border: hsl(var(--popover-border));
 
+  /* Phase 11.6A amendment: BRAND identity, kept explicitly separate from
+     --primary below. --brand is the actual, raw, unaltered DRUID green
+     sampled from the shipped logo -- never darkened for text contrast. It
+     is for non-text/decorative uses (accents, indicators, chart fills,
+     surfaces paired with --brand-foreground) where the pairing's own
+     contrast is controlled at the point of use, not assumed. See the
+     :root block below for the full derivation and rationale. */
+  --color-brand: hsl(var(--brand));
+  --color-brand-foreground: hsl(var(--brand-foreground));
+  --color-brand-border: var(--brand-border);
+
+  /* --primary is the ACCESSIBLE FUNCTIONAL shade of the same brand hue --
+     used for text, links, focus rings, and white-on-fill controls, i.e.
+     every place this app already consumes --primary today. It is not the
+     brand swatch itself; see --brand above for that. */
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
   --color-primary-border: var(--primary-border);
@@ -26,6 +41,14 @@
   --color-secondary: hsl(var(--secondary));
   --color-secondary-foreground: hsl(var(--secondary-foreground));
   --color-secondary-border: var(--secondary-border);
+
+  /* Phase 11.6A: muted purple-gray secondary ACCENT -- deliberately a
+     separate token from --secondary above (shadcn's existing gray
+     Button/Badge "secondary" variant), which is untouched, so this never
+     changes what variant="secondary" already renders anywhere in the app. */
+  --color-secondary-accent: hsl(var(--secondary-accent));
+  --color-secondary-accent-foreground: hsl(var(--secondary-accent-foreground));
+  --color-secondary-accent-border: var(--secondary-accent-border);
 
   --color-muted: hsl(var(--muted));
   --color-muted-foreground: hsl(var(--muted-foreground));
@@ -35,9 +58,22 @@
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-accent-border: var(--accent-border);
 
+  /* Phase 11.6A: restrained amber attention/warning semantic -- for
+     components that want a real token instead of a hand-copied Tailwind
+     literal (lib/status-tone.ts's existing amber-50/700/200 literal stays
+     as-is; this is additive, not a replacement for it). */
+  --color-attention: hsl(var(--attention));
+  --color-attention-foreground: hsl(var(--attention-foreground));
+  --color-attention-border: var(--attention-border);
+
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-destructive-border: var(--destructive-border);
+
+  /* Phase 11.6A: strong ink/charcoal hierarchy tier -- for page/section
+     titles and other high-emphasis text, distinct from the normal
+     --foreground body-text tone and from --muted-foreground. */
+  --color-ink: hsl(var(--ink));
 
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
@@ -76,54 +112,111 @@
   --elevate-1: rgba(0, 0, 0, 0.03);
   --elevate-2: rgba(0, 0, 0, 0.08);
 
-  /* Fluent 2 Light neutral background */
+  /* Neutral surface scale -- cool slate/gray, unrelated to brand hue */
   --background: 0 0% 96%;
   --foreground: 0 0% 14%;
-  
+
   --border: 0 0% 88%;
-  
+
   /* White surfaces */
   --card: 0 0% 100%;
   --card-foreground: 0 0% 14%;
   --card-border: 0 0% 88%;
-  
+
   --sidebar: 0 0% 100%;
   --sidebar-foreground: 0 0% 14%;
   --sidebar-border: 0 0% 88%;
-  --sidebar-primary: 171 78% 27%;
+  --sidebar-primary: 144 100% 24%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 0 0% 95%;
   --sidebar-accent-foreground: 0 0% 14%;
-  --sidebar-ring: 171 78% 27%;
-  
+  --sidebar-ring: 144 100% 24%;
+
   --popover: 0 0% 100%;
   --popover-foreground: 0 0% 14%;
   --popover-border: 0 0% 88%;
-  
-  /* Teal accent */
-  --primary: 171 78% 27%;
+
+  /* Phase 11.6A amendment: --brand is the actual, unaltered DRUID green --
+     sampling src/assets/druid-logo.png's opaque pixels gives exactly two
+     colors, (0,223,90) and (49,50,53) -- the icon glyph and the wordmark --
+     so (0,223,90) = #00DF5A = hsl(144.2, 100%, 43.7%) is the real brand
+     swatch, not a guess or a derived shade. Used as-is, never darkened.
+     --brand-foreground is the wordmark's own charcoal (#313235, same value
+     as --ink below) -- pairing brand-green surfaces with this dark
+     foreground (never white) is how the logo itself already pairs these
+     two colors, and measures ~7.1:1 contrast, comfortably passing WCAG AA.
+     Not wired into any component in this slice -- available for later
+     decorative/non-text use: identity accents, selected-state indicators,
+     chart fills, badges/surfaces that pair it with --brand-foreground. */
+  --brand: 144.2 100% 43.7%;
+  --brand-foreground: 225 4% 20%;
+
+  /* --primary is an ACCESSIBLE FUNCTIONAL shade of the identical brand hue/
+     saturation (144, 100%) -- NOT the brand color itself (see --brand
+     above for that). Lightness is reduced from the raw 43.7% HERE ONLY
+     because --primary is used for text/icons/links/focus-rings and
+     white-on-fill controls throughout this app (badges, icons, links -- not
+     just solid button fills), and the raw 43.7%-lightness value measures
+     only 1.8:1 contrast in those uses (fails WCAG AA).
+     24% (not 26%, corrected in a later 11.6A pass): measured against this
+     app's ACTUAL --background token (0 0% 96%, not pure white -- pure
+     white was the wrong reference surface and gave a falsely reassuring
+     4.8:1), 26% lightness only reached 4.37:1 against the real background,
+     just under the 4.5:1 AA normal-text minimum. 24% reaches 5.03:1
+     against --background and 5.49:1 for white-on-fill -- both pass with
+     margin. See .dark below for why dark mode uses a different value
+     entirely rather than reusing this one. */
+  --primary: 144 100% 24%;
   --primary-foreground: 0 0% 100%;
-  
+
   --secondary: 0 0% 93%;
   --secondary-foreground: 0 0% 14%;
-  
+
+  /* Phase 11.6A: muted purple-gray secondary accent -- not brand-sourced
+     (no such color exists in the DRUID mark), a deliberate, restrained
+     design choice for this token per the approved 11.6 palette direction. */
+  --secondary-accent: 258 14% 46%;
+  --secondary-accent-foreground: 0 0% 100%;
+
   --muted: 0 0% 95%;
   --muted-foreground: 0 0% 35%;
-  
+
   --accent: 0 0% 95%;
   --accent-foreground: 0 0% 14%;
-  
+
+  /* Phase 11.6A: restrained amber attention/warning -- matches the hue
+     range of the amber-50/700/200 literal already hand-copied across
+     Recruitment/Portfolio/Campaigns/Opportunities/Radar (lib/status-tone.ts),
+     given a proper token home rather than a fourth hand-copy site. */
+  --attention: 32 95% 44%;
+  --attention-foreground: 0 0% 100%;
+
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  
+
   --input: 0 0% 88%;
-  --ring: 171 78% 27%;
-  
-  --chart-1: 171 78% 27%;
-  --chart-2: 0 0% 35%;
-  --chart-3: 171 78% 40%;
-  --chart-4: 0 0% 50%;
-  --chart-5: 171 78% 50%;
+  --ring: 144 100% 24%;
+
+  /* Phase 11.6A: strong ink/charcoal hierarchy -- sourced from the same
+     brand mark as --brand (src/assets/druid-logo.png's wordmark glyph,
+     sampled pixel value #313235 / hsl(225, 3.9%, 20%)), used unaltered.
+     Same value as --brand-foreground above (both are the logo's own
+     charcoal), kept as two separate tokens since they answer different
+     questions -- "what strong-hierarchy text color" vs. "what foreground
+     pairs with a brand-green surface". */
+  --ink: 225 4% 20%;
+
+  /* Phase 11.6A amendment: chart-1 uses the RAW --brand green (not the
+     darkened --primary functional shade) -- a chart fill/mark is a small
+     area of color, not body text sitting on top of another color, so the
+     text-contrast problem that forced --primary to be darkened doesn't
+     apply here the same way; the true, brighter brand green reads better
+     as a data-viz color. chart-2..5 unchanged from the initial 11.6A pass. */
+  --chart-1: 144.2 100% 43.7%;
+  --chart-2: 225 4% 20%;
+  --chart-3: 258 14% 46%;
+  --chart-4: 32 95% 44%;
+  --chart-5: 200 90% 40%;
 
   --app-font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
   --app-font-serif: Georgia, serif;
@@ -147,9 +240,12 @@
   --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --brand-border: hsl(from hsl(var(--brand)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --secondary-accent-border: hsl(from hsl(var(--secondary-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --attention-border: hsl(from hsl(var(--attention)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
@@ -172,39 +268,75 @@
   --sidebar: 0 0% 14%;
   --sidebar-foreground: 0 0% 96%;
   --sidebar-border: 0 0% 20%;
-  --sidebar-primary: 171 78% 27%;
-  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-primary: 144.2 100% 43.7%;
+  --sidebar-primary-foreground: 225 4% 20%;
   --sidebar-accent: 0 0% 20%;
   --sidebar-accent-foreground: 0 0% 96%;
-  --sidebar-ring: 171 78% 27%;
-  
+  --sidebar-ring: 144.2 100% 43.7%;
+
   --popover: 0 0% 14%;
   --popover-foreground: 0 0% 96%;
   --popover-border: 0 0% 20%;
-  
-  --primary: 171 78% 27%;
-  --primary-foreground: 0 0% 100%;
-  
+
+  /* Phase 11.6A amendment: --brand is a literal identity color -- the raw
+     sourced swatch, kept identical across light/dark (a brand mark doesn't
+     re-derive itself per theme). --brand-foreground stays the same logo
+     charcoal in both modes too, since it's a local pairing decision
+     (contrast of text sitting ON a brand-green surface), independent of
+     the surrounding page theme. */
+  --brand: 144.2 100% 43.7%;
+  --brand-foreground: 225 4% 20%;
+
+  /* Phase 11.6A accessibility amendment: dark mode does NOT reuse the
+     light-mode 24%-lightness functional shade -- that shade measured only
+     3.65:1 against this app's dark --background (0 0% 10%), failing the
+     4.5:1 AA normal-text minimum for the text/icon/link uses --primary is
+     documented as covering. Instead, dark mode uses the RAW --brand green
+     directly as --primary (144.2 100% 43.7% -- see --brand above), which
+     measures 9.7:1 against dark --background -- easily clearing AA -- and
+     pairs --primary-foreground with the brand's own charcoal (matches
+     --brand-foreground above) instead of white for solid bg-primary
+     controls: white-on-this-green is only ~1.8:1 (would fail), while
+     charcoal-on-this-green measures 7.14:1. Net effect: dark mode gets to
+     show the actual, brighter DRUID green (unlike light mode, which
+     cannot use the raw value at all) precisely because a bright color
+     against a DARK surface is exactly the case where the raw brand
+     lightness works, while light mode's problem was the opposite (a
+     light color against a LIGHT surface). */
+  --primary: 144.2 100% 43.7%;
+  --primary-foreground: 225 4% 20%;
+
   --secondary: 0 0% 20%;
   --secondary-foreground: 0 0% 96%;
-  
+
+  --secondary-accent: 258 16% 64%;
+  --secondary-accent-foreground: 0 0% 10%;
+
   --muted: 0 0% 20%;
   --muted-foreground: 0 0% 65%;
-  
+
   --accent: 0 0% 20%;
   --accent-foreground: 0 0% 96%;
-  
+
+  --attention: 32 95% 44%;
+  --attention-foreground: 0 0% 10%;
+
   --destructive: 0 62% 30%;
   --destructive-foreground: 0 0% 96%;
-  
+
   --input: 0 0% 20%;
-  --ring: 171 78% 27%;
-  
-  --chart-1: 171 78% 27%;
+  --ring: 144.2 100% 43.7%;
+
+  --ink: 0 0% 100%;
+
+  /* chart-1: raw --brand green, same amendment reasoning as :root -- a
+     chart mark's own text-contrast concerns are handled at the point of
+     use, not by darkening the fill color globally. */
+  --chart-1: 144.2 100% 43.7%;
   --chart-2: 0 0% 65%;
-  --chart-3: 171 78% 40%;
-  --chart-4: 0 0% 50%;
-  --chart-5: 171 78% 50%;
+  --chart-3: 258 16% 64%;
+  --chart-4: 32 95% 44%;
+  --chart-5: 200 85% 60%;
 
   --shadow-2xs: 0px 2px 0px 0px rgba(0,0,0,0.5);
   --shadow-xs: 0px 2px 0px 0px rgba(0,0,0,0.5);
@@ -283,5 +415,55 @@
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
+  }
+}
+
+/* Phase 11.6A: shared typography hierarchy. Additive -- nothing here is
+   applied automatically to any existing element; a page opts in by adding
+   the class, same as any other utility. Font family/size scale is
+   unchanged (no new font, no drastic size jump) -- this only makes
+   emphasis/hierarchy consistent instead of nearly everything sharing
+   text-sm/text-xs, which is the specific "visually flattens everything"
+   problem the 11.6 audit identified. Not wired into any page in this slice. */
+@layer components {
+  /* Top-of-page title, e.g. PageHeader's <h1> today (text-2xl font-semibold
+     tracking-tight) -- codified here so future callers don't re-derive it. */
+  .text-page-title {
+    @apply text-2xl font-semibold tracking-tight text-ink;
+  }
+  /* A named section within a page, e.g. "Commercial Performance", "Core
+     Channel Performance" -- one step down from the page title, in the same
+     strong ink tone so section boundaries read clearly against body text. */
+  .text-section-title {
+    @apply text-base font-semibold tracking-tight text-ink;
+  }
+  /* The one-line explanatory text under a section title. */
+  .text-section-description {
+    @apply text-sm text-muted-foreground;
+  }
+  /* A prominent standalone number, e.g. a KPI tile's value -- tabular-nums
+     so a column of these never visually jitters as digits change. */
+  .text-metric-value {
+    @apply text-lg font-semibold tabular-nums text-ink;
+  }
+  /* The same, for the one or two figures a page wants to visibly dominate
+     over every other metric on the screen (e.g. Closed Revenue vs.
+     secondary KPIs) -- larger, still restrained (no display-size jump). */
+  .text-metric-value-primary {
+    @apply text-2xl font-semibold tabular-nums text-ink;
+  }
+  /* Normal reading text -- unchanged from the app's existing convention,
+     named so it can be reached for consistently rather than re-typed. */
+  .text-body {
+    @apply text-sm text-foreground leading-relaxed;
+  }
+  /* Small supporting text: timestamps, source notes, captions. */
+  .text-metadata {
+    @apply text-xs text-muted-foreground;
+  }
+  /* Table column headers -- matches the muted-foreground/font-medium
+     convention already used ad hoc across Overview/Reporting tables. */
+  .text-table-header {
+    @apply text-xs font-medium text-muted-foreground uppercase tracking-wide;
   }
 }
