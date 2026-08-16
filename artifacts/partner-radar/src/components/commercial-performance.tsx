@@ -268,6 +268,9 @@ export function CommercialPerformanceHead({
         <EditAnnualTargetDialog
           year={year}
           currentValue={cascade.annual_target}
+          metricKey={ANNUAL_TARGET_METRIC_KEY}
+          metricLabel="Closed revenue"
+          isMoney
           onClose={() => setEditTargetOpen(false)}
           onSaved={() => { invalidate(); setEditTargetOpen(false); toast({ title: 'Annual target saved' }); }}
         />
@@ -285,14 +288,27 @@ export function CommercialPerformanceHead({
   );
 }
 
-function EditAnnualTargetDialog({
+// Phase 11.6C: generalized (metricKey/metricLabel/isMoney added, exported)
+// so team-targets.tsx's Channel Plan section can reuse this exact dialog
+// for all 5 targetable metrics, instead of duplicating its validation/
+// mutation logic. CommercialPerformanceHead's own call site below passes
+// metricKey={ANNUAL_TARGET_METRIC_KEY} metricLabel="Closed revenue"
+// isMoney -- identical values to what were previously hardcoded, so
+// Overview's behavior is byte-for-byte unchanged.
+export function EditAnnualTargetDialog({
   year,
   currentValue,
+  metricKey,
+  metricLabel,
+  isMoney,
   onClose,
   onSaved,
 }: {
   year: number;
   currentValue: number | null;
+  metricKey: string;
+  metricLabel: string;
+  isMoney: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -306,11 +322,16 @@ function EditAnnualTargetDialog({
   });
 
   const parsed = value.trim() === '' ? null : Number(value);
-  const canSubmit = parsed !== null && Number.isFinite(parsed) && parsed >= 0;
+  // Phase 11.6C: a count metric (Signed Partners, New Partner Prospects)
+  // must never accept a fractional target -- "part of a partner" is
+  // nonsensical. Money metrics keep the original unconstrained-decimal
+  // behavior (this app's whole-dollar display convention is a formatting
+  // choice, formatUsd, not a storage constraint -- see kpi-format.ts).
+  const canSubmit = parsed !== null && Number.isFinite(parsed) && parsed >= 0 && (isMoney || Number.isInteger(parsed));
 
   const handleSubmit = () => {
     if (!canSubmit || parsed === null) return;
-    upsertMutation.mutate({ data: { metric_key: ANNUAL_TARGET_METRIC_KEY, year, target_value: parsed, note: null } });
+    upsertMutation.mutate({ data: { metric_key: metricKey, year, target_value: parsed, note: null } });
   };
 
   return (
@@ -319,12 +340,15 @@ function EditAnnualTargetDialog({
         <DialogHeader>
           <DialogTitle>{currentValue === null ? 'Set annual target' : 'Edit annual target'}</DialogTitle>
           <DialogDescription>
-            Closed revenue -- {year}. This is the company-wide target; it is never automatically divided across quarters or PAMs.
+            {metricLabel} -- {year}. This is the company-wide target; it is never automatically divided across quarters or PAMs.
           </DialogDescription>
         </DialogHeader>
         <div className="py-2">
-          <Label className="text-xs mb-1.5 block">Annual target (USD)</Label>
-          <Input type="number" min="0" value={value} onChange={(e) => setValue(e.target.value)} placeholder="e.g. 1200000" data-testid="input-annual-target-value" />
+          <Label className="text-xs mb-1.5 block">{isMoney ? 'Annual target (USD)' : 'Annual target'}</Label>
+          <Input type="number" min="0" value={value} onChange={(e) => setValue(e.target.value)} placeholder={isMoney ? 'e.g. 1200000' : 'e.g. 12'} data-testid="input-annual-target-value" />
+          {!isMoney && value.trim() !== '' && parsed !== null && Number.isFinite(parsed) && !Number.isInteger(parsed) && (
+            <p className="text-xs text-rose-600 mt-1.5">Enter a whole number -- this metric counts partners, not a fraction of one.</p>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>

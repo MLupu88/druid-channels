@@ -1,60 +1,60 @@
 import React, { useState } from 'react';
-import {
-  useListTeamTargets,
-  getListTeamTargetsQueryKey,
-  useUpsertMetricTarget,
-  useGetTerritoryPotential,
-} from '@workspace/api-client-react';
-import type { TeamTargetRow } from '@workspace/api-client-react';
+import { useGetTerritoryPotential, useListTeamTargets } from '@workspace/api-client-react';
 import { TerritoryPotentialCard } from '@/components/territory-potential-card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { PeriodSelector } from '@/components/period-selector';
-import { getDefaultPeriodKey } from '@/lib/period';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { useToast } from '@/hooks/use-toast';
-import { useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus } from 'lucide-react';
 import { WorkspaceSubNav } from '@/components/workspace-subnav';
 import { REPORTING_SUBNAV_ITEMS } from '@/lib/navigation';
 import { PageHeader } from '@/components/page-header';
-import { statusTone } from '@/lib/status-tone';
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import { Users } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { getCurrentYear, getCurrentQuarterKey, joinPeriodKey, yearOptions } from '@/lib/period';
+import { ChannelPlanSection } from '@/components/channel-plan-section';
+import { PamTargetAccordion } from '@/components/pam-target-accordion';
 
-function ProgressBadge({ row }: { row: TeamTargetRow }) {
-  if (row.status === 'no_target') {
-    return <Badge variant="outline" className="font-normal text-muted-foreground">No target set</Badge>;
-  }
-  const styles = row.status === 'ahead' ? statusTone('success') : statusTone('warning');
-  const label = row.status === 'ahead' ? 'Ahead' : 'Behind';
-  return (
-    <Badge variant="outline" className={`font-normal ${styles}`}>
-      {row.progress_percent !== null ? `${row.progress_percent}%` : '—'} · {label}
-    </Badge>
-  );
+// Phase 11.6C: Reporting's landing surface, rebuilt around the business
+// hierarchy ANNUAL TEAM TARGET -> PAM ANNUAL ALLOCATION -> PAM QUARTERLY
+// TARGETS -> ACTUAL vs TARGET, replacing the old flat "one row per PAM per
+// KPI" table (the "target sausage"). Reuses the existing generic annual-
+// target / annual-cascade / team-targets API exactly as before -- no
+// migration, no new route (see channel-plan-section.tsx and
+// pam-target-accordion.tsx).
+
+type QuarterKey = 'q1' | 'q2' | 'q3' | 'q4';
+const QUARTER_OPTIONS: { value: QuarterKey; label: string }[] = [
+  { value: 'q1', label: 'Q1' },
+  { value: 'q2', label: 'Q2' },
+  { value: 'q3', label: 'Q3' },
+  { value: 'q4', label: 'Q4' },
+];
+
+// getCurrentQuarterKey's return type includes "ytd" for reuse elsewhere
+// (see lib/period.ts) but its implementation never actually returns it --
+// this narrows defensively rather than casting, with 'q1' as a fallback
+// that can never actually trigger.
+function currentQuarterFallback(): QuarterKey {
+  const q = getCurrentQuarterKey();
+  return q === 'q1' || q === 'q2' || q === 'q3' || q === 'q4' ? q : 'q1';
 }
 
 export default function TeamTargets() {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [period, setPeriod] = useState(getDefaultPeriodKey());
-  const [editingRow, setEditingRow] = useState<TeamTargetRow | null>(null);
+  // Annual planning is year-based (see channel-plan-section.tsx) -- this is
+  // a genuinely separate selector from `quarter` below, never the combined
+  // reporting-period picker other pages use, per the explicit instruction
+  // not to confuse the two. "ytd" is never offered here: it is a reporting/
+  // actual concept only and is never a stored target period (see
+  // lib/db/src/schema/metric_targets.ts), so a quarter-only selector for
+  // reviewing actual-vs-target is the honest choice, not merely a smaller
+  // one -- selecting "Year to date" in the old flat table's period picker
+  // always showed "No target set" for every row anyway, since no target row
+  // is ever stored under period="ytd".
+  const [year, setYear] = useState(getCurrentYear());
+  const [quarter, setQuarter] = useState<QuarterKey>(currentQuarterFallback);
 
-  const { data: rows, isLoading } = useListTeamTargets({ period });
   const { data: territoryPotential, isLoading: potentialLoading } = useGetTerritoryPotential({});
+  // Reused only for the existing Territory Potential fact-check below (same
+  // computation as before this redesign, now driven by the new quarter
+  // selector's derived period instead of the old full PeriodSelector).
+  const { data: rows } = useListTeamTargets({ period: joinPeriodKey(year, quarter) as any });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: getListTeamTargetsQueryKey() });
-
-  // Stage 6.5: a plain deterministic fact cross-referencing the currently
-  // configured New Partner Prospects target against the available pool --
-  // never an automated target change (see the 6.5 spec section 9).
   const targetFactFor = (territoryId: string): string | null => {
     const targetRow = rows?.find((r) => r.territory_id === territoryId && r.metric_key === 'new_partner_prospects' && r.target_value !== null);
     const potential = territoryPotential?.find((t) => t.territory_id === territoryId);
@@ -68,12 +68,37 @@ export default function TeamTargets() {
       <WorkspaceSubNav items={REPORTING_SUBNAV_ITEMS} />
       <PageHeader
         title="Team Targets"
-        description="What each PAM has been asked to achieve this period, and how they're doing against it."
-        actions={<PeriodSelector value={period} onChange={setPeriod} />}
+        description="The annual channel plan, allocated across PAMs and quarters."
+        actions={
+          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+            <SelectTrigger className="w-[100px] bg-card" data-testid="select-plan-year"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {yearOptions().map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        }
       />
 
-      <div className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Territory Potential</h2>
+      <ChannelPlanSection year={year} />
+
+      <div className="space-y-3 max-w-5xl">
+        <div className="flex items-center justify-between">
+          <h2 className="text-section-title">Team -- {QUARTER_OPTIONS.find((q) => q.value === quarter)?.label} {year}</h2>
+          <Select value={quarter} onValueChange={(v) => setQuarter(v as QuarterKey)}>
+            <SelectTrigger className="w-[90px] h-8 bg-card" data-testid="select-review-quarter"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {QUARTER_OPTIONS.map((q) => <SelectItem key={q.value} value={q.value}>{q.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Actual, target, and attainment below are for the selected quarter -- annual allocation totals shown per PAM are for {year} overall.
+        </p>
+        <PamTargetAccordion year={year} quarter={quarter} />
+      </div>
+
+      <div className="space-y-3 max-w-5xl">
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Territory Potential</h2>
         {potentialLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : territoryPotential && territoryPotential.length > 0 ? (
@@ -86,123 +111,6 @@ export default function TeamTargets() {
           <p className="text-sm text-muted-foreground">No territories with an owning PAM yet.</p>
         )}
       </div>
-
-      <Card className="shadow-none border-border/70">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>PAM</TableHead>
-                <TableHead>Territory</TableHead>
-                <TableHead>KPI</TableHead>
-                <TableHead className="text-right">Target</TableHead>
-                <TableHead className="text-right">Actual</TableHead>
-                <TableHead>Progress</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={7}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
-              ) : rows && rows.length > 0 ? (
-                rows.map((row) => (
-                  <TableRow key={`${row.pam_user_id}-${row.metric_key}`}>
-                    <TableCell className="font-medium">{row.pam_name}</TableCell>
-                    <TableCell className="text-muted-foreground">{row.territory_name}</TableCell>
-                    <TableCell className="text-muted-foreground">{row.metric_label}</TableCell>
-                    <TableCell className="text-right tabular-nums">{row.target_value ?? '—'}</TableCell>
-                    <TableCell className="text-right tabular-nums">{row.actual_value ?? '—'}</TableCell>
-                    <TableCell><ProgressBadge row={row} /></TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingRow(row)}>
-                        {row.target_value === null ? <Plus className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={7} className="p-0">
-                    <Empty className="border-none py-12">
-                      <EmptyHeader>
-                        <EmptyMedia variant="icon"><Users /></EmptyMedia>
-                        <EmptyTitle>No PAMs own a territory yet</EmptyTitle>
-                        <EmptyDescription>Assign one from Settings &gt; Team.</EmptyDescription>
-                      </EmptyHeader>
-                    </Empty>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {editingRow && (
-        <EditTargetDialog
-          row={editingRow}
-          period={period}
-          onClose={() => setEditingRow(null)}
-          onSaved={() => { invalidate(); setEditingRow(null); }}
-        />
-      )}
     </div>
-  );
-}
-
-function EditTargetDialog({ row, period, onClose, onSaved }: { row: TeamTargetRow; period: string; onClose: () => void; onSaved: () => void }) {
-  const { toast } = useToast();
-  const [targetValue, setTargetValue] = useState(row.target_value !== null ? String(row.target_value) : '');
-  const [note, setNote] = useState('');
-
-  const upsertMutation = useUpsertMetricTarget({
-    mutation: {
-      onSuccess: () => { toast({ title: 'Target saved' }); onSaved(); },
-      onError: (err: any) => toast({ variant: 'destructive', title: 'Could not save target', description: err?.message ?? 'Please try again.' }),
-    },
-  });
-
-  const canSubmit = targetValue.trim() !== '' && !Number.isNaN(Number(targetValue)) && Number(targetValue) >= 0;
-
-  const handleSubmit = () => {
-    if (!canSubmit) return;
-    upsertMutation.mutate({
-      data: {
-        metric_key: row.metric_key,
-        period: period as any,
-        territory_id: row.territory_id,
-        pam_user_id: row.pam_user_id,
-        target_value: Number(targetValue),
-        note: note.trim() || null,
-      },
-    });
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[420px]">
-        <DialogHeader>
-          <DialogTitle>{row.target_value === null ? 'Set target' : 'Edit target'}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="rounded-md border border-border/60 p-3 text-sm space-y-0.5">
-            <p className="font-medium">{row.pam_name} · {row.territory_name}</p>
-            <p className="text-muted-foreground">{row.metric_label}</p>
-          </div>
-          <div>
-            <Label className="text-xs mb-1.5 block">Target</Label>
-            <Input type="number" min="0" value={targetValue} onChange={(e) => setTargetValue(e.target.value)} placeholder="e.g. 15" />
-          </div>
-          <div>
-            <Label className="text-xs mb-1.5 block">Note (optional)</Label>
-            <Textarea value={note} onChange={(e) => setNote(e.target.value)} className="text-sm" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit || upsertMutation.isPending}>Save</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
