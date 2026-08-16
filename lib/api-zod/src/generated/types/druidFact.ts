@@ -16,6 +16,8 @@ export interface DruidFact {
   source_type: DruidFactSourceType;
   source_url?: string | null;
   source_note?: string | null;
+  /** The druid_context_sources row this fact was created from, when source_type is "ingested". Null for manual facts. */
+  source_context_id?: string | null;
   verification_status: DruidFactVerificationStatus;
   verified_by_user_id?: string | null;
   verified_at?: Date | null;

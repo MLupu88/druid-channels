@@ -40,6 +40,7 @@ import type {
   ConnectionSecretInput,
   ConnectionUpdateInput,
   CreateChannelRadarConfigInput,
+  CreateFactFromDruidContextSourceInput,
   CreatePortfolioImportInput,
   CreatePortfolioRelationshipInput,
   CreateScanConfigInput,
@@ -49,6 +50,7 @@ import type {
   DeleteProspectResult,
   DeleteResult,
   DiscoveryExclusion,
+  DruidContextSource,
   DruidFact,
   DruidFactCreateInput,
   DruidFactUpdateInput,
@@ -118,6 +120,7 @@ import type {
   RecentProspectActivityItem,
   Recruitment,
   RecruitmentDetail,
+  RefreshDruidContextSourcesResult,
   RegenerateAiChannelBriefInput,
   RunChannelRadarInput,
   RunChannelRadarResult,
@@ -5160,6 +5163,368 @@ export const useReactivateDruidFact = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getReactivateDruidFactMutationOptions(options));
+    }
+
+export const getRefreshDruidContextSourcesUrl = () => {
+
+
+
+
+  return `/api/druid-context-sources/refresh`
+}
+
+/**
+ * @summary Crawl druidai.com (Tavily Crawl) and persist new/changed source material for review (admin-only). Unchanged pages only bump last_seen_at; a page whose content changed since the last refresh is persisted as a new pending_review version, leaving the prior version untouched.
+ */
+export const refreshDruidContextSources = async ( options?: Parameters<typeof customFetch>[1]): Promise<RefreshDruidContextSourcesResult> => {
+
+  return customFetch<RefreshDruidContextSourcesResult>(getRefreshDruidContextSourcesUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRefreshDruidContextSourcesMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshDruidContextSources>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshDruidContextSources>>, TError,void, TContext> => {
+
+const mutationKey = ['refreshDruidContextSources'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshDruidContextSources>>, void> = () => {
+
+
+          return  refreshDruidContextSources(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshDruidContextSourcesMutationResult = NonNullable<Awaited<ReturnType<typeof refreshDruidContextSources>>>
+
+    export type RefreshDruidContextSourcesMutationError = ErrorType<void>
+
+    /**
+ * @summary Crawl druidai.com (Tavily Crawl) and persist new/changed source material for review (admin-only). Unchanged pages only bump last_seen_at; a page whose content changed since the last refresh is persisted as a new pending_review version, leaving the prior version untouched.
+ */
+export const useRefreshDruidContextSources = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshDruidContextSources>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshDruidContextSources>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRefreshDruidContextSourcesMutationOptions(options));
+    }
+
+export const getListDruidContextSourcesUrl = () => {
+
+
+
+
+  return `/api/druid-context-sources`
+}
+
+/**
+ * @summary List non-ignored DRUID context sources (admin-only), pending_review first. normalized_url/content_hash are internal matching keys and are never included in this response.
+ */
+export const listDruidContextSources = async ( options?: Parameters<typeof customFetch>[1]): Promise<DruidContextSource[]> => {
+
+  return customFetch<DruidContextSource[]>(getListDruidContextSourcesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDruidContextSourcesQueryKey = () => {
+    return [
+    `/api/druid-context-sources`
+    ] as const;
+    }
+
+
+export const getListDruidContextSourcesQueryOptions = <TData = Awaited<ReturnType<typeof listDruidContextSources>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDruidContextSources>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDruidContextSourcesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDruidContextSources>>> = ({ signal }) => listDruidContextSources({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDruidContextSources>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDruidContextSourcesQueryResult = NonNullable<Awaited<ReturnType<typeof listDruidContextSources>>>
+export type ListDruidContextSourcesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List non-ignored DRUID context sources (admin-only), pending_review first. normalized_url/content_hash are internal matching keys and are never included in this response.
+ */
+
+export function useListDruidContextSources<TData = Awaited<ReturnType<typeof listDruidContextSources>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDruidContextSources>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDruidContextSourcesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReviewDruidContextSourceUrl = (id: string,) => {
+
+
+
+
+  return `/api/druid-context-sources/${id}/review`
+}
+
+/**
+ * @summary Mark a pending_review source as reviewed, without creating a fact from it (admin-only). Only valid from pending_review.
+ */
+export const reviewDruidContextSource = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<DruidContextSource> => {
+
+  return customFetch<DruidContextSource>(getReviewDruidContextSourceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReviewDruidContextSourceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewDruidContextSource>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewDruidContextSource>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['reviewDruidContextSource'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewDruidContextSource>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  reviewDruidContextSource(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewDruidContextSourceMutationResult = NonNullable<Awaited<ReturnType<typeof reviewDruidContextSource>>>
+
+    export type ReviewDruidContextSourceMutationError = ErrorType<void>
+
+    /**
+ * @summary Mark a pending_review source as reviewed, without creating a fact from it (admin-only). Only valid from pending_review.
+ */
+export const useReviewDruidContextSource = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewDruidContextSource>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewDruidContextSource>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getReviewDruidContextSourceMutationOptions(options));
+    }
+
+export const getIgnoreDruidContextSourceUrl = (id: string,) => {
+
+
+
+
+  return `/api/druid-context-sources/${id}/ignore`
+}
+
+/**
+ * @summary Mark a pending_review source version as ignored -- intentionally excluded from use (admin-only). A future refresh that finds changed content at the same URL still creates a new pending_review version. Only valid from pending_review.
+ */
+export const ignoreDruidContextSource = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<DruidContextSource> => {
+
+  return customFetch<DruidContextSource>(getIgnoreDruidContextSourceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getIgnoreDruidContextSourceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ignoreDruidContextSource>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof ignoreDruidContextSource>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['ignoreDruidContextSource'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ignoreDruidContextSource>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  ignoreDruidContextSource(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IgnoreDruidContextSourceMutationResult = NonNullable<Awaited<ReturnType<typeof ignoreDruidContextSource>>>
+
+    export type IgnoreDruidContextSourceMutationError = ErrorType<void>
+
+    /**
+ * @summary Mark a pending_review source version as ignored -- intentionally excluded from use (admin-only). A future refresh that finds changed content at the same URL still creates a new pending_review version. Only valid from pending_review.
+ */
+export const useIgnoreDruidContextSource = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ignoreDruidContextSource>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof ignoreDruidContextSource>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getIgnoreDruidContextSourceMutationOptions(options));
+    }
+
+export const getCreateFactFromDruidContextSourceUrl = (id: string,) => {
+
+
+
+
+  return `/api/druid-context-sources/${id}/facts`
+}
+
+/**
+ * @summary Create a new UNVERIFIED druid_fact from this source's extracted text (admin-only). If the source was pending_review, it is atomically marked reviewed in the same transaction as the fact creation; a reviewed source can have any number of additional facts created from it without its review metadata changing again. Rejected (409) if the source is ignored.
+ */
+export const createFactFromDruidContextSource = async (id: string,
+    createFactFromDruidContextSourceInput: CreateFactFromDruidContextSourceInput, options?: Parameters<typeof customFetch>[1]): Promise<DruidFact> => {
+
+  return customFetch<DruidFact>(getCreateFactFromDruidContextSourceUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createFactFromDruidContextSourceInput)
+  }
+);}
+
+
+
+
+
+export const getCreateFactFromDruidContextSourceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFactFromDruidContextSource>>, TError,{id: string;data: BodyType<CreateFactFromDruidContextSourceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createFactFromDruidContextSource>>, TError,{id: string;data: BodyType<CreateFactFromDruidContextSourceInput>}, TContext> => {
+
+const mutationKey = ['createFactFromDruidContextSource'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createFactFromDruidContextSource>>, {id: string;data: BodyType<CreateFactFromDruidContextSourceInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createFactFromDruidContextSource(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateFactFromDruidContextSourceMutationResult = NonNullable<Awaited<ReturnType<typeof createFactFromDruidContextSource>>>
+    export type CreateFactFromDruidContextSourceMutationBody = BodyType<CreateFactFromDruidContextSourceInput>
+    export type CreateFactFromDruidContextSourceMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a new UNVERIFIED druid_fact from this source's extracted text (admin-only). If the source was pending_review, it is atomically marked reviewed in the same transaction as the fact creation; a reviewed source can have any number of additional facts created from it without its review metadata changing again. Rejected (409) if the source is ignored.
+ */
+export const useCreateFactFromDruidContextSource = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFactFromDruidContextSource>>, TError,{id: string;data: BodyType<CreateFactFromDruidContextSourceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createFactFromDruidContextSource>>,
+        TError,
+        {id: string;data: BodyType<CreateFactFromDruidContextSourceInput>},
+        TContext
+      > => {
+      return useMutation(getCreateFactFromDruidContextSourceMutationOptions(options));
     }
 
 export const getListMetricMappingsUrl = () => {

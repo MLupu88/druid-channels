@@ -2,6 +2,15 @@ import { db } from "@workspace/db";
 import { druidFactsTable, DRUID_FACT_CATEGORIES, type DruidFact } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 
+// Transaction-composability pattern reused from discoveryExclusions.ts/
+// partnerRelationshipService.ts/territoryOwnership.ts -- lets
+// createIngestedDruidFact be composed into a caller's own transaction (see
+// druidContextSources.ts's createFactFromSource, which must create the fact
+// and update the source's review status atomically).
+type Db = typeof db;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type Executor = Db | Tx;
+
 // Phase 11.5C.1: DRUID Context foundation. A small, admin-curated set of
 // facts about DRUID itself (product, positioning, ideal partner profile) --
 // deliberately NOT wired into Discovery/Channel Radar qualification yet
@@ -32,6 +41,22 @@ export class InvalidDruidFactCategoryError extends Error {
 function assertValidCategory(category: string): void {
   if (!(DRUID_FACT_CATEGORIES as readonly string[]).includes(category)) {
     throw new InvalidDruidFactCategoryError(category);
+  }
+}
+
+// Phase 11.5C.2 provenance correction: an ingested fact's source_url is
+// derived from the druid_context_sources row it was created from
+// (createIngestedDruidFact) -- allowing a later generic PATCH to overwrite
+// it would decouple the human-visible provenance link from the real
+// source_context_id it still points to. Manual facts are unaffected: this
+// error is never thrown for sourceType "manual". Idempotently resubmitting
+// the exact current value is allowed -- only an actual attempted change is
+// rejected, so a client that always round-trips the full record never hits
+// this unnecessarily.
+export class DruidFactSourceUrlImmutableError extends Error {
+  constructor() {
+    super("source_url cannot be changed on an ingested fact -- it is derived from the original source and must stay immutable for provenance.");
+    this.name = "DruidFactSourceUrlImmutableError";
   }
 }
 
@@ -105,17 +130,70 @@ export async function createDruidFact(input: CreateDruidFactInput, actingUserId:
   return created!;
 }
 
+export interface CreateIngestedDruidFactInput {
+  category: string;
+  factText: string;
+  sourceUrl: string;
+  sourceContextId: string;
+  sourceNote?: string | null;
+}
+
+/**
+ * Phase 11.5C.2: creates a fact from a reviewed source-material excerpt.
+ * sourceType/verificationStatus/active are server-owned exactly like
+ * createDruidFact -- sourceType is hardcoded "ingested" (never "manual"),
+ * and verificationStatus always starts "unverified": an ingested fact is
+ * never automatically trusted. sourceUrl/sourceContextId are supplied by
+ * the caller from the persisted druid_context_sources row, never from an
+ * HTTP request body directly (see routes/druid_context_sources.ts).
+ * Accepts an Executor so druidContextSources.ts's createFactFromSource can
+ * compose this into its own transaction alongside the source's review-
+ * status update -- if either write fails, both roll back together.
+ */
+export async function createIngestedDruidFact(
+  input: CreateIngestedDruidFactInput,
+  actingUserId: string,
+  dbHandle: Executor = db,
+): Promise<DruidFact> {
+  assertValidCategory(input.category);
+
+  const [created] = await dbHandle
+    .insert(druidFactsTable)
+    .values({
+      category: input.category as DruidFact["category"],
+      factText: input.factText,
+      sourceUrl: input.sourceUrl,
+      sourceNote: input.sourceNote ?? null,
+      sourceContextId: input.sourceContextId,
+      sourceType: "ingested",
+      verificationStatus: "unverified",
+      active: true,
+      createdByUserId: actingUserId,
+      updatedByUserId: actingUserId,
+    })
+    .returning();
+  return created!;
+}
+
 /**
  * Edits only category/factText/sourceUrl/sourceNote. If the row was
  * verified, this also resets verificationStatus to "unverified" and clears
  * the verifier -- an edited fact always needs re-review, never silently
  * stays trusted.
+ *
+ * Phase 11.5C.2: sourceUrl is immutable once a fact is ingested (see
+ * DruidFactSourceUrlImmutableError) -- manual facts are unaffected, and
+ * resubmitting the fact's own current sourceUrl unchanged is always allowed.
  */
 export async function updateDruidFact(id: string, input: UpdateDruidFactInput, actingUserId: string): Promise<DruidFact | null> {
   if (input.category !== undefined) assertValidCategory(input.category);
 
   const existing = await getDruidFactById(id);
   if (!existing) return null;
+
+  if (existing.sourceType === "ingested" && input.sourceUrl !== undefined && input.sourceUrl !== existing.sourceUrl) {
+    throw new DruidFactSourceUrlImmutableError();
+  }
 
   const wasVerified = existing.verificationStatus === "verified";
 

@@ -64,6 +64,8 @@ tags:
     description: Phase 8 -- Head/Admin management reporting. A composition layer only, over Phase 7's weekly reporting and the canonical kpiService/targetService/partnerRecruitmentService/campaignService -- introduces no second KPI engine. report_context/weekly/quarter_to_date/comparisons/management_insights/data_quality are kept explicitly separate so a selected historical week is never confused with the always-current quarter-to-date figures alongside it.
   - name: druid-facts
     description: Phase 11.5C.1 -- admin-curated facts about DRUID itself (product, positioning, ideal partner profile), kept separate from partner evidence and AI hypotheses. Not yet wired into Discovery/Channel Radar qualification (11.5C.3).
+  - name: druid-context-sources
+    description: Phase 11.5C.2 -- extracted druidai.com source material (via Tavily Crawl), reviewed by an admin and optionally turned into one or more UNVERIFIED druid_facts. Source review status is completely independent of druid_facts.verification_status -- reviewing a source, or creating a fact from it, never verifies anything.
 
 paths:
   /auth/login:
@@ -1679,6 +1681,113 @@ paths:
                 $ref: "#/components/schemas/DruidFact"
         "404":
           description: Not found
+
+  /druid-context-sources/refresh:
+    post:
+      operationId: refreshDruidContextSources
+      tags: [druid-context-sources]
+      summary: Crawl druidai.com (Tavily Crawl) and persist new/changed source material for review (admin-only). Unchanged pages only bump last_seen_at; a page whose content changed since the last refresh is persisted as a new pending_review version, leaving the prior version untouched.
+      responses:
+        "200":
+          description: Refresh summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshDruidContextSourcesResult"
+        "400":
+          description: Web search is not configured
+        "502":
+          description: The Tavily crawl request failed
+
+  /druid-context-sources:
+    get:
+      operationId: listDruidContextSources
+      tags: [druid-context-sources]
+      summary: List non-ignored DRUID context sources (admin-only), pending_review first. normalized_url/content_hash are internal matching keys and are never included in this response.
+      responses:
+        "200":
+          description: Source material list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DruidContextSource"
+
+  /druid-context-sources/{id}/review:
+    post:
+      operationId: reviewDruidContextSource
+      tags: [druid-context-sources]
+      summary: Mark a pending_review source as reviewed, without creating a fact from it (admin-only). Only valid from pending_review.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reviewed source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DruidContextSource"
+        "404":
+          description: Not found
+        "409":
+          description: Source is not pending_review
+
+  /druid-context-sources/{id}/ignore:
+    post:
+      operationId: ignoreDruidContextSource
+      tags: [druid-context-sources]
+      summary: Mark a pending_review source version as ignored -- intentionally excluded from use (admin-only). A future refresh that finds changed content at the same URL still creates a new pending_review version. Only valid from pending_review.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ignored source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DruidContextSource"
+        "404":
+          description: Not found
+        "409":
+          description: Source is not pending_review
+
+  /druid-context-sources/{id}/facts:
+    post:
+      operationId: createFactFromDruidContextSource
+      tags: [druid-context-sources]
+      summary: Create a new UNVERIFIED druid_fact from this source's extracted text (admin-only). If the source was pending_review, it is atomically marked reviewed in the same transaction as the fact creation; a reviewed source can have any number of additional facts created from it without its review metadata changing again. Rejected (409) if the source is ignored.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFactFromDruidContextSourceInput"
+      responses:
+        "201":
+          description: Created fact (always verification_status unverified)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DruidFact"
+        "404":
+          description: Not found
+        "409":
+          description: Source is ignored
 
   /metric-mappings:
     get:
@@ -4243,8 +4352,8 @@ components:
 
     DruidFactSourceType:
       type: string
-      description: How this fact entered the store. "manual" is the only value in Phase 11.5C.1 -- 11.5C.2 adds "ingested" for Tavily-sourced candidate material.
-      enum: [manual]
+      description: How this fact entered the store. "manual" is admin-typed; "ingested" (Phase 11.5C.2) means it was created from a reviewed druid_context_sources row -- see source_context_id. Both start verification_status "unverified" -- ingestion never grants trust automatically.
+      enum: [manual, ingested]
 
     DruidFactVerificationStatus:
       type: string
@@ -4279,6 +4388,10 @@ components:
         source_note:
           type: string
           nullable: true
+        source_context_id:
+          type: string
+          nullable: true
+          description: The druid_context_sources row this fact was created from, when source_type is "ingested". Null for manual facts.
         verification_status:
           $ref: "#/components/schemas/DruidFactVerificationStatus"
         verified_by_user_id:
@@ -4342,6 +4455,65 @@ components:
         source_note:
           type: string
           nullable: true
+
+    DruidContextSourceReviewStatus:
+      type: string
+      description: pending_review -> reviewed | ignored, both terminal. Independent of any druid_facts.verification_status -- reviewing a source, or creating a fact from it, never verifies a fact.
+      enum: [pending_review, reviewed, ignored]
+
+    DruidContextSource:
+      type: object
+      description: One extracted VERSION of an authoritative druidai.com page -- source evidence, never itself a trusted fact. normalized_url and content_hash are internal matching keys and are deliberately never included here.
+      required: [id, source_url, extracted_text, review_status, extracted_at, last_seen_at]
+      properties:
+        id:
+          type: string
+        source_url:
+          type: string
+        extracted_text:
+          type: string
+        review_status:
+          $ref: "#/components/schemas/DruidContextSourceReviewStatus"
+        extracted_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        reviewed_by_user_id:
+          type: string
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateFactFromDruidContextSourceInput:
+      type: object
+      description: The only fields an admin may set when creating a fact from a source. source_url and source_context_id are derived server-side from the persisted source row, never client-supplied.
+      required: [category, fact_text]
+      properties:
+        category:
+          $ref: "#/components/schemas/DruidFactCategory"
+        fact_text:
+          type: string
+          minLength: 1
+        source_note:
+          type: string
+          nullable: true
+
+    RefreshDruidContextSourcesResult:
+      type: object
+      required: [pages_crawled, new_sources, updated_sources]
+      properties:
+        pages_crawled:
+          type: integer
+        new_sources:
+          type: integer
+          description: New pending_review source versions created (new URL, or existing URL with changed content).
+        updated_sources:
+          type: integer
+          description: Pages whose (normalized_url, content_hash) already existed -- only last_seen_at was bumped.
 
     UserEditInput:
       type: object

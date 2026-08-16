@@ -12,14 +12,19 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { eq, inArray } from "drizzle-orm";
-import { db, pool, usersTable, druidFactsTable } from "@workspace/db";
+import { db, pool, usersTable, druidFactsTable, druidContextSourcesTable } from "@workspace/db";
 import app from "../src/app";
 import { issueSessionToken } from "../src/services/session";
+import { createIngestedDruidFact } from "../src/services/druidFacts";
 
 let server: Server;
 let baseUrl: string;
 
 const createdUserIds: string[] = [];
+// Phase 11.5C.2: source_url-immutability fixture needs a real
+// druid_context_sources row -- tracked separately since it must be deleted
+// after facts (FK) but before users.
+const createdSourceIds: string[] = [];
 
 let pamId = "";
 let pamToken = "";
@@ -60,6 +65,27 @@ async function deleteFactsCreatedByFixtureUsers(): Promise<void> {
   await db.delete(druidFactsTable).where(inArray(druidFactsTable.createdByUserId, createdUserIds));
 }
 
+// Minimal real druid_context_sources fixture row -- normalizedUrl/
+// contentHash only need to be unique here, not real normalized/hashed
+// values (that logic belongs to druidContextSources.ts, untouched by this
+// fix). Used to give an ingested-fact fixture a genuine sourceContextId.
+let sourceFixtureRunId = 0;
+async function makeContextSource(sourceUrl: string): Promise<string> {
+  sourceFixtureRunId++;
+  const [source] = await db
+    .insert(druidContextSourcesTable)
+    .values({
+      sourceUrl,
+      normalizedUrl: `authz-fixture-${Date.now()}-${sourceFixtureRunId}`,
+      contentHash: `authz-fixture-hash-${Date.now()}-${sourceFixtureRunId}`,
+      extractedText: "Fixture source text for source_url immutability HTTP tests.",
+      reviewStatus: "pending_review",
+    })
+    .returning();
+  createdSourceIds.push(source!.id);
+  return source!.id;
+}
+
 before(async () => {
   server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -82,6 +108,9 @@ before(async () => {
 after(async () => {
   try {
     await deleteFactsCreatedByFixtureUsers();
+    for (const id of createdSourceIds) {
+      await db.delete(druidContextSourcesTable).where(eq(druidContextSourcesTable.id, id));
+    }
     for (const id of createdUserIds) {
       await db.delete(usersTable).where(eq(usersTable.id, id));
     }
@@ -317,4 +346,37 @@ test("PATCH /druid-facts/:id ignores client-supplied verification/lifecycle/serv
   assert.equal(patched.fact_text, "Legit edit");
   assert.equal(patched.verification_status, "unverified", "PATCH must never be able to set verification_status directly");
   assert.equal(patched.active, true, "PATCH must never be able to set active directly -- only deactivate/reactivate can");
+});
+
+// ---- Phase 11.5C.2: ingested-fact source_url immutability -----------------
+
+test("PATCH /druid-facts/:id: an ingested fact rejects a source_url change (409, stable business error, unchanged provenance) but still allows editing an allowed field", async () => {
+  const sourceId = await makeContextSource("https://druidai.com/authz-ingested-original");
+  const fact = await createIngestedDruidFact(
+    { category: "product", factText: "Ingested authz fixture", sourceUrl: "https://druidai.com/authz-ingested-original", sourceContextId: sourceId },
+    adminId,
+  );
+
+  const rejectedRes = await authedFetch(`/druid-facts/${fact.id}`, adminToken, {
+    method: "PATCH",
+    body: JSON.stringify({ source_url: "https://druidai.com/authz-attempted-change" }),
+  });
+  assert.equal(rejectedRes.status, 409);
+  const rejectedBody = await rejectedRes.json();
+  assert.equal(typeof rejectedBody.error, "string");
+  assert.ok(rejectedBody.error.toLowerCase().includes("source_url"), "the response must surface the stable source_url-immutable business error, not a generic message");
+
+  const [rowAfterRejection] = await db.select().from(druidFactsTable).where(eq(druidFactsTable.id, fact.id));
+  assert.equal(rowAfterRejection!.sourceUrl, "https://druidai.com/authz-ingested-original", "a rejected PATCH must not change source_url");
+  assert.equal(rowAfterRejection!.sourceContextId, sourceId, "a rejected PATCH must not change source_context_id");
+
+  const allowedRes = await authedFetch(`/druid-facts/${fact.id}`, adminToken, {
+    method: "PATCH",
+    body: JSON.stringify({ fact_text: "Rewritten after the rejected source_url attempt" }),
+  });
+  assert.equal(allowedRes.status, 200);
+  const allowedBody = await allowedRes.json();
+  assert.equal(allowedBody.fact_text, "Rewritten after the rejected source_url attempt");
+  assert.equal(allowedBody.source_url, "https://druidai.com/authz-ingested-original", "an allowed edit must leave source_url untouched");
+  assert.equal(allowedBody.source_context_id, sourceId, "an allowed edit must leave source_context_id untouched");
 });

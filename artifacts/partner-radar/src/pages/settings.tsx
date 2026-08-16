@@ -33,6 +33,12 @@ import {
   useDeactivateDruidFact,
   useReactivateDruidFact,
   getListDruidFactsQueryKey,
+  useListDruidContextSources,
+  useRefreshDruidContextSources,
+  useReviewDruidContextSource,
+  useIgnoreDruidContextSource,
+  useCreateFactFromDruidContextSource,
+  getListDruidContextSourcesQueryKey,
   getListUsersQueryKey,
   getListTerritoriesQueryKey,
   getListScanConfigsQueryKey,
@@ -44,7 +50,7 @@ import {
   getListManualMetricValuesQueryKey,
   SourceType,
 } from '@workspace/api-client-react';
-import type { Connection, MetricMapping, KpiDetail, DruidFact } from '@workspace/api-client-react';
+import type { Connection, MetricMapping, KpiDetail, DruidFact, DruidContextSource } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Table,
@@ -1952,13 +1958,20 @@ function DruidFactFormDialog({ fact, onClose }: { fact: DruidFact | null; onClos
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="druid-fact-source-url">Source URL (optional)</Label>
-            <Input
-              id="druid-fact-source-url"
-              value={sourceUrl}
-              onChange={(e) => setSourceUrl(e.target.value)}
-              placeholder="https://druidai.com/..."
-            />
+            <Label htmlFor="druid-fact-source-url">Source URL{fact?.source_type === 'ingested' ? '' : ' (optional)'}</Label>
+            {fact?.source_type === 'ingested' ? (
+              <div id="druid-fact-source-url" className="text-sm rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-muted-foreground break-all">
+                {sourceUrl || '—'}
+                <span className="block text-xs mt-1">From ingested DRUID source material -- not editable here.</span>
+              </div>
+            ) : (
+              <Input
+                id="druid-fact-source-url"
+                value={sourceUrl}
+                onChange={(e) => setSourceUrl(e.target.value)}
+                placeholder="https://druidai.com/..."
+              />
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="druid-fact-source-note">Source note (optional)</Label>
@@ -2108,10 +2121,209 @@ function DruidFactsSection() {
   );
 }
 
+// Phase 11.5C.2: druidai.com source material -- extracted evidence, never
+// itself a trusted fact. Deliberately plain: no crawler/provider settings,
+// no chunk/vector/embedding/RAG language. "Mark reviewed"/"Ignore" are only
+// meaningful from pending_review (the list only ever shows pending_review
+// and reviewed sources -- ignored ones are excluded server-side); "Create
+// fact" stays available on a reviewed source too, since one source can
+// support multiple facts.
+function DruidContextSourceStatusBadge({ status }: { status: string }) {
+  if (status === 'reviewed') {
+    return <Badge variant="outline" className="text-sky-700 bg-sky-50 border-sky-200 font-normal">Reviewed</Badge>;
+  }
+  return <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-normal">Pending review</Badge>;
+}
+
+function CreateFactFromSourceDialog({ source, onClose }: { source: DruidContextSource; onClose: () => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [category, setCategory] = useState<string>('product');
+  const [factText, setFactText] = useState(source.extracted_text.slice(0, 500));
+  const [sourceNote, setSourceNote] = useState('');
+
+  const createMutation = useCreateFactFromDruidContextSource({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListDruidContextSourcesQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListDruidFactsQueryKey() });
+        toast({ title: 'Fact created', description: 'It is unverified -- use Verify in DRUID facts to trust it.' });
+        onClose();
+      },
+      onError: (err: any) => {
+        toast({ variant: 'destructive', title: 'Could not create fact', description: err?.data?.error ?? err?.message ?? 'Unknown error' });
+      },
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !createMutation.isPending && onClose()}>
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>Create DRUID fact from source</DialogTitle>
+          <DialogDescription>
+            Rewrite the extracted material into a concise, standalone fact. The new fact starts <strong>unverified</strong> -- it still needs the existing Verify action before it counts as trusted DRUID context.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Category</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(DRUID_FACT_CATEGORY_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="source-fact-text">Fact</Label>
+            <Textarea id="source-fact-text" rows={4} value={factText} onChange={(e) => setFactText(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="source-fact-note">Source note (optional)</Label>
+            <Input id="source-fact-note" value={sourceNote} onChange={(e) => setSourceNote(e.target.value)} placeholder="e.g. summarized from the pricing page" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={createMutation.isPending} onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={createMutation.isPending || !factText.trim()}
+            onClick={() => createMutation.mutate({ id: source.id, data: { category: category as any, fact_text: factText.trim(), source_note: sourceNote.trim() || null } })}
+          >
+            Create fact
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DruidContextSourcesSection() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: sources, isLoading } = useListDruidContextSources();
+  const [factSourceTarget, setFactSourceTarget] = useState<DruidContextSource | null>(null);
+  const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getListDruidContextSourcesQueryKey() });
+
+  const refreshMutation = useRefreshDruidContextSources({
+    mutation: {
+      onSuccess: (result) => {
+        invalidate();
+        toast({
+          title: 'Refreshed from druidai.com',
+          description: `${result.pages_crawled} pages crawled -- ${result.new_sources} new, ${result.updated_sources} unchanged.`,
+        });
+      },
+      onError: (err: any) => {
+        toast({ variant: 'destructive', title: 'Could not refresh', description: err?.data?.error ?? err?.message ?? 'Unknown error' });
+      },
+    },
+  });
+
+  const reviewMutation = useReviewDruidContextSource({
+    mutation: {
+      onSuccess: () => { invalidate(); toast({ title: 'Marked reviewed' }); },
+      onError: (err: any) => toast({ variant: 'destructive', title: 'Could not mark reviewed', description: err?.data?.error ?? err?.message ?? 'Unknown error' }),
+    },
+  });
+
+  const ignoreMutation = useIgnoreDruidContextSource({
+    mutation: {
+      onSuccess: () => { invalidate(); toast({ title: 'Source ignored' }); },
+      onError: (err: any) => toast({ variant: 'destructive', title: 'Could not ignore', description: err?.data?.error ?? err?.message ?? 'Unknown error' }),
+    },
+  });
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-medium">Source material</h3>
+        <Button size="sm" variant="outline" disabled={refreshMutation.isPending} onClick={() => refreshMutation.mutate()}>
+          {refreshMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+          Refresh from druidai.com
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        Extracted druidai.com pages, for review. Creating a fact from a source never verifies it -- every created fact is unverified until explicitly verified above.
+      </p>
+      {isLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      ) : !sources || sources.length === 0 ? (
+        <p className="text-sm text-muted-foreground border border-dashed border-border/60 rounded-md p-4">
+          No source material yet. Click "Refresh from druidai.com" to fetch some.
+        </p>
+      ) : (
+        <div className="border border-border/60 rounded-md bg-card overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Source</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">&nbsp;</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sources.map((s) => {
+                const expanded = expandedSourceId === s.id;
+                return (
+                  <React.Fragment key={s.id}>
+                    <TableRow>
+                      <TableCell className="max-w-[420px]">
+                        <a href={s.source_url} target="_blank" rel="noreferrer" className="underline font-medium block truncate">{s.source_url}</a>
+                        <button type="button" className="text-xs text-muted-foreground underline mt-0.5" onClick={() => setExpandedSourceId(expanded ? null : s.id)}>
+                          {expanded ? 'Hide extracted text' : 'View extracted text'}
+                        </button>
+                      </TableCell>
+                      <TableCell><DruidContextSourceStatusBadge status={s.review_status} /></TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {s.review_status === 'pending_review' && (
+                            <>
+                              <Button variant="outline" size="sm" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate({ id: s.id })}>
+                                Mark reviewed
+                              </Button>
+                              <Button variant="outline" size="sm" disabled={ignoreMutation.isPending} onClick={() => ignoreMutation.mutate({ id: s.id })}>
+                                Ignore
+                              </Button>
+                            </>
+                          )}
+                          <Button size="sm" onClick={() => setFactSourceTarget(s)}>Create fact</Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {expanded && (
+                      <TableRow>
+                        <TableCell colSpan={3} className="bg-muted/30">
+                          <p className="text-xs whitespace-pre-wrap text-muted-foreground max-h-64 overflow-y-auto">{s.extracted_text}</p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      {factSourceTarget && <CreateFactFromSourceDialog source={factSourceTarget} onClose={() => setFactSourceTarget(null)} />}
+    </div>
+  );
+}
+
 function DruidContextTab() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <DruidFactsSection />
+      <DruidContextSourcesSection />
     </div>
   );
 }

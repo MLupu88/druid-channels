@@ -2369,9 +2369,10 @@ export const ListDruidFactsResponseItem = zod.object({
   "id": zod.string(),
   "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
   "fact_text": zod.string(),
-  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_type": zod.enum(['manual', 'ingested']).describe('How this fact entered the store. \"manual\" is admin-typed; \"ingested\" (Phase 11.5C.2) means it was created from a reviewed druid_context_sources row -- see source_context_id. Both start verification_status \"unverified\" -- ingestion never grants trust automatically.'),
   "source_url": zod.string().nullish(),
   "source_note": zod.string().nullish(),
+  "source_context_id": zod.string().nullish().describe('The druid_context_sources row this fact was created from, when source_type is \"ingested\". Null for manual facts.'),
   "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
   "verified_by_user_id": zod.string().nullish(),
   "verified_at": zod.coerce.date().nullish(),
@@ -2403,9 +2404,10 @@ export const CreateDruidFactResponse = zod.object({
   "id": zod.string(),
   "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
   "fact_text": zod.string(),
-  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_type": zod.enum(['manual', 'ingested']).describe('How this fact entered the store. \"manual\" is admin-typed; \"ingested\" (Phase 11.5C.2) means it was created from a reviewed druid_context_sources row -- see source_context_id. Both start verification_status \"unverified\" -- ingestion never grants trust automatically.'),
   "source_url": zod.string().nullish(),
   "source_note": zod.string().nullish(),
+  "source_context_id": zod.string().nullish().describe('The druid_context_sources row this fact was created from, when source_type is \"ingested\". Null for manual facts.'),
   "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
   "verified_by_user_id": zod.string().nullish(),
   "verified_at": zod.coerce.date().nullish(),
@@ -2440,9 +2442,10 @@ export const UpdateDruidFactResponse = zod.object({
   "id": zod.string(),
   "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
   "fact_text": zod.string(),
-  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_type": zod.enum(['manual', 'ingested']).describe('How this fact entered the store. \"manual\" is admin-typed; \"ingested\" (Phase 11.5C.2) means it was created from a reviewed druid_context_sources row -- see source_context_id. Both start verification_status \"unverified\" -- ingestion never grants trust automatically.'),
   "source_url": zod.string().nullish(),
   "source_note": zod.string().nullish(),
+  "source_context_id": zod.string().nullish().describe('The druid_context_sources row this fact was created from, when source_type is \"ingested\". Null for manual facts.'),
   "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
   "verified_by_user_id": zod.string().nullish(),
   "verified_at": zod.coerce.date().nullish(),
@@ -2467,9 +2470,10 @@ export const VerifyDruidFactResponse = zod.object({
   "id": zod.string(),
   "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
   "fact_text": zod.string(),
-  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_type": zod.enum(['manual', 'ingested']).describe('How this fact entered the store. \"manual\" is admin-typed; \"ingested\" (Phase 11.5C.2) means it was created from a reviewed druid_context_sources row -- see source_context_id. Both start verification_status \"unverified\" -- ingestion never grants trust automatically.'),
   "source_url": zod.string().nullish(),
   "source_note": zod.string().nullish(),
+  "source_context_id": zod.string().nullish().describe('The druid_context_sources row this fact was created from, when source_type is \"ingested\". Null for manual facts.'),
   "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
   "verified_by_user_id": zod.string().nullish(),
   "verified_at": zod.coerce.date().nullish(),
@@ -2494,9 +2498,10 @@ export const DeactivateDruidFactResponse = zod.object({
   "id": zod.string(),
   "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
   "fact_text": zod.string(),
-  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_type": zod.enum(['manual', 'ingested']).describe('How this fact entered the store. \"manual\" is admin-typed; \"ingested\" (Phase 11.5C.2) means it was created from a reviewed druid_context_sources row -- see source_context_id. Both start verification_status \"unverified\" -- ingestion never grants trust automatically.'),
   "source_url": zod.string().nullish(),
   "source_note": zod.string().nullish(),
+  "source_context_id": zod.string().nullish().describe('The druid_context_sources row this fact was created from, when source_type is \"ingested\". Null for manual facts.'),
   "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
   "verified_by_user_id": zod.string().nullish(),
   "verified_at": zod.coerce.date().nullish(),
@@ -2521,9 +2526,111 @@ export const ReactivateDruidFactResponse = zod.object({
   "id": zod.string(),
   "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
   "fact_text": zod.string(),
-  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_type": zod.enum(['manual', 'ingested']).describe('How this fact entered the store. \"manual\" is admin-typed; \"ingested\" (Phase 11.5C.2) means it was created from a reviewed druid_context_sources row -- see source_context_id. Both start verification_status \"unverified\" -- ingestion never grants trust automatically.'),
   "source_url": zod.string().nullish(),
   "source_note": zod.string().nullish(),
+  "source_context_id": zod.string().nullish().describe('The druid_context_sources row this fact was created from, when source_type is \"ingested\". Null for manual facts.'),
+  "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
+  "verified_by_user_id": zod.string().nullish(),
+  "verified_at": zod.coerce.date().nullish(),
+  "active": zod.boolean(),
+  "deactivated_by_user_id": zod.string().nullish(),
+  "deactivated_at": zod.coerce.date().nullish(),
+  "created_by_user_id": zod.string().nullish(),
+  "created_at": zod.coerce.date(),
+  "updated_by_user_id": zod.string().nullish(),
+  "updated_at": zod.coerce.date()
+})
+
+
+/**
+ * @summary Crawl druidai.com (Tavily Crawl) and persist new/changed source material for review (admin-only). Unchanged pages only bump last_seen_at; a page whose content changed since the last refresh is persisted as a new pending_review version, leaving the prior version untouched.
+ */
+export const RefreshDruidContextSourcesResponse = zod.object({
+  "pages_crawled": zod.number().int(),
+  "new_sources": zod.number().int().describe('New pending_review source versions created (new URL, or existing URL with changed content).'),
+  "updated_sources": zod.number().int().describe('Pages whose (normalized_url, content_hash) already existed -- only last_seen_at was bumped.')
+})
+
+
+/**
+ * @summary List non-ignored DRUID context sources (admin-only), pending_review first. normalized_url/content_hash are internal matching keys and are never included in this response.
+ */
+export const ListDruidContextSourcesResponseItem = zod.object({
+  "id": zod.string(),
+  "source_url": zod.string(),
+  "extracted_text": zod.string(),
+  "review_status": zod.enum(['pending_review', 'reviewed', 'ignored']).describe('pending_review -> reviewed | ignored, both terminal. Independent of any druid_facts.verification_status -- reviewing a source, or creating a fact from it, never verifies a fact.'),
+  "extracted_at": zod.coerce.date(),
+  "last_seen_at": zod.coerce.date(),
+  "reviewed_by_user_id": zod.string().nullish(),
+  "reviewed_at": zod.coerce.date().nullish()
+}).describe('One extracted VERSION of an authoritative druidai.com page -- source evidence, never itself a trusted fact. normalized_url and content_hash are internal matching keys and are deliberately never included here.')
+export const ListDruidContextSourcesResponse = zod.array(ListDruidContextSourcesResponseItem)
+
+
+/**
+ * @summary Mark a pending_review source as reviewed, without creating a fact from it (admin-only). Only valid from pending_review.
+ */
+export const ReviewDruidContextSourceParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ReviewDruidContextSourceResponse = zod.object({
+  "id": zod.string(),
+  "source_url": zod.string(),
+  "extracted_text": zod.string(),
+  "review_status": zod.enum(['pending_review', 'reviewed', 'ignored']).describe('pending_review -> reviewed | ignored, both terminal. Independent of any druid_facts.verification_status -- reviewing a source, or creating a fact from it, never verifies a fact.'),
+  "extracted_at": zod.coerce.date(),
+  "last_seen_at": zod.coerce.date(),
+  "reviewed_by_user_id": zod.string().nullish(),
+  "reviewed_at": zod.coerce.date().nullish()
+}).describe('One extracted VERSION of an authoritative druidai.com page -- source evidence, never itself a trusted fact. normalized_url and content_hash are internal matching keys and are deliberately never included here.')
+
+
+/**
+ * @summary Mark a pending_review source version as ignored -- intentionally excluded from use (admin-only). A future refresh that finds changed content at the same URL still creates a new pending_review version. Only valid from pending_review.
+ */
+export const IgnoreDruidContextSourceParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const IgnoreDruidContextSourceResponse = zod.object({
+  "id": zod.string(),
+  "source_url": zod.string(),
+  "extracted_text": zod.string(),
+  "review_status": zod.enum(['pending_review', 'reviewed', 'ignored']).describe('pending_review -> reviewed | ignored, both terminal. Independent of any druid_facts.verification_status -- reviewing a source, or creating a fact from it, never verifies a fact.'),
+  "extracted_at": zod.coerce.date(),
+  "last_seen_at": zod.coerce.date(),
+  "reviewed_by_user_id": zod.string().nullish(),
+  "reviewed_at": zod.coerce.date().nullish()
+}).describe('One extracted VERSION of an authoritative druidai.com page -- source evidence, never itself a trusted fact. normalized_url and content_hash are internal matching keys and are deliberately never included here.')
+
+
+/**
+ * @summary Create a new UNVERIFIED druid_fact from this source's extracted text (admin-only). If the source was pending_review, it is atomically marked reviewed in the same transaction as the fact creation; a reviewed source can have any number of additional facts created from it without its review metadata changing again. Rejected (409) if the source is ignored.
+ */
+export const CreateFactFromDruidContextSourceParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+
+
+export const CreateFactFromDruidContextSourceBody = zod.object({
+  "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
+  "fact_text": zod.string().min(1),
+  "source_note": zod.string().nullish()
+}).describe('The only fields an admin may set when creating a fact from a source. source_url and source_context_id are derived server-side from the persisted source row, never client-supplied.')
+
+export const CreateFactFromDruidContextSourceResponse = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
+  "fact_text": zod.string(),
+  "source_type": zod.enum(['manual', 'ingested']).describe('How this fact entered the store. \"manual\" is admin-typed; \"ingested\" (Phase 11.5C.2) means it was created from a reviewed druid_context_sources row -- see source_context_id. Both start verification_status \"unverified\" -- ingestion never grants trust automatically.'),
+  "source_url": zod.string().nullish(),
+  "source_note": zod.string().nullish(),
+  "source_context_id": zod.string().nullish().describe('The druid_context_sources row this fact was created from, when source_type is \"ingested\". Null for manual facts.'),
   "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
   "verified_by_user_id": zod.string().nullish(),
   "verified_at": zod.coerce.date().nullish(),

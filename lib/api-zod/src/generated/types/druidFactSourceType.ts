@@ -7,11 +7,12 @@
  */
 
 /**
- * How this fact entered the store. "manual" is the only value in Phase 11.5C.1 -- 11.5C.2 adds "ingested" for Tavily-sourced candidate material.
+ * How this fact entered the store. "manual" is admin-typed; "ingested" (Phase 11.5C.2) means it was created from a reviewed druid_context_sources row -- see source_context_id. Both start verification_status "unverified" -- ingestion never grants trust automatically.
  */
 export type DruidFactSourceType = typeof DruidFactSourceType[keyof typeof DruidFactSourceType];
 
 
 export const DruidFactSourceType = {
   manual: 'manual',
+  ingested: 'ingested',
 } as const;

@@ -1398,13 +1398,14 @@ export const DruidFactCategory = {
 } as const;
 
 /**
- * How this fact entered the store. "manual" is the only value in Phase 11.5C.1 -- 11.5C.2 adds "ingested" for Tavily-sourced candidate material.
+ * How this fact entered the store. "manual" is admin-typed; "ingested" (Phase 11.5C.2) means it was created from a reviewed druid_context_sources row -- see source_context_id. Both start verification_status "unverified" -- ingestion never grants trust automatically.
  */
 export type DruidFactSourceType = typeof DruidFactSourceType[keyof typeof DruidFactSourceType];
 
 
 export const DruidFactSourceType = {
   manual: 'manual',
+  ingested: 'ingested',
 } as const;
 
 /**
@@ -1425,6 +1426,8 @@ export interface DruidFact {
   source_type: DruidFactSourceType;
   source_url?: string | null;
   source_note?: string | null;
+  /** The druid_context_sources row this fact was created from, when source_type is "ingested". Null for manual facts. */
+  source_context_id?: string | null;
   verification_status: DruidFactVerificationStatus;
   verified_by_user_id?: string | null;
   verified_at?: string | null;
@@ -1457,6 +1460,50 @@ export interface DruidFactUpdateInput {
   fact_text?: string;
   source_url?: string | null;
   source_note?: string | null;
+}
+
+/**
+ * pending_review -> reviewed | ignored, both terminal. Independent of any druid_facts.verification_status -- reviewing a source, or creating a fact from it, never verifies a fact.
+ */
+export type DruidContextSourceReviewStatus = typeof DruidContextSourceReviewStatus[keyof typeof DruidContextSourceReviewStatus];
+
+
+export const DruidContextSourceReviewStatus = {
+  pending_review: 'pending_review',
+  reviewed: 'reviewed',
+  ignored: 'ignored',
+} as const;
+
+/**
+ * One extracted VERSION of an authoritative druidai.com page -- source evidence, never itself a trusted fact. normalized_url and content_hash are internal matching keys and are deliberately never included here.
+ */
+export interface DruidContextSource {
+  id: string;
+  source_url: string;
+  extracted_text: string;
+  review_status: DruidContextSourceReviewStatus;
+  extracted_at: string;
+  last_seen_at: string;
+  reviewed_by_user_id?: string | null;
+  reviewed_at?: string | null;
+}
+
+/**
+ * The only fields an admin may set when creating a fact from a source. source_url and source_context_id are derived server-side from the persisted source row, never client-supplied.
+ */
+export interface CreateFactFromDruidContextSourceInput {
+  category: DruidFactCategory;
+  /** @minLength 1 */
+  fact_text: string;
+  source_note?: string | null;
+}
+
+export interface RefreshDruidContextSourcesResult {
+  pages_crawled: number;
+  /** New pending_review source versions created (new URL, or existing URL with changed content). */
+  new_sources: number;
+  /** Pages whose (normalized_url, content_hash) already existed -- only last_seen_at was bumped. */
+  updated_sources: number;
 }
 
 export interface UserEditInput {

@@ -20,6 +20,7 @@ import {
   reactivateDruidFact,
   DruidFactMissingProvenanceError,
   InvalidDruidFactCategoryError,
+  DruidFactSourceUrlImmutableError,
 } from "../services/druidFacts";
 
 // Phase 11.5C.1: admin-only CRUD for the DRUID Context foundation. Every
@@ -37,7 +38,7 @@ const router: IRouter = Router();
 // a *Response.parse() call throws (missing snake_case keys), never silently
 // serializes the wrong shape. Same convention as
 // routes/discovery_exclusions.ts's shapeExclusion().
-function shapeDruidFact(fact: DruidFact) {
+export function shapeDruidFact(fact: DruidFact) {
   return {
     id: fact.id,
     category: fact.category,
@@ -45,6 +46,9 @@ function shapeDruidFact(fact: DruidFact) {
     source_type: fact.sourceType,
     source_url: fact.sourceUrl,
     source_note: fact.sourceNote,
+    // Phase 11.5C.2: which extracted druid_context_sources row this fact
+    // was created from (null for manual facts).
+    source_context_id: fact.sourceContextId,
     verification_status: fact.verificationStatus,
     verified_by_user_id: fact.verifiedByUserId,
     verified_at: fact.verifiedAt ? fact.verifiedAt.toISOString() : null,
@@ -97,6 +101,10 @@ router.patch("/druid-facts/:id", requireAdmin, async (req, res): Promise<void> =
   } catch (err) {
     if (err instanceof InvalidDruidFactCategoryError) {
       res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof DruidFactSourceUrlImmutableError) {
+      res.status(409).json({ error: err.message });
       return;
     }
     throw err;

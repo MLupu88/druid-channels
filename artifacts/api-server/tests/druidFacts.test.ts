@@ -14,22 +14,28 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
-import { db, pool, usersTable, druidFactsTable } from "@workspace/db";
+import { db, pool, usersTable, druidFactsTable, druidContextSourcesTable } from "@workspace/db";
 import {
   listDruidFacts,
   listTrustedDruidFacts,
   createDruidFact,
+  createIngestedDruidFact,
   updateDruidFact,
   verifyDruidFact,
   deactivateDruidFact,
   reactivateDruidFact,
   DruidFactMissingProvenanceError,
   InvalidDruidFactCategoryError,
+  DruidFactSourceUrlImmutableError,
 } from "../src/services/druidFacts";
 
 let adminUserId: string;
 const createdUserIds: string[] = [];
 const createdFactIds: string[] = [];
+// Phase 11.5C.2 source_url-immutability tests need a real
+// druid_context_sources row to attach ingested fact fixtures to -- tracked
+// separately since it must be deleted after facts (FK) but before users.
+const createdSourceIds: string[] = [];
 
 before(async () => {
   const [admin] = await db
@@ -47,8 +53,14 @@ before(async () => {
 });
 
 after(async () => {
+  // Child-first: facts reference both sources and users (FK), sources
+  // reference users (reviewed_by_user_id) -- facts must go first, then
+  // sources, then users.
   for (const id of createdFactIds) {
     await db.delete(druidFactsTable).where(eq(druidFactsTable.id, id));
+  }
+  for (const id of createdSourceIds) {
+    await db.delete(druidContextSourcesTable).where(eq(druidContextSourcesTable.id, id));
   }
   for (const id of createdUserIds) {
     await db.delete(usersTable).where(eq(usersTable.id, id));
@@ -58,6 +70,45 @@ after(async () => {
 
 async function makeFact(overrides: Parameters<typeof createDruidFact>[0] = { category: "product", factText: "Test fact" }) {
   const created = await createDruidFact(overrides, adminUserId);
+  createdFactIds.push(created.id);
+  return created;
+}
+
+// Phase 11.5C.2: a minimal real druid_context_sources fixture row, so
+// createIngestedDruidFact has a genuine sourceContextId to reference --
+// normalizedUrl/contentHash only need to be unique here, not real
+// normalized/hashed values (that logic belongs to druidContextSources.ts,
+// untouched by this fix).
+let sourceFixtureRunId = 0;
+async function makeContextSource(sourceUrl: string): Promise<string> {
+  sourceFixtureRunId++;
+  const [source] = await db
+    .insert(druidContextSourcesTable)
+    .values({
+      sourceUrl,
+      normalizedUrl: `fixture-${Date.now()}-${sourceFixtureRunId}`,
+      contentHash: `fixture-hash-${Date.now()}-${sourceFixtureRunId}`,
+      extractedText: "Fixture source text for source_url immutability tests.",
+      reviewStatus: "pending_review",
+    })
+    .returning();
+  createdSourceIds.push(source!.id);
+  return source!.id;
+}
+
+async function makeIngestedFact(overrides: { category?: string; factText?: string; sourceUrl?: string; sourceNote?: string | null } = {}) {
+  const sourceUrl = overrides.sourceUrl ?? "https://druidai.com/ingested-fixture";
+  const sourceContextId = await makeContextSource(sourceUrl);
+  const created = await createIngestedDruidFact(
+    {
+      category: overrides.category ?? "product",
+      factText: overrides.factText ?? "Ingested fixture fact",
+      sourceUrl,
+      sourceContextId,
+      sourceNote: overrides.sourceNote ?? null,
+    },
+    adminUserId,
+  );
   createdFactIds.push(created.id);
   return created;
 }
@@ -146,6 +197,58 @@ test("editing an already-unverified fact does not touch verification fields", as
   const edited = await updateDruidFact(fact.id, { factText: "Still never verified" }, adminUserId);
   assert.equal(edited!.verificationStatus, "unverified");
   assert.equal(edited!.verifiedByUserId, null);
+});
+
+// ---- Phase 11.5C.2: ingested-fact source_url immutability ------------------
+
+test("updateDruidFact: a manual fact's source_url remains editable exactly as before", async () => {
+  const fact = await makeFact({ category: "product", factText: "Manual fact", sourceUrl: "https://druidai.com/manual-original" });
+  const edited = await updateDruidFact(fact.id, { sourceUrl: "https://druidai.com/manual-changed" }, adminUserId);
+  assert.equal(edited!.sourceUrl, "https://druidai.com/manual-changed");
+});
+
+test("updateDruidFact rejects changing source_url on an ingested fact, leaving source_url and source_context_id unchanged", async () => {
+  const fact = await makeIngestedFact({ sourceUrl: "https://druidai.com/ingested-original" });
+  assert.equal(fact.sourceType, "ingested");
+
+  await assert.rejects(
+    () => updateDruidFact(fact.id, { sourceUrl: "https://druidai.com/attempted-change" }, adminUserId),
+    DruidFactSourceUrlImmutableError,
+  );
+
+  const [row] = await db.select().from(druidFactsTable).where(eq(druidFactsTable.id, fact.id));
+  assert.equal(row!.sourceUrl, "https://druidai.com/ingested-original", "source_url must remain unchanged after a rejected update");
+  assert.equal(row!.sourceContextId, fact.sourceContextId, "source_context_id must remain unchanged");
+});
+
+test("updateDruidFact allows idempotently resubmitting an ingested fact's own unchanged source_url", async () => {
+  const fact = await makeIngestedFact({ sourceUrl: "https://druidai.com/idempotent" });
+  const edited = await updateDruidFact(fact.id, { sourceUrl: "https://druidai.com/idempotent", factText: "Updated text" }, adminUserId);
+  assert.ok(edited, "resubmitting the fact's own current source_url must not be rejected");
+  assert.equal(edited!.sourceUrl, "https://druidai.com/idempotent");
+  assert.equal(edited!.factText, "Updated text");
+});
+
+test("updateDruidFact still allows editing category/fact_text/source_note on an ingested fact", async () => {
+  const fact = await makeIngestedFact({ category: "product", factText: "Original text", sourceUrl: "https://druidai.com/editable-fields" });
+  const edited = await updateDruidFact(fact.id, { category: "positioning", factText: "Rewritten text", sourceNote: "Added a note" }, adminUserId);
+  assert.equal(edited!.category, "positioning");
+  assert.equal(edited!.factText, "Rewritten text");
+  assert.equal(edited!.sourceNote, "Added a note");
+  assert.equal(edited!.sourceUrl, "https://druidai.com/editable-fields", "source_url must remain untouched when it is not part of the update");
+});
+
+test("editing an allowed field on a verified ingested fact still resets verification, leaving source_url/source_context_id unchanged", async () => {
+  const fact = await makeIngestedFact({ sourceUrl: "https://druidai.com/verify-reset" });
+  const verified = await verifyDruidFact(fact.id, adminUserId);
+  assert.equal(verified!.verificationStatus, "verified");
+
+  const edited = await updateDruidFact(fact.id, { factText: "Edited after verification" }, adminUserId);
+  assert.equal(edited!.verificationStatus, "unverified", "editing an allowed field must still reset verification for an ingested fact");
+  assert.equal(edited!.verifiedByUserId, null);
+  assert.equal(edited!.verifiedAt, null);
+  assert.equal(edited!.sourceUrl, fact.sourceUrl, "source_url must remain unchanged");
+  assert.equal(edited!.sourceContextId, fact.sourceContextId, "source_context_id must remain unchanged");
 });
 
 // ---- Deactivate / reactivate lifecycle -------------------------------------

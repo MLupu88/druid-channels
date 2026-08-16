@@ -2,6 +2,7 @@ import { pgTable, text, uuid, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
+import { druidContextSourcesTable } from "./druid_context_sources";
 
 // Phase 11.5C.1: a small, admin-curated set of facts about DRUID itself
 // (product, positioning, ideal partner profile) -- grounds partner
@@ -9,11 +10,17 @@ import { usersTable } from "./users";
 // knowledge. Deliberately NOT wired into Discovery/Channel Radar prompts
 // yet (11.5C.3 -- see services/druidFacts.ts's listTrustedDruidFacts, which
 // exists as the future read path but is called from nowhere in this
-// slice). Deliberately NOT populated by ingestion yet (11.5C.2) --
-// sourceType only supports "manual" here; 11.5C.2 adds "ingested" as a
-// second value (a TS-level enum extension, not a migration, since this
-// column is a constrained text field, not a native Postgres enum -- same
-// convention as users.role/connections.providerType/discovery_exclusions.reason).
+// slice).
+//
+// Phase 11.5C.2: sourceType now also supports "ingested" (a TS-level enum
+// extension, not a migration, since this column is a constrained text
+// field, not a native Postgres enum -- same convention as
+// users.role/connections.providerType/discovery_exclusions.reason) --
+// druidContextSources.ts's createIngestedDruidFact (via druidFacts.ts) is
+// the only place that ever sets sourceType: "ingested". An ingested fact
+// still starts verificationStatus: "unverified" exactly like a manual one --
+// see verifyDruidFact below, the ONLY function that ever sets
+// verificationStatus: "verified", unchanged by 11.5C.2.
 export const DRUID_FACT_CATEGORIES = [
   "product",
   "positioning",
@@ -23,7 +30,7 @@ export const DRUID_FACT_CATEGORIES = [
   "other",
 ] as const;
 
-export const DRUID_FACT_SOURCE_TYPES = ["manual"] as const;
+export const DRUID_FACT_SOURCE_TYPES = ["manual", "ingested"] as const;
 
 export const DRUID_FACT_VERIFICATION_STATUSES = ["unverified", "verified"] as const;
 
@@ -40,6 +47,12 @@ export const druidFactsTable = pgTable("druid_facts", {
   sourceType: text("source_type", { enum: DRUID_FACT_SOURCE_TYPES }).notNull().default("manual"),
   sourceUrl: text("source_url"),
   sourceNote: text("source_note"),
+  // Phase 11.5C.2: which extracted source version this fact was created
+  // from, when sourceType is "ingested" -- null for manual facts. Never
+  // client-settable (see DruidFactCreateInput/DruidFactUpdateInput in
+  // routes/druid_facts.ts, which never accept it); set only by
+  // createIngestedDruidFact.
+  sourceContextId: uuid("source_context_id").references(() => druidContextSourcesTable.id),
 
   // Verification/approval state. Always starts "unverified" (server-set,
   // never client-supplied -- see routes/druid_facts.ts's narrow create
