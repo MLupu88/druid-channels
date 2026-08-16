@@ -28,21 +28,19 @@ after(() => {
   globalThis.fetch = originalFetch;
 });
 
-// Production hotfix: every test in this file sets its own fetch mock and
-// AI_API_KEY/SEARCH_API_KEY before use, but nothing previously restored
-// them *between* tests -- a test order change or a new test appended
-// without its own mock could silently inherit a previous test's rejecting
-// fetch or "configured" env state. Restored after every test, not just once
+// Production hotfix: every test in this file sets its own fetch mock, but
+// nothing previously restored it *between* tests -- a test order change or
+// a new test appended without its own mock could silently inherit a
+// previous test's rejecting fetch. Restored after every test, not just once
 // at the end of the file, so tests can never leak state into each other
-// regardless of order.
+// regardless of order. Phase 11.5B: apiKey is now passed explicitly to each
+// ...ViaDeepSeek/searchViaTavily call rather than read from process.env, so
+// there's no longer any AI_API_KEY/SEARCH_API_KEY env state to reset here.
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  delete process.env.AI_API_KEY;
-  delete process.env.SEARCH_API_KEY;
 });
 
 test("searchViaTavily normalizes Tavily results and never fabricates a publish date", async () => {
-  process.env.SEARCH_API_KEY = "test-key";
   mockFetchOnce(200, {
     query: "AI systems integrator",
     results: [
@@ -51,7 +49,7 @@ test("searchViaTavily normalizes Tavily results and never fabricates a publish d
     ],
   });
 
-  const results = await searchViaTavily("AI systems integrator", { maxResults: 5 });
+  const results = await searchViaTavily("test-key", "AI systems integrator", { maxResults: 5 });
 
   assert.equal(results.length, 1);
   assert.equal(results[0]!.url, "https://acme.example/news");
@@ -61,9 +59,8 @@ test("searchViaTavily normalizes Tavily results and never fabricates a publish d
 });
 
 test("searchViaTavily throws SearchProviderError on a non-2xx response", async () => {
-  process.env.SEARCH_API_KEY = "test-key";
   mockFetchOnce(500, { error: "internal" });
-  await assert.rejects(() => searchViaTavily("query", { maxResults: 5 }), SearchProviderError);
+  await assert.rejects(() => searchViaTavily("test-key", "query", { maxResults: 5 }), SearchProviderError);
 });
 
 // Stage 6.3: lookback_days real enforcement -- start_date is Tavily's own
@@ -71,33 +68,30 @@ test("searchViaTavily throws SearchProviderError on a non-2xx response", async (
 // reference), so passing it through the actual request body is real
 // enforcement, not a query-text trick.
 test("searchViaTavily includes start_date in the request body when provided (real lookback enforcement, not query-text stuffing)", async () => {
-  process.env.SEARCH_API_KEY = "test-key";
   let capturedBody: any = null;
   globalThis.fetch = (async (_url: any, init: any) => {
     capturedBody = JSON.parse(init.body);
     return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
 
-  await searchViaTavily("Microsoft partnership Romania", { maxResults: 3, startDate: "2026-07-11" });
+  await searchViaTavily("test-key", "Microsoft partnership Romania", { maxResults: 3, startDate: "2026-07-11" });
 
   assert.equal(capturedBody.start_date, "2026-07-11");
 });
 
 test("searchViaTavily omits start_date entirely when not provided -- never a fabricated default window", async () => {
-  process.env.SEARCH_API_KEY = "test-key";
   let capturedBody: any = null;
   globalThis.fetch = (async (_url: any, init: any) => {
     capturedBody = JSON.parse(init.body);
     return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
 
-  await searchViaTavily("AI systems integrator", { maxResults: 5 });
+  await searchViaTavily("test-key", "AI systems integrator", { maxResults: 5 });
 
   assert.equal("start_date" in capturedBody, false);
 });
 
 test("qualifyViaDeepSeek parses a valid qualification and filters invalid evidence URLs", async () => {
-  process.env.AI_API_KEY = "test-key";
   const validQualification = {
     partner_type: "System integrator",
     recruitment_archetype: "system_integrator",
@@ -120,7 +114,7 @@ test("qualifyViaDeepSeek parses a valid qualification and filters invalid eviden
     choices: [{ message: { content: JSON.stringify(validQualification) }, finish_reason: "stop" }],
   });
 
-  const result = await qualifyViaDeepSeek({
+  const result = await qualifyViaDeepSeek("test-key", {
     companyName: "Acme Systems",
     domain: "acme.example",
     evidence: [{ url: "https://acme.example/news", text: "Acme launched an AI practice." }],
@@ -148,14 +142,13 @@ test("qualifyViaDeepSeek parses a valid qualification and filters invalid eviden
 });
 
 test("qualifyViaDeepSeek throws AiProviderError on malformed model output", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {
     choices: [{ message: { content: "not valid json" }, finish_reason: "stop" }],
   });
 
   await assert.rejects(
     () =>
-      qualifyViaDeepSeek({
+      qualifyViaDeepSeek("test-key", {
         companyName: "Acme Systems",
         domain: "acme.example",
         evidence: [{ url: "https://acme.example/news", text: "evidence" }],
@@ -186,7 +179,6 @@ test("check: identity resolution remains separately bounded at 20 seconds", () =
 });
 
 test("qualifyViaDeepSeek still maps an aborted request to AiProviderError('timeout') -- AbortController protection intact", async () => {
-  process.env.AI_API_KEY = "test-key";
   globalThis.fetch = (async () => {
     const err = new Error("The operation was aborted");
     err.name = "AbortError";
@@ -194,7 +186,7 @@ test("qualifyViaDeepSeek still maps an aborted request to AiProviderError('timeo
   }) as typeof fetch;
 
   try {
-    await qualifyViaDeepSeek({
+    await qualifyViaDeepSeek("test-key", {
       companyName: "Acme Systems",
       domain: "acme.example",
       evidence: [{ url: "https://acme.example/news", text: "evidence" }],
@@ -218,7 +210,6 @@ test("qualifyViaDeepSeek still maps an aborted request to AiProviderError('timeo
 });
 
 test("identifyCompanyViaDeepSeek still maps an aborted request to AiProviderError('timeout') -- AbortController protection intact", async () => {
-  process.env.AI_API_KEY = "test-key";
   globalThis.fetch = (async () => {
     const err = new Error("The operation was aborted");
     err.name = "AbortError";
@@ -226,7 +217,7 @@ test("identifyCompanyViaDeepSeek still maps an aborted request to AiProviderErro
   }) as typeof fetch;
 
   try {
-    await identifyCompanyViaDeepSeek({ subjectCompanyName: "Acme Systems", candidates: [] });
+    await identifyCompanyViaDeepSeek("test-key", { subjectCompanyName: "Acme Systems", candidates: [] });
     assert.fail("expected identifyCompanyViaDeepSeek to throw");
   } catch (err) {
     assert.ok(err instanceof AiProviderError);

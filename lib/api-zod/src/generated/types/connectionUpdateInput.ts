@@ -12,4 +12,5 @@ export interface ConnectionUpdateInput {
   config_json?: ConnectionUpdateInputConfigJson;
   /** @nullable */
   credential_env_var?: string | null;
+  enabled?: boolean;
 }

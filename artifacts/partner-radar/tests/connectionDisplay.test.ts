@@ -104,3 +104,25 @@ test("Do NOT treat every not_configured provider as a red error -- only a real '
     }
   }
 });
+
+// ---- Phase 11.5B: enabled=false -> 'disabled' tone ------------------------
+
+test("check: enabled=false is the 'disabled' tone, regardless of status or credential presence", () => {
+  assert.equal(getConnectionTone("connected", true, false), "disabled");
+  assert.equal(getConnectionTone("error", true, false), "disabled");
+  assert.equal(getConnectionTone("not_configured", false, false), "disabled");
+});
+
+test("check: 'disabled' is never treated as an error tone", () => {
+  assert.equal(isErrorTone(getConnectionTone("error", true, false)), false);
+});
+
+test("check: enabled defaults to true when omitted, so every existing call site (2-arg) is unaffected by the enabled param", () => {
+  assert.equal(getConnectionTone("connected", true), "connected");
+  assert.equal(getConnectionTone("not_configured", false), "not_configured");
+});
+
+test("check: enabled=true (explicit) behaves identically to the default", () => {
+  assert.equal(getConnectionTone("not_configured", true, true), "configured");
+  assert.equal(getConnectionTone("error", true, true), "error");
+});

@@ -4,10 +4,7 @@
 // conventions: bounded timeout, size-capped response, no retries, and a
 // stable NotConfigured/ProviderError split so discoveryEngine.ts never
 // silently reports a live search that didn't happen.
-import { db } from "@workspace/db";
-import { connectionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { hasCredential } from "../connections";
+import { resolveProviderSecret, hasResolvableCredential } from "../connections";
 
 export class SearchNotImplementedError extends Error {
   constructor() {
@@ -39,17 +36,25 @@ export interface WebSearchResult {
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_RESPONSE_BYTES = 300_000;
 
+// Phase 11.5B: resolution now goes through resolveProviderSecret (DB secret
+// -> credentialEnvVar -> unavailable, honoring enabled=false) instead of a
+// hardcoded process.env.SEARCH_API_KEY read -- see services/connections.ts.
+// hasResolvableCredential is the safe wrapper: a broken/malformed
+// encryption key is treated as "not configured" here (never crashes a scan
+// mid-run); the admin Test Connection action surfaces that loudly instead.
 export async function isConfigured(): Promise<boolean> {
-  const [conn] = await db.select().from(connectionsTable).where(eq(connectionsTable.providerType, "web_search"));
-  return process.env.SEARCH_PROVIDER === "tavily" && hasCredential(conn?.credentialEnvVar ?? null);
+  return process.env.SEARCH_PROVIDER === "tavily" && (await hasResolvableCredential("web_search"));
 }
 
 export async function search(query: string, opts: { maxResults: number; startDate?: string }): Promise<WebSearchResult[]> {
   if (!(await isConfigured())) throw new SearchNotImplementedError();
 
   switch (process.env.SEARCH_PROVIDER) {
-    case "tavily":
-      return searchViaTavily(query, opts);
+    case "tavily": {
+      const apiKey = await resolveProviderSecret("web_search");
+      if (!apiKey) throw new SearchNotImplementedError();
+      return searchViaTavily(apiKey, query, opts);
+    }
     default:
       throw new SearchNotImplementedError();
   }
@@ -57,7 +62,10 @@ export async function search(query: string, opts: { maxResults: number; startDat
 
 // Exported (not just called internally) so it can be unit-tested directly
 // against a mocked fetch, without needing a live DB-backed isConfigured()
-// check in the test.
+// check in the test. apiKey is now an explicit parameter (the caller
+// resolves it via resolveProviderSecret) rather than read from
+// process.env internally -- this function no longer knows or cares where
+// the key came from.
 //
 // startDate (YYYY-MM-DD), when provided, is passed through as Tavily's own
 // documented `start_date` request parameter -- a real, provider-enforced
@@ -66,10 +74,7 @@ export async function search(query: string, opts: { maxResults: number; startDat
 // (Discovery's own live search doesn't), so it stays optional -- only
 // Channel Radar's lookback_days currently derives it (see
 // channelRadarEngine.ts's computeLookbackStartDate).
-export async function searchViaTavily(query: string, opts: { maxResults: number; startDate?: string }): Promise<WebSearchResult[]> {
-  const apiKey = process.env.SEARCH_API_KEY;
-  if (!apiKey) throw new SearchNotImplementedError();
-
+export async function searchViaTavily(apiKey: string, query: string, opts: { maxResults: number; startDate?: string }): Promise<WebSearchResult[]> {
   const maxResults = Math.max(1, Math.min(20, opts.maxResults));
 
   const controller = new AbortController();
@@ -124,4 +129,13 @@ export async function searchViaTavily(query: string, opts: { maxResults: number;
       snippet: typeof r.content === "string" ? r.content : "",
       publishedAt: null,
     }));
+}
+
+// Phase 11.5B: the real "Test connection" verification -- a single,
+// minimal, bounded Tavily search (max_results: 1), reusing searchViaTavily
+// itself so the test exercises the exact same request path a real scan
+// uses, just with a trivial query. Resolves nothing (throws on failure);
+// the caller (routes/connections.ts) maps success/failure to a status.
+export async function testConnection(apiKey: string): Promise<void> {
+  await searchViaTavily(apiKey, "test", { maxResults: 1 });
 }

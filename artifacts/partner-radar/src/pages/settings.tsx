@@ -16,6 +16,8 @@ import {
   useUpdateChannelRadarConfig,
   useListConnections,
   useTestConnection,
+  useUpdateConnection,
+  useSetConnectionSecret,
   useListMetricMappings,
   useUpsertMetricMapping,
   usePreviewMetricMapping,
@@ -1009,8 +1011,9 @@ const CONNECTION_ICONS: Record<string, React.ElementType> = {
   ai: Bot,
 };
 
-function ConnectionStatusBadge({ status, hasCredential }: { status: string; hasCredential: boolean }) {
-  const tone = getConnectionTone(status, hasCredential);
+function ConnectionStatusBadge({ status, hasCredential, enabled }: { status: string; hasCredential: boolean; enabled: boolean }) {
+  const tone = getConnectionTone(status, hasCredential, enabled);
+  if (tone === 'disabled') return <Badge variant="outline" className="text-muted-foreground font-normal shrink-0">Disabled</Badge>;
   if (tone === 'connected') return <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 font-normal shrink-0"><span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Connected</span></Badge>;
   if (tone === 'configured') return <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-normal shrink-0"><span className="flex items-center gap-1"><Eye className="h-3 w-3" /> Configured</span></Badge>;
   if (tone === 'error') return <Badge variant="outline" className="text-rose-700 bg-rose-50 border-rose-200 font-normal shrink-0"><span className="flex items-center gap-1"><XCircle className="h-3 w-3" /> Error</span></Badge>;
@@ -1018,6 +1021,93 @@ function ConnectionStatusBadge({ status, hasCredential }: { status: string; hasC
   // configuration state on this page (not evidence of an outage) --
   // neutral/grey, never red.
   return <Badge variant="outline" className="text-muted-foreground font-normal shrink-0">Not configured</Badge>;
+}
+
+// Phase 11.5B: only these two provider types get DB-stored-secret UI in this
+// slice (Tavily/web_search, DeepSeek/ai) -- HubSpot stays untouched for
+// Phase 12, and Web Reader is currently unwired (Phase 11.5C reuses the
+// Tavily credential rather than introducing a separate one). Both still get
+// the env-var-only display/test behavior they already had.
+const SECRET_MANAGEABLE_PROVIDER_TYPES = new Set(['web_search', 'ai']);
+
+function ReplaceConnectionSecretDialog({ connection, onClose }: { connection: Connection; onClose: () => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState('');
+
+  const setSecretMutation = useSetConnectionSecret({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListConnectionsQueryKey() });
+        toast({ title: 'Credential saved', description: `${connection.provider_name}'s stored credential was updated.` });
+        onClose();
+      },
+      onError: (err: any) => {
+        toast({ title: 'Could not save credential', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      },
+    },
+  });
+
+  const clearSecretMutation = useSetConnectionSecret({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListConnectionsQueryKey() });
+        toast({ title: 'Stored credential cleared', description: `${connection.provider_name} now falls back to its environment variable, if set.` });
+        onClose();
+      },
+      onError: (err: any) => {
+        toast({ title: 'Could not clear credential', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      },
+    },
+  });
+
+  const busy = setSecretMutation.isPending || clearSecretMutation.isPending;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Replace {connection.provider_name} credential</DialogTitle>
+          <DialogDescription>
+            Stored encrypted at rest. Only the last 4 characters are ever shown again after saving.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="connection-secret-value">New credential value</Label>
+          <Input
+            id="connection-secret-value"
+            type="password"
+            autoComplete="off"
+            placeholder={connection.has_db_secret ? `Replaces the stored credential ending in ${connection.secret_last4}` : 'Paste the credential value'}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        </div>
+        <DialogFooter className="sm:justify-between">
+          {connection.has_db_secret ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground"
+              disabled={busy}
+              onClick={() => clearSecretMutation.mutate({ id: connection.id, data: { secret: null } })}
+            >
+              Clear stored credential (revert to env var)
+            </Button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+            <Button
+              disabled={busy || !value.trim()}
+              onClick={() => setSecretMutation.mutate({ id: connection.id, data: { secret: value } })}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function DataStatusPill({ status }: { status: string }) {
@@ -1031,12 +1121,14 @@ function ConnectionCard({ connection }: { connection: Connection }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const Icon = CONNECTION_ICONS[connection.provider_type] ?? Unplug;
+  const secretManageable = SECRET_MANAGEABLE_PROVIDER_TYPES.has(connection.provider_type);
+  const [replaceDialogOpen, setReplaceDialogOpen] = useState(false);
 
   const testMutation = useTestConnection({
     mutation: {
       onSuccess: (result) => {
         queryClient.invalidateQueries({ queryKey: getListConnectionsQueryKey() });
-        const failed = isErrorTone(getConnectionTone(result.status, result.has_credential));
+        const failed = isErrorTone(getConnectionTone(result.status, result.has_credential, result.enabled));
         toast({
           title: failed ? 'Connection failed' : 'Test complete',
           description: result.last_error ?? undefined,
@@ -1049,6 +1141,25 @@ function ConnectionCard({ connection }: { connection: Connection }) {
     },
   });
 
+  const enabledMutation = useUpdateConnection({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListConnectionsQueryKey() });
+      },
+      onError: (err: any) => {
+        toast({ title: 'Could not update connection', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      },
+    },
+  });
+
+  const credentialLine = secretManageable
+    ? connection.has_db_secret
+      ? `Stored credential: •••• ${connection.secret_last4}`
+      : connection.credential_env_var
+        ? <>Env fallback: <code className="text-[11px]">{connection.credential_env_var}</code>{connection.has_credential ? ' (set)' : ' (not set)'}</>
+        : 'No credential configured'
+    : <>Credential: <code className="text-[11px]">{connection.credential_env_var}</code>{connection.has_credential ? ' (set)' : ' (not set)'}</>;
+
   return (
     <Card className="shadow-none border-border/60">
       <CardHeader className="flex flex-row items-start justify-between py-4 px-5 border-b border-border/50 bg-muted/20 space-y-0">
@@ -1058,13 +1169,23 @@ function ConnectionCard({ connection }: { connection: Connection }) {
           </div>
           <div>
             <CardTitle className="text-base font-medium">{connection.provider_name}</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Credential: <code className="text-[11px]">{connection.credential_env_var}</code>
-              {connection.has_credential ? ' (set)' : ' (not set)'}
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{credentialLine}</p>
           </div>
         </div>
-        <ConnectionStatusBadge status={connection.status} hasCredential={connection.has_credential} />
+        <div className="flex items-center gap-3 shrink-0">
+          {secretManageable && (
+            <div className="flex items-center gap-1.5">
+              <Switch
+                checked={connection.enabled}
+                disabled={enabledMutation.isPending}
+                onCheckedChange={(checked) => enabledMutation.mutate({ id: connection.id, data: { enabled: checked } })}
+                aria-label={`${connection.enabled ? 'Disable' : 'Enable'} ${connection.provider_name}`}
+              />
+              <span className="text-xs text-muted-foreground">{connection.enabled ? 'Enabled' : 'Disabled'}</span>
+            </div>
+          )}
+          <ConnectionStatusBadge status={connection.status} hasCredential={connection.has_credential} enabled={connection.enabled} />
+        </div>
       </CardHeader>
       <CardContent className="p-5 flex items-center justify-between gap-4">
         <div className="text-xs text-muted-foreground space-y-1">
@@ -1073,19 +1194,27 @@ function ConnectionCard({ connection }: { connection: Connection }) {
             {connection.last_tested_at ? format(new Date(connection.last_tested_at), 'MMM d, HH:mm') : 'Never'}
           </p>
           {connection.last_error && (
-            <p className={isErrorTone(getConnectionTone(connection.status, connection.has_credential)) ? 'text-rose-600' : 'text-muted-foreground'}>{connection.last_error}</p>
+            <p className={isErrorTone(getConnectionTone(connection.status, connection.has_credential, connection.enabled)) ? 'text-rose-600' : 'text-muted-foreground'}>{connection.last_error}</p>
           )}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={testMutation.isPending}
-          onClick={() => testMutation.mutate({ id: connection.id })}
-        >
-          {testMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
-          Test connection
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {secretManageable && (
+            <Button variant="outline" size="sm" onClick={() => setReplaceDialogOpen(true)}>
+              Replace
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={testMutation.isPending}
+            onClick={() => testMutation.mutate({ id: connection.id })}
+          >
+            {testMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
+            Test connection
+          </Button>
+        </div>
       </CardContent>
+      {replaceDialogOpen && <ReplaceConnectionSecretDialog connection={connection} onClose={() => setReplaceDialogOpen(false)} />}
     </Card>
   );
 }
@@ -1638,8 +1767,8 @@ function ConnectionsDataTab() {
       <div>
         <h3 className="text-sm font-medium mb-1">Connections</h3>
         <p className="text-xs text-muted-foreground mb-4">
-          Credentials are managed as environment variables and never touch the browser. Add the listed
-          variable in your environment secrets, then test the connection.
+          AI and Web Search credentials can be entered here (encrypted at rest, masked after saving) or left as
+          environment variables. HubSpot and Web Reader credentials are managed as environment variables only.
         </p>
         {connectionsLoading ? (
           <div className="space-y-3">

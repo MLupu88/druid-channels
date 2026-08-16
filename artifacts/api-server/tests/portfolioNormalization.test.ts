@@ -31,10 +31,9 @@ const validRow = {
 };
 
 test("normalizeRowsViaDeepSeek parses a valid batch response", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, { choices: [{ message: { content: JSON.stringify({ rows: [validRow] }) }, finish_reason: "stop" }] });
 
-  const result = await normalizeRowsViaDeepSeek([
+  const result = await normalizeRowsViaDeepSeek("test-key", [
     { rowIndex: 0, sourceRaw: { text: "Accenture Romania — active relationship, mostly Microsoft work" }, deterministicHints: { companyName: null, domain: null, country: null, partnerType: null } },
   ]);
 
@@ -44,10 +43,9 @@ test("normalizeRowsViaDeepSeek parses a valid batch response", async () => {
 });
 
 test("normalizeRowsViaDeepSeek never invents a domain -- null stays null through validation", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, { choices: [{ message: { content: JSON.stringify({ rows: [{ ...validRow, domain: null }] }) }, finish_reason: "stop" }] });
 
-  const result = await normalizeRowsViaDeepSeek([
+  const result = await normalizeRowsViaDeepSeek("test-key", [
     { rowIndex: 0, sourceRaw: { Partner: "Accenture Romania" }, deterministicHints: { companyName: "Accenture Romania", domain: null, country: null, partnerType: null } },
   ]);
 
@@ -55,31 +53,28 @@ test("normalizeRowsViaDeepSeek never invents a domain -- null stays null through
 });
 
 test("normalizeRowsViaDeepSeek throws NormalizationProviderError on malformed model output", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, { choices: [{ message: { content: "not valid json" }, finish_reason: "stop" }] });
 
   await assert.rejects(
-    () => normalizeRowsViaDeepSeek([{ rowIndex: 0, sourceRaw: {}, deterministicHints: { companyName: null, domain: null, country: null, partnerType: null } }]),
+    () => normalizeRowsViaDeepSeek("test-key", [{ rowIndex: 0, sourceRaw: {}, deterministicHints: { companyName: null, domain: null, country: null, partnerType: null } }]),
     NormalizationProviderError,
   );
 });
 
 test("normalizeRowsViaDeepSeek throws NormalizationProviderError on a non-2xx response", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(500, { error: "internal" });
 
   await assert.rejects(
-    () => normalizeRowsViaDeepSeek([{ rowIndex: 0, sourceRaw: {}, deterministicHints: { companyName: null, domain: null, country: null, partnerType: null } }]),
+    () => normalizeRowsViaDeepSeek("test-key", [{ rowIndex: 0, sourceRaw: {}, deterministicHints: { companyName: null, domain: null, country: null, partnerType: null } }]),
     NormalizationProviderError,
   );
 });
 
 test("normalizeRowsViaDeepSeek rejects a response missing required schema fields", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, { choices: [{ message: { content: JSON.stringify({ rows: [{ row_index: 0, company_name: "Acme" }] }) }, finish_reason: "stop" }] });
 
   await assert.rejects(
-    () => normalizeRowsViaDeepSeek([{ rowIndex: 0, sourceRaw: {}, deterministicHints: { companyName: null, domain: null, country: null, partnerType: null } }]),
+    () => normalizeRowsViaDeepSeek("test-key", [{ rowIndex: 0, sourceRaw: {}, deterministicHints: { companyName: null, domain: null, country: null, partnerType: null } }]),
     NormalizationProviderError,
   );
 });

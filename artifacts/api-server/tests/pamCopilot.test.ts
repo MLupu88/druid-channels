@@ -92,7 +92,6 @@ test("isNeedingAttention: dormant/closed relationships are never flagged, even i
 // ---- copilotProvider (DeepSeek boundary -- check J: clean failure, never a raw exception) ----
 
 test("chatViaDeepSeek parses a valid reply, including bounded evidence/follow_ups", () => {
-  process.env.AI_API_KEY = "test-key";
   const validReply = {
     answer: "You're currently 2 signed partners behind the Q3 target.",
     evidence: [{ label: "Q3 Signed Partners target", value: "5" }],
@@ -101,7 +100,7 @@ test("chatViaDeepSeek parses a valid reply, including bounded evidence/follow_up
   };
   mockFetchOnce(200, { choices: [{ message: { content: JSON.stringify(validReply) }, finish_reason: "stop" }] });
 
-  return chatViaDeepSeek({ intent: "operational", question: "Why am I behind target?" }).then((result) => {
+  return chatViaDeepSeek("test-key", { intent: "operational", question: "Why am I behind target?" }).then((result) => {
     assert.equal(result.answer, validReply.answer);
     assert.equal(result.suggested_route, "/recruitment");
     assert.deepEqual(result.evidence, validReply.evidence);
@@ -110,26 +109,23 @@ test("chatViaDeepSeek parses a valid reply, including bounded evidence/follow_up
 });
 
 test("chatViaDeepSeek throws CopilotProviderError on malformed model output, never a raw exception", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, { choices: [{ message: { content: "not valid json" }, finish_reason: "stop" } ] });
 
-  await assert.rejects(() => chatViaDeepSeek({ intent: "how_to", question: "How do I import my book?" }), CopilotProviderError);
+  await assert.rejects(() => chatViaDeepSeek("test-key", { intent: "how_to", question: "How do I import my book?" }), CopilotProviderError);
 });
 
 test("chatViaDeepSeek throws CopilotProviderError on a non-2xx provider response", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(500, { error: "internal" });
 
-  await assert.rejects(() => chatViaDeepSeek({ intent: "operational", question: "What should I focus on?" }), CopilotProviderError);
+  await assert.rejects(() => chatViaDeepSeek("test-key", { intent: "operational", question: "What should I focus on?" }), CopilotProviderError);
 });
 
 test("chatViaDeepSeek rejects a reply whose shape doesn't match the schema (e.g. missing required field)", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {
     choices: [{ message: { content: JSON.stringify({ answer: "ok" }) }, finish_reason: "stop" }],
   });
 
-  await assert.rejects(() => chatViaDeepSeek({ intent: "operational", question: "What should I focus on?" }), CopilotProviderError);
+  await assert.rejects(() => chatViaDeepSeek("test-key", { intent: "operational", question: "What should I focus on?" }), CopilotProviderError);
 });
 
 // ---- suggested_route sanitization (Stage 6.6 audit fix) ------------------
@@ -164,7 +160,6 @@ test("the search guide entry's non-navigable route ('*') is never itself treated
 });
 
 test("chatViaDeepSeek end-to-end: an invalid suggested_route from the model is sanitized to null before returning", async () => {
-  process.env.AI_API_KEY = "test-key";
   const replyWithBadRoute = {
     answer: "Here's what I found.",
     evidence: [],
@@ -173,6 +168,6 @@ test("chatViaDeepSeek end-to-end: an invalid suggested_route from the model is s
   };
   mockFetchOnce(200, { choices: [{ message: { content: JSON.stringify(replyWithBadRoute) }, finish_reason: "stop" }] });
 
-  const result = await chatViaDeepSeek({ intent: "how_to", question: "How do I import my book?" });
+  const result = await chatViaDeepSeek("test-key", { intent: "how_to", question: "How do I import my book?" });
   assert.equal(result.suggested_route, null);
 });

@@ -11,10 +11,7 @@
 // The LLM must only structure and judge the supplied evidence -- it must
 // never invent a company fact, a geography, or a source URL it wasn't given.
 import { z } from "zod/v4";
-import { db } from "@workspace/db";
-import { connectionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { hasCredential } from "../connections";
+import { resolveProviderSecret, hasResolvableCredential } from "../connections";
 import { logger } from "../../lib/logger";
 
 export class RadarAiNotImplementedError extends Error {
@@ -168,16 +165,18 @@ Respond with ONLY a single JSON object, no markdown, no commentary, matching exa
 If keep is false, still fill every field honestly (e.g. impact "low", confidence reflecting your actual certainty) -- the caller discards the record either way, but never leave a field empty or fabricated.`;
 
 export async function isConfigured(): Promise<boolean> {
-  const [conn] = await db.select().from(connectionsTable).where(eq(connectionsTable.providerType, "ai"));
-  return process.env.AI_PROVIDER === "deepseek" && hasCredential(conn?.credentialEnvVar ?? null);
+  return process.env.AI_PROVIDER === "deepseek" && (await hasResolvableCredential("ai"));
 }
 
 export async function qualifySignal(input: RadarQualificationInput): Promise<RadarQualificationOutput> {
   if (!(await isConfigured())) throw new RadarAiNotImplementedError();
 
   switch (process.env.AI_PROVIDER) {
-    case "deepseek":
-      return qualifySignalViaDeepSeek(input);
+    case "deepseek": {
+      const apiKey = await resolveProviderSecret("ai");
+      if (!apiKey) throw new RadarAiNotImplementedError();
+      return qualifySignalViaDeepSeek(apiKey, input);
+    }
     default:
       throw new RadarAiNotImplementedError();
   }
@@ -185,11 +184,10 @@ export async function qualifySignal(input: RadarQualificationInput): Promise<Rad
 
 // Exported (not just called internally) so it can be unit-tested directly
 // against a mocked fetch, without needing a live DB-backed isConfigured()
-// check in the test.
-export async function qualifySignalViaDeepSeek(input: RadarQualificationInput): Promise<RadarQualificationOutput> {
-  const apiKey = process.env.AI_API_KEY;
-  if (!apiKey) throw new RadarAiNotImplementedError();
-
+// check in the test. apiKey is now an explicit parameter (the caller
+// resolves it via resolveProviderSecret) rather than read from process.env
+// internally.
+export async function qualifySignalViaDeepSeek(apiKey: string, input: RadarQualificationInput): Promise<RadarQualificationOutput> {
   const payload = {
     entity_hint: input.entityHint,
     territory_name: input.territoryName,
@@ -342,19 +340,20 @@ export async function classifySameEvent(input: SameEventInput): Promise<SameEven
   if (!(await isConfigured())) throw new RadarAiNotImplementedError();
 
   switch (process.env.AI_PROVIDER) {
-    case "deepseek":
-      return classifySameEventViaDeepSeek(input);
+    case "deepseek": {
+      const apiKey = await resolveProviderSecret("ai");
+      if (!apiKey) throw new RadarAiNotImplementedError();
+      return classifySameEventViaDeepSeek(apiKey, input);
+    }
     default:
       throw new RadarAiNotImplementedError();
   }
 }
 
 // Exported for direct unit testing against a mocked fetch, same convention
-// as qualifySignalViaDeepSeek above.
-export async function classifySameEventViaDeepSeek(input: SameEventInput): Promise<SameEventOutput> {
-  const apiKey = process.env.AI_API_KEY;
-  if (!apiKey) throw new RadarAiNotImplementedError();
-
+// as qualifySignalViaDeepSeek above. apiKey is an explicit parameter, same
+// reasoning as qualifySignalViaDeepSeek.
+export async function classifySameEventViaDeepSeek(apiKey: string, input: SameEventInput): Promise<SameEventOutput> {
   const payload = {
     entity_hint: input.entityHint,
     existing_signal: {

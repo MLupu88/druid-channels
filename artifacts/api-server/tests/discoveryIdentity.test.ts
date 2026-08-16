@@ -120,13 +120,12 @@ test("D: a LinkedIn company-page URL's evidence never becomes companyDomain even
 });
 
 test("identifyCompanyViaDeepSeek returns a resolved identity from the supplied candidates only", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {
     choices: [
       { message: { content: JSON.stringify({ resolved: true, name: "Acme Systems", domain: "acme.example" }) }, finish_reason: "stop" },
     ],
   });
-  const result = await identifyCompanyViaDeepSeek({
+  const result = await identifyCompanyViaDeepSeek("test-key", {
     subjectCompanyName: "Acme Systems",
     candidates: [{ url: "https://acme.example", title: "Acme Systems - Official Site", snippet: "Welcome to Acme" }],
   });
@@ -134,11 +133,10 @@ test("identifyCompanyViaDeepSeek returns a resolved identity from the supplied c
 });
 
 test("identifyCompanyViaDeepSeek returns null when the model reports unresolved", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {
     choices: [{ message: { content: JSON.stringify({ resolved: false, name: null, domain: null }) }, finish_reason: "stop" }],
   });
-  const result = await identifyCompanyViaDeepSeek({
+  const result = await identifyCompanyViaDeepSeek("test-key", {
     subjectCompanyName: "Some Obscure Company",
     candidates: [{ url: "https://unrelated.example", title: "Unrelated result", snippet: "..." }],
   });

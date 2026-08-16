@@ -1,8 +1,6 @@
 import { z } from "zod/v4";
-import { db } from "@workspace/db";
-import { connectionsTable, type AiBriefEvidenceItem, type AiChannelBriefContent } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { hasCredential } from "./connections";
+import type { AiBriefEvidenceItem, AiChannelBriefContent } from "@workspace/db";
+import { resolveProviderSecret, hasResolvableCredential } from "./connections";
 import { logger } from "../lib/logger";
 
 // Service boundary for generating the Overview AI Channel Brief. Deliberately
@@ -100,25 +98,24 @@ Rules:
 Empty arrays are valid and expected when the data doesn't support that section.`;
 
 export async function isConfigured(): Promise<boolean> {
-  const [conn] = await db.select().from(connectionsTable).where(eq(connectionsTable.providerType, "ai"));
-  return process.env.AI_PROVIDER === "deepseek" && hasCredential(conn?.credentialEnvVar ?? null);
+  return process.env.AI_PROVIDER === "deepseek" && (await hasResolvableCredential("ai"));
 }
 
 export async function generate(snapshot: ChannelBriefSnapshot): Promise<AiChannelBriefContent> {
   if (!(await isConfigured())) throw new AiBriefNotConfiguredError();
 
   switch (process.env.AI_PROVIDER) {
-    case "deepseek":
-      return generateViaDeepSeek(snapshot);
+    case "deepseek": {
+      const apiKey = await resolveProviderSecret("ai");
+      if (!apiKey) throw new AiBriefNotConfiguredError();
+      return generateViaDeepSeek(apiKey, snapshot);
+    }
     default:
       throw new AiBriefNotConfiguredError();
   }
 }
 
-async function generateViaDeepSeek(snapshot: ChannelBriefSnapshot): Promise<AiChannelBriefContent> {
-  const apiKey = process.env.AI_API_KEY;
-  if (!apiKey) throw new AiBriefNotConfiguredError();
-
+async function generateViaDeepSeek(apiKey: string, snapshot: ChannelBriefSnapshot): Promise<AiChannelBriefContent> {
   // Built explicitly field-by-field -- snapshot.territoryId is never
   // referenced here, so it can't leak into the provider payload by accident.
   const payload = {

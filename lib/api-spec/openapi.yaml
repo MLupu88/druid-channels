@@ -1474,7 +1474,7 @@ paths:
     post:
       operationId: testConnection
       tags: [connections]
-      summary: Test a connection using its configured environment-variable credential
+      summary: Test a connection with a real, bounded provider verification (resolves the same DB secret / env-var / unavailable credential path production requests use)
       parameters:
         - name: id
           in: path
@@ -1484,6 +1484,33 @@ paths:
       responses:
         "200":
           description: Test result (also updates the connection's stored status)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connection"
+        "404":
+          description: Not found
+
+  /connections/{id}/secret:
+    post:
+      operationId: setConnectionSecret
+      tags: [connections]
+      summary: Set (encrypt and store) or clear the connection's DB-stored secret. Never returns the plaintext, ciphertext, or encryption key -- only the connection's masked view.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionSecretInput"
+      responses:
+        "200":
+          description: Updated connection (masked)
           content:
             application/json:
               schema:
@@ -4565,7 +4592,7 @@ components:
 
     Connection:
       type: object
-      required: [id, provider_type, provider_name, status, config_json, has_credential, credential_env_var]
+      required: [id, provider_type, provider_name, status, config_json, has_credential, credential_env_var, enabled, has_db_secret]
       properties:
         id:
           type: string
@@ -4584,6 +4611,12 @@ components:
           type: ["string", "null"]
         has_credential:
           type: boolean
+        enabled:
+          type: boolean
+        has_db_secret:
+          type: boolean
+        secret_last4:
+          type: ["string", "null"]
         last_tested_at:
           type: ["string", "null"]
         last_error:
@@ -4598,6 +4631,16 @@ components:
           type: object
           additionalProperties: true
         credential_env_var:
+          type: ["string", "null"]
+        enabled:
+          type: boolean
+
+    ConnectionSecretInput:
+      type: object
+      required: [secret]
+      properties:
+        secret:
+          description: The plaintext secret to encrypt and store. Pass null to clear the stored DB secret and revert to the connection's env-var fallback (if enabled).
           type: ["string", "null"]
 
     MetricMapping:

@@ -36,12 +36,11 @@ const validSignal = {
 };
 
 test("qualifySignalViaDeepSeek parses a valid signal and filters invalid evidence URLs", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {
     choices: [{ message: { content: JSON.stringify(validSignal) }, finish_reason: "stop" }],
   });
 
-  const result = await qualifySignalViaDeepSeek({
+  const result = await qualifySignalViaDeepSeek("test-key", {
     entityHint: "Acme Systems",
     territoryName: "UK & Ireland",
     evidence: [{ url: "https://acme.example/news/acquisition", text: "Acme announced the acquisition...", title: "Acme acquires AI consultancy" }],
@@ -62,12 +61,11 @@ test("qualifySignalViaDeepSeek parses a valid signal and filters invalid evidenc
 });
 
 test("qualifySignalViaDeepSeek parses the new 'watch' implication", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {
     choices: [{ message: { content: JSON.stringify({ ...validSignal, implication: "watch" }) }, finish_reason: "stop" }],
   });
 
-  const result = await qualifySignalViaDeepSeek({
+  const result = await qualifySignalViaDeepSeek("test-key", {
     entityHint: "Acme Systems",
     territoryName: "UK & Ireland",
     evidence: [{ url: "https://acme.example/news/acquisition", text: "evidence", title: "title" }],
@@ -77,7 +75,6 @@ test("qualifySignalViaDeepSeek parses the new 'watch' implication", async () => 
 });
 
 test("qualifySignalViaDeepSeek parses the new signal_type/entity_type taxonomy values (partner_program, tender_rfp, technology_vendor)", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {
     choices: [{
       message: {
@@ -87,7 +84,7 @@ test("qualifySignalViaDeepSeek parses the new signal_type/entity_type taxonomy v
     }],
   });
 
-  const result = await qualifySignalViaDeepSeek({
+  const result = await qualifySignalViaDeepSeek("test-key", {
     entityHint: "Acme Systems",
     territoryName: "UK & Ireland",
     evidence: [{ url: "https://acme.example/news/acquisition", text: "evidence", title: "title" }],
@@ -100,7 +97,6 @@ test("qualifySignalViaDeepSeek parses the new signal_type/entity_type taxonomy v
 });
 
 test("qualifySignalViaDeepSeek: a tender_rfp signal with no named counterparty parses with all three related_entity_* fields null together", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {
     choices: [{
       message: { content: JSON.stringify({ ...validSignal, signal_type: "tender_rfp", related_entity_name: null, related_entity_type: null, relationship_label: null }) },
@@ -108,7 +104,7 @@ test("qualifySignalViaDeepSeek: a tender_rfp signal with no named counterparty p
     }],
   });
 
-  const result = await qualifySignalViaDeepSeek({
+  const result = await qualifySignalViaDeepSeek("test-key", {
     entityHint: "Acme Systems",
     territoryName: "UK & Ireland",
     evidence: [{ url: "https://acme.example/news/tender", text: "evidence", title: "title" }],
@@ -121,7 +117,6 @@ test("qualifySignalViaDeepSeek: a tender_rfp signal with no named counterparty p
 });
 
 test("qualifySignalViaDeepSeek honestly parses keep:false for weak/generic evidence", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {
     choices: [{
       message: {
@@ -138,7 +133,7 @@ test("qualifySignalViaDeepSeek honestly parses keep:false for weak/generic evide
     }],
   });
 
-  const result = await qualifySignalViaDeepSeek({
+  const result = await qualifySignalViaDeepSeek("test-key", {
     entityHint: "Acme Systems",
     territoryName: "UK & Ireland",
     evidence: [{ url: "https://news.example/generic", text: "generic market trend piece", title: "The state of enterprise software" }],
@@ -148,14 +143,13 @@ test("qualifySignalViaDeepSeek honestly parses keep:false for weak/generic evide
 });
 
 test("qualifySignalViaDeepSeek throws RadarAiProviderError on malformed model output", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, {
     choices: [{ message: { content: "not valid json" }, finish_reason: "stop" }],
   });
 
   await assert.rejects(
     () =>
-      qualifySignalViaDeepSeek({
+      qualifySignalViaDeepSeek("test-key", {
         entityHint: "Acme Systems",
         territoryName: "UK & Ireland",
         evidence: [{ url: "https://acme.example/news", text: "evidence", title: "title" }],
@@ -165,12 +159,11 @@ test("qualifySignalViaDeepSeek throws RadarAiProviderError on malformed model ou
 });
 
 test("qualifySignalViaDeepSeek throws RadarAiProviderError on a non-2xx response", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(500, { error: "internal" });
 
   await assert.rejects(
     () =>
-      qualifySignalViaDeepSeek({
+      qualifySignalViaDeepSeek("test-key", {
         entityHint: "Acme Systems",
         territoryName: "UK & Ireland",
         evidence: [{ url: "https://acme.example/news", text: "evidence", title: "title" }],
@@ -189,10 +182,9 @@ const sameEventCandidate = {
 };
 
 test("classifySameEventViaDeepSeek parses same_event: true", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, { choices: [{ message: { content: JSON.stringify({ same_event: true }) }, finish_reason: "stop" }] });
 
-  const result = await classifySameEventViaDeepSeek({
+  const result = await classifySameEventViaDeepSeek("test-key", {
     entityHint: "Acme Systems",
     candidate: sameEventCandidate,
     newEvidence: { url: "https://reuters.example/acme-deal", title: "Acme buys AI shop", text: "Acme Systems has acquired a boutique AI consultancy." },
@@ -202,10 +194,9 @@ test("classifySameEventViaDeepSeek parses same_event: true", async () => {
 });
 
 test("classifySameEventViaDeepSeek parses same_event: false", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, { choices: [{ message: { content: JSON.stringify({ same_event: false }) }, finish_reason: "stop" }] });
 
-  const result = await classifySameEventViaDeepSeek({
+  const result = await classifySameEventViaDeepSeek("test-key", {
     entityHint: "Acme Systems",
     candidate: sameEventCandidate,
     newEvidence: { url: "https://reuters.example/acme-hire", title: "Acme hires new VP", text: "Acme Systems appointed a new VP of Alliances." },
@@ -215,12 +206,11 @@ test("classifySameEventViaDeepSeek parses same_event: false", async () => {
 });
 
 test("classifySameEventViaDeepSeek throws RadarAiProviderError on malformed model output -- caller must default to 'different event', not crash", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(200, { choices: [{ message: { content: "not valid json" }, finish_reason: "stop" }] });
 
   await assert.rejects(
     () =>
-      classifySameEventViaDeepSeek({
+      classifySameEventViaDeepSeek("test-key", {
         entityHint: "Acme Systems",
         candidate: sameEventCandidate,
         newEvidence: { url: "https://reuters.example/acme-deal", title: "title", text: "text" },
@@ -230,12 +220,11 @@ test("classifySameEventViaDeepSeek throws RadarAiProviderError on malformed mode
 });
 
 test("classifySameEventViaDeepSeek throws RadarAiProviderError on a non-2xx response", async () => {
-  process.env.AI_API_KEY = "test-key";
   mockFetchOnce(500, { error: "internal" });
 
   await assert.rejects(
     () =>
-      classifySameEventViaDeepSeek({
+      classifySameEventViaDeepSeek("test-key", {
         entityHint: "Acme Systems",
         candidate: sameEventCandidate,
         newEvidence: { url: "https://reuters.example/acme-deal", title: "title", text: "text" },

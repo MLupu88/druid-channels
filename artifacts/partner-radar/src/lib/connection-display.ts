@@ -41,9 +41,15 @@ export function sortConnectionsByDisplayOrder<T extends { provider_type: string 
 //   that nothing currently depends on), not evidence the app is unhealthy.
 // - "error": a real, implemented live check actually failed. The only tone
 //   that is ever styled as a failure.
-export type ConnectionTone = "connected" | "configured" | "not_configured" | "error";
+// - "disabled" (Phase 11.5B): the connection's `enabled` flag is off, which
+//   turns off both the DB secret and the env-var fallback entirely (see
+//   services/connections.ts's resolveProviderSecret) -- distinct from
+//   "not_configured" because a credential may still be present underneath,
+//   just deliberately switched off. Takes priority over every other tone.
+export type ConnectionTone = "connected" | "configured" | "not_configured" | "error" | "disabled";
 
-export function getConnectionTone(status: string, hasCredential: boolean): ConnectionTone {
+export function getConnectionTone(status: string, hasCredential: boolean, enabled: boolean = true): ConnectionTone {
+  if (!enabled) return "disabled";
   if (status === "connected") return "connected";
   if (status === "error") return "error";
   return hasCredential ? "configured" : "not_configured";

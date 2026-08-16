@@ -148,6 +148,13 @@
       "when": 1786825071055,
       "tag": "0020_glorious_raza",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786828987948,
+      "tag": "0021_new_gambit",
+      "breakpoints": true
     }
   ]
 }

@@ -13,10 +13,7 @@
 // The model is never given SQL access, a company list beyond what it was
 // handed, or any way to invent data outside the supplied JSON.
 import { z } from "zod/v4";
-import { db } from "@workspace/db";
-import { connectionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { hasCredential } from "./connections";
+import { resolveProviderSecret, hasResolvableCredential } from "./connections";
 import { isValidAppRoute, type AppGuideEntry } from "./appGuide";
 import type { PamWorkspaceSummary, PartnerContext } from "./copilotContextService";
 
@@ -105,16 +102,18 @@ Respond with ONLY a single JSON object, no markdown, no commentary, matching exa
 }`;
 
 export async function isConfigured(): Promise<boolean> {
-  const [conn] = await db.select().from(connectionsTable).where(eq(connectionsTable.providerType, "ai"));
-  return process.env.AI_PROVIDER === "deepseek" && hasCredential(conn?.credentialEnvVar ?? null);
+  return process.env.AI_PROVIDER === "deepseek" && (await hasResolvableCredential("ai"));
 }
 
 export async function chat(payload: CopilotRequestPayload): Promise<CopilotReply> {
   if (!(await isConfigured())) throw new CopilotNotConfiguredError();
 
   switch (process.env.AI_PROVIDER) {
-    case "deepseek":
-      return chatViaDeepSeek(payload);
+    case "deepseek": {
+      const apiKey = await resolveProviderSecret("ai");
+      if (!apiKey) throw new CopilotNotConfiguredError();
+      return chatViaDeepSeek(apiKey, payload);
+    }
     default:
       throw new CopilotNotConfiguredError();
   }
@@ -123,10 +122,9 @@ export async function chat(payload: CopilotRequestPayload): Promise<CopilotReply
 // Exported (not just called internally) so it can be unit-tested directly
 // against a mocked fetch, without needing a live DB-backed isConfigured()
 // check in the test -- same convention as searchViaTavily/qualifyViaDeepSeek.
-export async function chatViaDeepSeek(payload: CopilotRequestPayload): Promise<CopilotReply> {
-  const apiKey = process.env.AI_API_KEY;
-  if (!apiKey) throw new CopilotNotConfiguredError();
-
+// apiKey is now an explicit parameter (the caller resolves it via
+// resolveProviderSecret) rather than read from process.env internally.
+export async function chatViaDeepSeek(apiKey: string, payload: CopilotRequestPayload): Promise<CopilotReply> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let res: Response;

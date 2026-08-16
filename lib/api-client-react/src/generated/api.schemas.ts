@@ -1812,6 +1812,10 @@ export interface Connection {
   /** @nullable */
   credential_env_var: string | null;
   has_credential: boolean;
+  enabled: boolean;
+  has_db_secret: boolean;
+  /** @nullable */
+  secret_last4?: string | null;
   /** @nullable */
   last_tested_at?: string | null;
   /** @nullable */
@@ -1825,6 +1829,15 @@ export interface ConnectionUpdateInput {
   config_json?: ConnectionUpdateInputConfigJson;
   /** @nullable */
   credential_env_var?: string | null;
+  enabled?: boolean;
+}
+
+export interface ConnectionSecretInput {
+  /**
+     * The plaintext secret to encrypt and store. Pass null to clear the stored DB secret and revert to the connection's env-var fallback (if enabled).
+     * @nullable
+     */
+  secret: string | null;
 }
 
 /**

@@ -2226,6 +2226,9 @@ export const ListConnectionsResponseItem = zod.object({
   "config_json": zod.record(zod.string(), zod.unknown()),
   "credential_env_var": zod.string().nullable(),
   "has_credential": zod.boolean(),
+  "enabled": zod.boolean(),
+  "has_db_secret": zod.boolean(),
+  "secret_last4": zod.string().nullish(),
   "last_tested_at": zod.string().nullish(),
   "last_error": zod.string().nullish()
 })
@@ -2242,7 +2245,8 @@ export const UpdateConnectionParams = zod.object({
 export const UpdateConnectionBody = zod.object({
   "provider_name": zod.string().optional(),
   "config_json": zod.record(zod.string(), zod.unknown()).optional(),
-  "credential_env_var": zod.string().nullish()
+  "credential_env_var": zod.string().nullish(),
+  "enabled": zod.boolean().optional()
 })
 
 export const UpdateConnectionResponse = zod.object({
@@ -2253,13 +2257,16 @@ export const UpdateConnectionResponse = zod.object({
   "config_json": zod.record(zod.string(), zod.unknown()),
   "credential_env_var": zod.string().nullable(),
   "has_credential": zod.boolean(),
+  "enabled": zod.boolean(),
+  "has_db_secret": zod.boolean(),
+  "secret_last4": zod.string().nullish(),
   "last_tested_at": zod.string().nullish(),
   "last_error": zod.string().nullish()
 })
 
 
 /**
- * @summary Test a connection using its configured environment-variable credential
+ * @summary Test a connection with a real, bounded provider verification (resolves the same DB secret / env-var / unavailable credential path production requests use)
  */
 export const TestConnectionParams = zod.object({
   "id": zod.coerce.string()
@@ -2273,6 +2280,36 @@ export const TestConnectionResponse = zod.object({
   "config_json": zod.record(zod.string(), zod.unknown()),
   "credential_env_var": zod.string().nullable(),
   "has_credential": zod.boolean(),
+  "enabled": zod.boolean(),
+  "has_db_secret": zod.boolean(),
+  "secret_last4": zod.string().nullish(),
+  "last_tested_at": zod.string().nullish(),
+  "last_error": zod.string().nullish()
+})
+
+
+/**
+ * @summary Set (encrypt and store) or clear the connection's DB-stored secret. Never returns the plaintext, ciphertext, or encryption key -- only the connection's masked view.
+ */
+export const SetConnectionSecretParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const SetConnectionSecretBody = zod.object({
+  "secret": zod.string().nullable().describe('The plaintext secret to encrypt and store. Pass null to clear the stored DB secret and revert to the connection\'s env-var fallback (if enabled).')
+})
+
+export const SetConnectionSecretResponse = zod.object({
+  "id": zod.string(),
+  "provider_type": zod.enum(['hubspot', 'web_search', 'web_reader', 'ai']),
+  "provider_name": zod.string(),
+  "status": zod.enum(['not_configured', 'unverified', 'connected', 'error']),
+  "config_json": zod.record(zod.string(), zod.unknown()),
+  "credential_env_var": zod.string().nullable(),
+  "has_credential": zod.boolean(),
+  "enabled": zod.boolean(),
+  "has_db_secret": zod.boolean(),
+  "secret_last4": zod.string().nullish(),
   "last_tested_at": zod.string().nullish(),
   "last_error": zod.string().nullish()
 })

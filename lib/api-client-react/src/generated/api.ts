@@ -37,6 +37,7 @@ import type {
   CompanyRef,
   ConfirmPortfolioImportReadyResult,
   Connection,
+  ConnectionSecretInput,
   ConnectionUpdateInput,
   CreateChannelRadarConfigInput,
   CreatePortfolioImportInput,
@@ -4443,7 +4444,7 @@ export const getTestConnectionUrl = (id: string,) => {
 }
 
 /**
- * @summary Test a connection using its configured environment-variable credential
+ * @summary Test a connection with a real, bounded provider verification (resolves the same DB secret / env-var / unavailable credential path production requests use)
  */
 export const testConnection = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<Connection> => {
 
@@ -4492,7 +4493,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type TestConnectionMutationError = ErrorType<void>
 
     /**
- * @summary Test a connection using its configured environment-variable credential
+ * @summary Test a connection with a real, bounded provider verification (resolves the same DB secret / env-var / unavailable credential path production requests use)
  */
 export const useTestConnection = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -4503,6 +4504,78 @@ export const useTestConnection = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getTestConnectionMutationOptions(options));
+    }
+
+export const getSetConnectionSecretUrl = (id: string,) => {
+
+
+
+
+  return `/api/connections/${id}/secret`
+}
+
+/**
+ * @summary Set (encrypt and store) or clear the connection's DB-stored secret. Never returns the plaintext, ciphertext, or encryption key -- only the connection's masked view.
+ */
+export const setConnectionSecret = async (id: string,
+    connectionSecretInput: ConnectionSecretInput, options?: Parameters<typeof customFetch>[1]): Promise<Connection> => {
+
+  return customFetch<Connection>(getSetConnectionSecretUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(connectionSecretInput)
+  }
+);}
+
+
+
+
+
+export const getSetConnectionSecretMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setConnectionSecret>>, TError,{id: string;data: BodyType<ConnectionSecretInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setConnectionSecret>>, TError,{id: string;data: BodyType<ConnectionSecretInput>}, TContext> => {
+
+const mutationKey = ['setConnectionSecret'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setConnectionSecret>>, {id: string;data: BodyType<ConnectionSecretInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  setConnectionSecret(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetConnectionSecretMutationResult = NonNullable<Awaited<ReturnType<typeof setConnectionSecret>>>
+    export type SetConnectionSecretMutationBody = BodyType<ConnectionSecretInput>
+    export type SetConnectionSecretMutationError = ErrorType<void>
+
+    /**
+ * @summary Set (encrypt and store) or clear the connection's DB-stored secret. Never returns the plaintext, ciphertext, or encryption key -- only the connection's masked view.
+ */
+export const useSetConnectionSecret = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setConnectionSecret>>, TError,{id: string;data: BodyType<ConnectionSecretInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setConnectionSecret>>,
+        TError,
+        {id: string;data: BodyType<ConnectionSecretInput>},
+        TContext
+      > => {
+      return useMutation(getSetConnectionSecretMutationOptions(options));
     }
 
 export const getListDiscoveryExclusionsUrl = () => {

@@ -16,10 +16,7 @@
 // companyMatchingService.classifyDatePhrase) -- it only extracts the raw
 // date phrase verbatim.
 import { z } from "zod/v4";
-import { db } from "@workspace/db";
-import { connectionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { hasCredential } from "../connections";
+import { resolveProviderSecret, hasResolvableCredential } from "../connections";
 import { logger } from "../../lib/logger";
 
 export class NormalizationNotImplementedError extends Error {
@@ -122,16 +119,18 @@ Respond with ONLY a single JSON object, no markdown, no commentary, matching exa
 The "rows" array must contain exactly one result per input row, in the same order, with matching row_index values.`;
 
 export async function isConfigured(): Promise<boolean> {
-  const [conn] = await db.select().from(connectionsTable).where(eq(connectionsTable.providerType, "ai"));
-  return process.env.AI_PROVIDER === "deepseek" && hasCredential(conn?.credentialEnvVar ?? null);
+  return process.env.AI_PROVIDER === "deepseek" && (await hasResolvableCredential("ai"));
 }
 
 export async function normalizeRows(rows: NormalizationRowInput[]): Promise<NormalizationRowOutput[]> {
   if (!(await isConfigured())) throw new NormalizationNotImplementedError();
 
   switch (process.env.AI_PROVIDER) {
-    case "deepseek":
-      return normalizeRowsViaDeepSeek(rows);
+    case "deepseek": {
+      const apiKey = await resolveProviderSecret("ai");
+      if (!apiKey) throw new NormalizationNotImplementedError();
+      return normalizeRowsViaDeepSeek(apiKey, rows);
+    }
     default:
       throw new NormalizationNotImplementedError();
   }
@@ -141,10 +140,10 @@ export async function normalizeRows(rows: NormalizationRowInput[]): Promise<Norm
 // against a mocked fetch, without needing a live DB-backed isConfigured()
 // check in the test. Never called with more than
 // MAX_ROWS_PER_NORMALIZATION_CALL rows -- the caller (portfolioImportEngine)
-// is responsible for chunking.
-export async function normalizeRowsViaDeepSeek(rows: NormalizationRowInput[]): Promise<NormalizationRowOutput[]> {
-  const apiKey = process.env.AI_API_KEY;
-  if (!apiKey) throw new NormalizationNotImplementedError();
+// is responsible for chunking. apiKey is now an explicit parameter (the
+// caller resolves it via resolveProviderSecret) rather than read from
+// process.env internally.
+export async function normalizeRowsViaDeepSeek(apiKey: string, rows: NormalizationRowInput[]): Promise<NormalizationRowOutput[]> {
   if (rows.length === 0) return [];
 
   const payload = {

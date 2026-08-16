@@ -9,10 +9,7 @@
 // never invent companies or evidence, and every claim it returns must
 // reference at least one evidence URL it was given as input.
 import { z } from "zod/v4";
-import { db } from "@workspace/db";
-import { connectionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { hasCredential } from "../connections";
+import { resolveProviderSecret, hasResolvableCredential } from "../connections";
 import { logger } from "../../lib/logger";
 
 export class AiNotImplementedError extends Error {
@@ -226,17 +223,22 @@ Respond with ONLY a single JSON object, no markdown, no commentary, matching exa
 // than coupling two features that may diverge later (e.g. if the AI Brief
 // moves to an n8n-backed implementation while Discovery stays on direct
 // DeepSeek).
+// Phase 11.5B: resolution now goes through resolveProviderSecret (DB secret
+// -> credentialEnvVar -> unavailable, honoring enabled=false) instead of a
+// hardcoded process.env.AI_API_KEY read -- see services/connections.ts.
 export async function isConfigured(): Promise<boolean> {
-  const [conn] = await db.select().from(connectionsTable).where(eq(connectionsTable.providerType, "ai"));
-  return process.env.AI_PROVIDER === "deepseek" && hasCredential(conn?.credentialEnvVar ?? null);
+  return process.env.AI_PROVIDER === "deepseek" && (await hasResolvableCredential("ai"));
 }
 
 export async function qualify(input: AiQualificationInput): Promise<AiQualificationOutput> {
   if (!(await isConfigured())) throw new AiNotImplementedError();
 
   switch (process.env.AI_PROVIDER) {
-    case "deepseek":
-      return qualifyViaDeepSeek(input);
+    case "deepseek": {
+      const apiKey = await resolveProviderSecret("ai");
+      if (!apiKey) throw new AiNotImplementedError();
+      return qualifyViaDeepSeek(apiKey, input);
+    }
     default:
       throw new AiNotImplementedError();
   }
@@ -244,10 +246,9 @@ export async function qualify(input: AiQualificationInput): Promise<AiQualificat
 
 // Exported (not just called internally) so it can be unit-tested directly
 // against a mocked fetch, without needing a live DB-backed isConfigured()
-// check in the test.
-export async function qualifyViaDeepSeek(input: AiQualificationInput): Promise<AiQualificationOutput> {
-  const apiKey = process.env.AI_API_KEY;
-  if (!apiKey) throw new AiNotImplementedError();
+// check in the test. apiKey is now an explicit parameter rather than read
+// from process.env internally.
+export async function qualifyViaDeepSeek(apiKey: string, input: AiQualificationInput): Promise<AiQualificationOutput> {
 
   const payload = {
     company_name: input.companyName,
@@ -398,16 +399,19 @@ export async function identifyCompany(input: IdentityResolutionInput): Promise<R
   if (!(await isConfigured())) throw new AiNotImplementedError();
 
   switch (process.env.AI_PROVIDER) {
-    case "deepseek":
-      return identifyCompanyViaDeepSeek(input);
+    case "deepseek": {
+      const apiKey = await resolveProviderSecret("ai");
+      if (!apiKey) throw new AiNotImplementedError();
+      return identifyCompanyViaDeepSeek(apiKey, input);
+    }
     default:
       throw new AiNotImplementedError();
   }
 }
 
-export async function identifyCompanyViaDeepSeek(input: IdentityResolutionInput): Promise<ResolvedIdentity | null> {
-  const apiKey = process.env.AI_API_KEY;
-  if (!apiKey) throw new AiNotImplementedError();
+// apiKey is now an explicit parameter rather than read from process.env
+// internally (see qualifyViaDeepSeek's comment above).
+export async function identifyCompanyViaDeepSeek(apiKey: string, input: IdentityResolutionInput): Promise<ResolvedIdentity | null> {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), IDENTITY_TIMEOUT_MS);
@@ -470,4 +474,36 @@ export async function identifyCompanyViaDeepSeek(input: IdentityResolutionInput)
   if (!validated.data.resolved || !validated.data.name || !validated.data.domain) return null;
 
   return { name: validated.data.name, domain: validated.data.domain };
+}
+
+const TEST_TIMEOUT_MS = 15_000;
+
+// Phase 11.5B: the real "Test connection" verification -- a single,
+// minimal, bounded DeepSeek completion (max_tokens: 1, no JSON-mode
+// response schema, nothing evidence-shaped), hitting the exact same
+// endpoint/auth header as a real qualification call so the test proves the
+// credential actually authenticates, without spending a real qualification
+// call's token budget. Throws AiProviderError on failure; the caller
+// (routes/connections.ts) maps success/failure to a status.
+export async function testConnection(apiKey: string): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: "deepseek-v4-flash",
+        max_tokens: 1,
+        messages: [{ role: "user", content: "ping" }],
+      }),
+    });
+  } catch (err) {
+    throw new AiProviderError(err instanceof Error && err.name === "AbortError" ? "timeout" : "network_error");
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!res.ok) throw new AiProviderError("http_error");
 }

@@ -59,6 +59,7 @@ export * from './confirmPortfolioImportReadyResult';
 export * from './connection';
 export * from './connectionConfigJson';
 export * from './connectionProviderType';
+export * from './connectionSecretInput';
 export * from './connectionStatus';
 export * from './connectionUpdateInput';
 export * from './connectionUpdateInputConfigJson';
