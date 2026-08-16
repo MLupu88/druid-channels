@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
 import { druidFactsTable, DRUID_FACT_CATEGORIES, type DruidFact } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc } from "drizzle-orm";
 
 // Transaction-composability pattern reused from discoveryExclusions.ts/
 // partnerRelationshipService.ts/territoryOwnership.ts -- lets
@@ -86,18 +86,87 @@ export async function listDruidFacts(): Promise<DruidFact[]> {
 
 /**
  * The one canonical trusted-context read path: active AND verified, nothing
- * else. Established now, ahead of 11.5C.3's actual wiring, so a later slice
- * has exactly one place to read from instead of inventing its own filter
- * (which could accidentally include an inactive or unverified fact). Not
- * called from anywhere in this slice -- no prompt or scoring behavior
- * depends on it yet.
+ * else -- see discoveryEngine.ts and channelRadarEngine.ts (Phase
+ * 11.5C.3), the only two callers that feed this into qualification prompts,
+ * both via formatTrustedDruidContext below, never by reading druid_facts
+ * directly. Ordering is fully deterministic (createdAt DESC, id ASC
+ * tie-break) -- created_at alone doesn't guarantee stable ordering for two
+ * rows created in the same instant, which matters here since ordering feeds
+ * directly into prompt construction.
  */
 export async function listTrustedDruidFacts(): Promise<DruidFact[]> {
   return db
     .select()
     .from(druidFactsTable)
     .where(and(eq(druidFactsTable.active, true), eq(druidFactsTable.verificationStatus, "verified")))
-    .orderBy(desc(druidFactsTable.createdAt));
+    .orderBy(desc(druidFactsTable.createdAt), asc(druidFactsTable.id));
+}
+
+const MAX_TRUSTED_CONTEXT_FACTS = 30;
+// Same bound value as discoveryProviders/extraction.ts's MAX_TEXT_LENGTH --
+// reused for consistency, not re-derived.
+const MAX_TRUSTED_CONTEXT_CHARS = 4000;
+
+/**
+ * Phase 11.5C.3: the one shared, pure formatter for trusted DRUID context in
+ * qualification prompts (Discovery + Channel Radar). Deliberately does not
+ * query the DB itself -- callers pass in listTrustedDruidFacts()'s result,
+ * so this stays trivially unit-testable and can never be the place an
+ * unverified/inactive/source-material row sneaks in (that guarantee lives
+ * entirely in listTrustedDruidFacts's WHERE clause, not here).
+ *
+ * Only category + fact_text are ever surfaced -- id, source_url,
+ * source_note, source_context_id, source_type, and every verification/
+ * lifecycle field are deliberately omitted. Grouped by category in
+ * DRUID_FACT_CATEGORIES' fixed declared order (deterministic, no new sort
+ * key). Bounded to MAX_TRUSTED_CONTEXT_FACTS facts and
+ * MAX_TRUSTED_CONTEXT_CHARS formatted characters -- individual fact lines
+ * are added one at a time (never a whole category as a single atomic unit),
+ * and a line is only committed if the running total still fits, so a fact
+ * is never truncated mid-sentence and whole fact entries are preserved for
+ * as long as they fit. A category header is only ever committed alongside
+ * at least one of its facts -- never left dangling with nothing under it.
+ * The moment one line doesn't fit, every remaining fact (in this category
+ * and any later one, in declared order) is omitted rather than exploring
+ * out-of-order alternatives -- simple and deterministic, not a bin-packing
+ * search. Returns "" for zero facts -- callers must treat "" as "no DRUID
+ * context to add," never as an error.
+ */
+export function formatTrustedDruidContext(facts: DruidFact[]): string {
+  if (facts.length === 0) return "";
+
+  const bounded = facts.slice(0, MAX_TRUSTED_CONTEXT_FACTS);
+
+  const factTextsByCategory = new Map<string, string[]>();
+  for (const fact of bounded) {
+    const bucket = factTextsByCategory.get(fact.category);
+    if (bucket) bucket.push(fact.factText);
+    else factTextsByCategory.set(fact.category, [fact.factText]);
+  }
+
+  const fits = (lines: string[]): boolean => lines.join("\n").length <= MAX_TRUSTED_CONTEXT_CHARS;
+
+  const resultLines: string[] = [];
+  categoryLoop: for (const category of DRUID_FACT_CATEGORIES) {
+    const factTexts = factTextsByCategory.get(category);
+    if (!factTexts || factTexts.length === 0) continue;
+
+    const categoryLines: string[] = [`[${category}]`];
+    for (const text of factTexts) {
+      const candidateCategoryLines = [...categoryLines, `- ${text}`];
+      if (!fits([...resultLines, ...candidateCategoryLines])) {
+        // This fact doesn't fit -- commit whatever of this category's
+        // header + earlier facts DID fit (if any facts were actually
+        // added; never a bare header), then stop entirely.
+        if (categoryLines.length > 1) resultLines.push(...categoryLines);
+        break categoryLoop;
+      }
+      categoryLines.push(`- ${text}`);
+    }
+    resultLines.push(...categoryLines);
+  }
+
+  return resultLines.join("\n");
 }
 
 export async function getDruidFactById(id: string): Promise<DruidFact | null> {

@@ -29,6 +29,7 @@ import {
   type BudgetStopReason,
   type ExistingQualificationRecord,
 } from "./discoveryBudget";
+import { listTrustedDruidFacts, formatTrustedDruidContext } from "./druidFacts";
 import { logger } from "../lib/logger";
 
 // The Channel Discovery engine: turns a scan config into real, evidence-backed
@@ -845,6 +846,27 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
     // canonical domain, since evidence can legitimately come from a
     // third-party source whose own domain was never excluded).
     const discoveryExclusionDomains = await loadActiveExclusionDomains(territory.id);
+    // Phase 11.5C.3: trusted DRUID context, loaded and formatted once per
+    // run (same tier as criteria/discoveryExclusionDomains above) and
+    // passed to every qualification call below -- never a per-candidate DB
+    // query. Optional grounding, not a correctness/safety gate like
+    // discoveryExclusionDomains: a load failure must never abort the run,
+    // so it degrades to "" (identical to the zero-trusted-facts case) and
+    // is only logged, matching this function's existing candidate-level
+    // "one non-essential AI/data failure must never fail the whole scan"
+    // convention (see the CANDIDATE_LEVEL_AI_ERROR_CODES handling below).
+    // Never invents DRUID knowledge on failure -- "" simply means no DRUID
+    // context is added to the prompt, exactly like having zero verified
+    // facts.
+    let druidContext = "";
+    try {
+      druidContext = formatTrustedDruidContext(await listTrustedDruidFacts());
+    } catch (err) {
+      logger.warn(
+        { scanConfigId: config.id, errorName: err instanceof Error ? err.name : typeof err },
+        "Discovery: failed to load trusted DRUID context for this run; continuing without DRUID grounding",
+      );
+    }
     const candidates: Candidate[] = [];
     // Cross-query dedup: the same URL can legitimately surface from more
     // than one query variant (see buildAutomaticQueries) -- only qualify it
@@ -982,6 +1004,7 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
               domain: evidenceDomain,
               evidence: [{ url: result.url, text: page.text }],
               criteria,
+              druidContext,
             });
           } catch (err) {
             // 5B-R hotfix: a candidate-level unusable AI response (malformed/

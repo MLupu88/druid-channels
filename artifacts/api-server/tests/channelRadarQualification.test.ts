@@ -172,6 +172,92 @@ test("qualifySignalViaDeepSeek throws RadarAiProviderError on a non-2xx response
   );
 });
 
+// ---- Phase 11.5C.3: DRUID VERIFIED CONTEXT grounding -----------------------
+
+function mockFetchCapturingSystemPrompt(capture: (systemPrompt: string) => void) {
+  globalThis.fetch = (async (_url: any, init: any) => {
+    const body = JSON.parse(init.body);
+    capture(body.messages[0].content);
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: JSON.stringify(validSignal) }, finish_reason: "stop" }] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+}
+
+test("qualifySignalViaDeepSeek: with druidContext supplied, the system prompt contains a separated DRUID VERIFIED CONTEXT section stating external facts still require Evidence, and that DRUID context may only inform strategic interpretation/recommended motion", async () => {
+  let capturedSystemPrompt = "";
+  mockFetchCapturingSystemPrompt((p) => { capturedSystemPrompt = p; });
+
+  await qualifySignalViaDeepSeek("test-key", {
+    entityHint: "Acme Systems",
+    territoryName: "UK & Ireland",
+    evidence: [{ url: "https://acme.example/news/acquisition", text: "Acme announced the acquisition...", title: "Acme acquires AI consultancy" }],
+    druidContext: "[technology_ecosystem]\n- DRUID integrates with major CCaaS platforms.",
+  });
+
+  assert.ok(capturedSystemPrompt.includes("DRUID VERIFIED CONTEXT is trusted background about DRUID itself."), "must include the framing sentence");
+  assert.ok(
+    capturedSystemPrompt.includes("All factual claims about the external company/event must still come from the supplied Evidence."),
+    "must state external facts still require Evidence -- this is the strict boundary that must never be relaxed",
+  );
+  assert.ok(
+    capturedSystemPrompt.includes(
+      "You MAY use DRUID VERIFIED CONTEXT only to interpret the strategic relevance of externally evidenced facts to DRUID and to formulate DRUID-specific implications or recommended partner motion.",
+    ),
+    "must explicitly allow DRUID context to inform strategic interpretation/recommended motion -- the corrected, non-useless framing",
+  );
+  assert.ok(
+    capturedSystemPrompt.includes("It must never substitute for missing Evidence or increase factual confidence in an unsupported external claim."),
+    "must include the anti-substitution/anti-confidence-inflation rule",
+  );
+  assert.ok(
+    capturedSystemPrompt.includes("DRUID VERIFIED CONTEXT:\n[technology_ecosystem]\n- DRUID integrates with major CCaaS platforms."),
+    "must include the actual formatted context block, clearly labeled",
+  );
+  // The existing "evidence... your ONLY source of truth" rule must survive
+  // unchanged, and the DRUID section must precede it (background first).
+  const contextIndex = capturedSystemPrompt.indexOf("DRUID VERIFIED CONTEXT is trusted background");
+  const rulesIndex = capturedSystemPrompt.indexOf("You will be given:");
+  assert.ok(contextIndex > -1 && rulesIndex > -1 && contextIndex < rulesIndex, "DRUID context must appear before the existing rules text");
+  assert.ok(
+    capturedSystemPrompt.includes("evidence: one or more {url, title, text} items -- your ONLY source of truth."),
+    "the existing evidence-is-the-only-source-of-truth rule must remain unchanged",
+  );
+});
+
+test("qualifySignalViaDeepSeek: with druidContext omitted or '', the system prompt is byte-identical to the pre-11.5C.3 baseline (no DRUID VERIFIED CONTEXT section)", async () => {
+  let promptWithOmittedField = "";
+  mockFetchCapturingSystemPrompt((p) => { promptWithOmittedField = p; });
+  await qualifySignalViaDeepSeek("test-key", {
+    entityHint: "Acme Systems",
+    territoryName: "UK & Ireland",
+    evidence: [{ url: "https://acme.example/news/acquisition", text: "Acme announced the acquisition...", title: "Acme acquires AI consultancy" }],
+  });
+
+  let promptWithEmptyString = "";
+  mockFetchCapturingSystemPrompt((p) => { promptWithEmptyString = p; });
+  await qualifySignalViaDeepSeek("test-key", {
+    entityHint: "Acme Systems",
+    territoryName: "UK & Ireland",
+    evidence: [{ url: "https://acme.example/news/acquisition", text: "Acme announced the acquisition...", title: "Acme acquires AI consultancy" }],
+    druidContext: "",
+  });
+
+  assert.equal(promptWithOmittedField, promptWithEmptyString, "omitting druidContext and passing '' must produce identical prompts");
+  assert.ok(!promptWithOmittedField.includes("DRUID VERIFIED CONTEXT"), "baseline prompt must never contain a DRUID VERIFIED CONTEXT section");
+  assert.ok(
+    promptWithOmittedField.startsWith(
+      "You are an intelligence analyst for a channel/alliances team at DRUID, an enterprise conversational/agentic AI platform vendor.",
+    ),
+    "baseline prompt must start with the exact original intro sentence",
+  );
+  assert.ok(
+    promptWithOmittedField.includes("evidence: one or more {url, title, text} items -- your ONLY source of truth."),
+    "existing evidence rule text must remain unchanged",
+  );
+});
+
 // ---- Phase 10: bounded cross-run same-event classification -----------------
 
 const sameEventCandidate = {

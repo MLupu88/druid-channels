@@ -63,6 +63,12 @@ export interface AiQualificationInput {
   // itself (discoveryEngine.ts's qualifyChecks) remains authoritative; this
   // function only supplies evidence-grounded check assessments.
   criteria: PartnerSearchCriteria;
+  // Phase 11.5C.3: pre-formatted, already-bounded trusted DRUID context
+  // (druidFacts.ts's formatTrustedDruidContext output, or "") -- background
+  // about DRUID itself, never evidence about the candidate. Optional/""
+  // means "no DRUID context" and must produce a byte-identical system
+  // prompt to before this field existed (see buildSystemPrompt below).
+  druidContext?: string;
 }
 
 const SIGNAL_TYPES = ["partnership", "ai_investment", "enterprise_access", "technology", "hiring", "event", "tender"] as const;
@@ -157,9 +163,21 @@ export const QUALIFICATION_TIMEOUT_MS = 60_000;
 export const IDENTITY_TIMEOUT_MS = 20_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 50_000;
 
-const SYSTEM_PROMPT = `You are an assistant that evaluates whether a company found via a web search is a good potential channel/alliance partner for DRUID, an enterprise conversational/agentic AI platform vendor.
+const SYSTEM_PROMPT_INTRO = `You are an assistant that evaluates whether a company found via a web search is a good potential channel/alliance partner for DRUID, an enterprise conversational/agentic AI platform vendor.`;
 
-You will be given:
+// Phase 11.5C.3: framing for the optional DRUID VERIFIED CONTEXT section --
+// see buildSystemPrompt below. Discovery is the stricter of the two
+// grounding surfaces (contrast channelRadarProviders/ai.ts's looser,
+// strategic-interpretation variant): here, DRUID context may never by
+// itself satisfy a check -- every positive check still needs Evidence
+// about the candidate.
+const DRUID_CONTEXT_FRAMING = `DRUID VERIFIED CONTEXT is admin-verified background about DRUID itself.
+It is NOT evidence about the company being evaluated and must NEVER by itself justify marking any of the five qualification checks true.
+Use it only to understand DRUID's product, positioning, technology ecosystem, proof points, and ideal partner profile so that you can interpret the company Evidence more accurately.
+Every positive qualification check still requires supporting Evidence about the evaluated company itself.
+For example, if DRUID VERIFIED CONTEXT says DRUID integrates with a technology, that does not establish that the evaluated company uses, sells, implements, or partners around that technology.`;
+
+const SYSTEM_PROMPT_RULES = `You will be given:
 - The company's name and domain, as returned by search (not independently verified).
 - Evidence: one or more {url, text} pairs -- actual text found on the web about this company. This is your ONLY source of truth. Never invent a fact, event, product, partnership, or capability not present in this text.
 - Partner Search Criteria this evaluation is being run against (target partner types, industries, technologies, territory, and target_signal_types -- the signal families this territory is prioritizing, e.g. partnership announcements or tenders).
@@ -216,6 +234,17 @@ Respond with ONLY a single JSON object, no markdown, no commentary, matching exa
   "suggested_message": "string, at most 600 characters -- a short, evidence-grounded opening outreach line",
   "evidence_urls": ["url1", "..."]
 }`;
+
+// Byte-identical to the pre-11.5C.3 SYSTEM_PROMPT constant when druidContext
+// is "" -- SYSTEM_PROMPT_INTRO + "\n\n" + SYSTEM_PROMPT_RULES reproduces the
+// original string exactly, so a run with zero trusted DRUID facts sends the
+// exact same prompt as before this phase. Only when druidContext is
+// non-empty does the DRUID VERIFIED CONTEXT section get inserted, always
+// between the intro and the rules -- the rules text itself is never altered.
+function buildSystemPrompt(druidContext: string): string {
+  if (!druidContext) return `${SYSTEM_PROMPT_INTRO}\n\n${SYSTEM_PROMPT_RULES}`;
+  return `${SYSTEM_PROMPT_INTRO}\n\n${DRUID_CONTEXT_FRAMING}\n\nDRUID VERIFIED CONTEXT:\n${druidContext}\n\n${SYSTEM_PROMPT_RULES}`;
+}
 
 // Deliberately its own small check, not a cross-import from
 // aiBriefProvider.ts -- same underlying AI_PROVIDER/connections row, but
@@ -279,7 +308,7 @@ export async function qualifyViaDeepSeek(apiKey: string, input: AiQualificationI
         max_tokens: MAX_TOKENS,
         temperature: 0.2,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: buildSystemPrompt(input.druidContext ?? "") },
           { role: "user", content: JSON.stringify(payload) },
         ],
       }),

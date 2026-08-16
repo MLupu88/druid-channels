@@ -61,6 +61,15 @@ export interface RadarQualificationInput {
   entityHint: string;
   territoryName: string;
   evidence: RadarEvidenceItem[];
+  // Phase 11.5C.3: pre-formatted, already-bounded trusted DRUID context
+  // (druidFacts.ts's formatTrustedDruidContext output, or "") -- background
+  // about DRUID itself. Looser than Discovery's grounding: may inform
+  // implication/druid_partner_motion (DRUID-specific strategic
+  // interpretation) but never itself establishes a fact about the
+  // monitored company/event -- see buildSystemPrompt below. Optional/""
+  // means "no DRUID context" and must produce a byte-identical system
+  // prompt to before this field existed.
+  druidContext?: string;
 }
 
 export interface RadarQualificationOutput {
@@ -117,9 +126,23 @@ const MAX_TOKENS = 1100;
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 50_000;
 
-const SYSTEM_PROMPT = `You are an intelligence analyst for a channel/alliances team at DRUID, an enterprise conversational/agentic AI platform vendor. You review web evidence about a named company (a competitor, an existing/prospective partner, or another ecosystem player) and decide whether it represents a meaningful signal for DRUID's Channels & Alliances team.
+const SYSTEM_PROMPT_INTRO = `You are an intelligence analyst for a channel/alliances team at DRUID, an enterprise conversational/agentic AI platform vendor. You review web evidence about a named company (a competitor, an existing/prospective partner, or another ecosystem player) and decide whether it represents a meaningful signal for DRUID's Channels & Alliances team.`;
 
-You will be given:
+// Phase 11.5C.3: framing for the optional DRUID VERIFIED CONTEXT section --
+// see buildSystemPrompt below. Deliberately looser than
+// discoveryProviders/ai.ts's variant: Channel Radar's job includes judging
+// strategic relevance TO DRUID (implication, druid_partner_motion), so
+// DRUID context may inform that interpretation -- but it must never itself
+// establish, strengthen, or substitute for a factual claim about the
+// monitored company/event, which must always come from Evidence.
+const DRUID_CONTEXT_FRAMING = `DRUID VERIFIED CONTEXT is trusted background about DRUID itself.
+It is NOT evidence that any external event, capability, relationship, geography, partnership, customer, or technology claim about the monitored company is true.
+All factual claims about the external company/event must still come from the supplied Evidence.
+
+You MAY use DRUID VERIFIED CONTEXT only to interpret the strategic relevance of externally evidenced facts to DRUID and to formulate DRUID-specific implications or recommended partner motion.
+It must never substitute for missing Evidence or increase factual confidence in an unsupported external claim.`;
+
+const SYSTEM_PROMPT_RULES = `You will be given:
 - entity_hint: the company this evidence was searched for.
 - territory_name: the DRUID territory this scan is running for (context only -- never invent that a signal applies more broadly than the evidence supports).
 - evidence: one or more {url, title, text} items -- your ONLY source of truth. Never invent a fact, event, date, geography, or company detail not present in this text.
@@ -163,6 +186,18 @@ Respond with ONLY a single JSON object, no markdown, no commentary, matching exa
   "regional_applicability_certain": boolean
 }
 If keep is false, still fill every field honestly (e.g. impact "low", confidence reflecting your actual certainty) -- the caller discards the record either way, but never leave a field empty or fabricated.`;
+
+// Byte-identical to the pre-11.5C.3 SYSTEM_PROMPT constant when druidContext
+// is "" -- SYSTEM_PROMPT_INTRO + "\n\n" + SYSTEM_PROMPT_RULES reproduces the
+// original string exactly, so a run with zero trusted DRUID facts sends the
+// exact same prompt as before this phase. Only when druidContext is
+// non-empty does the DRUID VERIFIED CONTEXT section get inserted, always
+// between the intro and the rules -- the rules text itself (including
+// "evidence... your ONLY source of truth") is never altered.
+function buildSystemPrompt(druidContext: string): string {
+  if (!druidContext) return `${SYSTEM_PROMPT_INTRO}\n\n${SYSTEM_PROMPT_RULES}`;
+  return `${SYSTEM_PROMPT_INTRO}\n\n${DRUID_CONTEXT_FRAMING}\n\nDRUID VERIFIED CONTEXT:\n${druidContext}\n\n${SYSTEM_PROMPT_RULES}`;
+}
 
 export async function isConfigured(): Promise<boolean> {
   return process.env.AI_PROVIDER === "deepseek" && (await hasResolvableCredential("ai"));
@@ -209,7 +244,7 @@ export async function qualifySignalViaDeepSeek(apiKey: string, input: RadarQuali
         max_tokens: MAX_TOKENS,
         temperature: 0.2,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: buildSystemPrompt(input.druidContext ?? "") },
           { role: "user", content: JSON.stringify(payload) },
         ],
       }),

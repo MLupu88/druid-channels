@@ -14,6 +14,7 @@ import * as searchProvider from "./discoveryProviders/search";
 import * as radarAiProvider from "./channelRadarProviders/ai";
 import { resolveCompanyMatchForEntityName } from "./radarCompanyBridge";
 import { normalizeCompanyName } from "./companyMatchingService";
+import { listTrustedDruidFacts, formatTrustedDruidContext } from "./druidFacts";
 import { logger } from "../lib/logger";
 
 // Stage 5 Channel Radar engine. Deliberately no demo/fallback data path --
@@ -516,6 +517,22 @@ export async function runRadarForConfig(configId: string): Promise<ChannelRadarR
   const queries = buildRadarQueries(entities, signalTypes, geoTerm);
   const startDate = computeLookbackStartDate(config.lookbackDays);
 
+  // Phase 11.5C.3: trusted DRUID context, loaded and formatted once per run
+  // (same tier as queries/startDate above) and passed to every qualifySignal
+  // call below -- never classifySameEvent, and never a per-result DB query.
+  // Optional grounding, not a correctness gate: a load failure must never
+  // abort the run, so it degrades to "" (identical to the zero-trusted-facts
+  // case) and is only logged -- never invents DRUID knowledge on failure.
+  let druidContext = "";
+  try {
+    druidContext = formatTrustedDruidContext(await listTrustedDruidFacts());
+  } catch (err) {
+    logger.warn(
+      { channelRadarConfigId: config.id, errorName: err instanceof Error ? err.name : typeof err },
+      "Channel Radar: failed to load trusted DRUID context for this run; continuing without DRUID grounding",
+    );
+  }
+
   let resultsFound = 0;
   let resultsQualified = 0;
 
@@ -532,6 +549,7 @@ export async function runRadarForConfig(configId: string): Promise<ChannelRadarR
           entityHint,
           territoryName: territory.name,
           evidence: [{ url: result.url, title: result.title, text: result.snippet }],
+          druidContext,
         });
 
         if (!qualification.keep) continue;

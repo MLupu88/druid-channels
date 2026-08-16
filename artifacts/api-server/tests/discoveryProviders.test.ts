@@ -168,6 +168,119 @@ test("qualifyViaDeepSeek throws AiProviderError on malformed model output", asyn
   );
 });
 
+// ---- Phase 11.5C.3: DRUID VERIFIED CONTEXT grounding -----------------------
+
+const baseCriteria = {
+  partnerTypes: [],
+  industries: [],
+  technologies: [],
+  territoryName: "Global",
+  territoryCountries: [],
+  excludedDomains: [],
+  minChecksRequired: 3,
+  searchIntent: [],
+  targetSignalTypes: [],
+};
+
+const minimalValidQualification = {
+  partner_type: "System integrator",
+  recruitment_archetype: "system_integrator",
+  signal_type: "ai_investment",
+  subject_company_name: "Acme Systems",
+  source_is_first_party: true,
+  enterprise_access: true,
+  relevant_capability: true,
+  technology_adjacency: false,
+  partnership_openness: false,
+  recent_trigger: true,
+  why_it_fits: "x",
+  why_now: "x",
+  suggested_angle: "x",
+  suggested_target_role: "x",
+  suggested_message: "x",
+  evidence_urls: [],
+};
+
+function mockFetchCapturingSystemPrompt(capture: (systemPrompt: string) => void) {
+  globalThis.fetch = (async (_url: any, init: any) => {
+    const body = JSON.parse(init.body);
+    capture(body.messages[0].content);
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: JSON.stringify(minimalValidQualification) }, finish_reason: "stop" }] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+}
+
+test("qualifyViaDeepSeek: with druidContext supplied, the system prompt contains a separated DRUID VERIFIED CONTEXT section with the anti-contamination rules, positioned before the existing rules text", async () => {
+  let capturedSystemPrompt = "";
+  mockFetchCapturingSystemPrompt((p) => { capturedSystemPrompt = p; });
+
+  await qualifyViaDeepSeek("test-key", {
+    companyName: "Acme Systems",
+    domain: "acme.example",
+    evidence: [{ url: "https://acme.example/news", text: "Acme launched an AI practice." }],
+    criteria: baseCriteria,
+    druidContext: "[product]\n- DRUID is an enterprise conversational AI platform.",
+  });
+
+  assert.ok(capturedSystemPrompt.includes("DRUID VERIFIED CONTEXT is admin-verified background about DRUID itself."), "must include the framing sentence");
+  assert.ok(
+    capturedSystemPrompt.includes("must NEVER by itself justify marking any of the five qualification checks true"),
+    "must include the anti-contamination rule",
+  );
+  assert.ok(
+    capturedSystemPrompt.includes("does not establish that the evaluated company uses, sells, implements, or partners around that technology"),
+    "must include the concrete counter-example",
+  );
+  assert.ok(
+    capturedSystemPrompt.includes("DRUID VERIFIED CONTEXT:\n[product]\n- DRUID is an enterprise conversational AI platform."),
+    "must include the actual formatted context block, clearly labeled",
+  );
+  // Background/scene-setting, not interleaved with or after the five-check
+  // instructions -- the detailed rules stay the most-proximate instructions
+  // before the model reads the Evidence/user message.
+  const contextIndex = capturedSystemPrompt.indexOf("DRUID VERIFIED CONTEXT is admin-verified");
+  const rulesIndex = capturedSystemPrompt.indexOf("You will be given:");
+  assert.ok(contextIndex > -1 && rulesIndex > -1 && contextIndex < rulesIndex, "DRUID context must appear before the existing rules text");
+});
+
+test("qualifyViaDeepSeek: with druidContext omitted or '', the system prompt is byte-identical to the pre-11.5C.3 baseline (no DRUID VERIFIED CONTEXT section)", async () => {
+  let promptWithOmittedField = "";
+  mockFetchCapturingSystemPrompt((p) => { promptWithOmittedField = p; });
+  await qualifyViaDeepSeek("test-key", {
+    companyName: "Acme Systems",
+    domain: "acme.example",
+    evidence: [{ url: "https://acme.example/news", text: "Acme launched an AI practice." }],
+    criteria: baseCriteria,
+  });
+
+  let promptWithEmptyString = "";
+  mockFetchCapturingSystemPrompt((p) => { promptWithEmptyString = p; });
+  await qualifyViaDeepSeek("test-key", {
+    companyName: "Acme Systems",
+    domain: "acme.example",
+    evidence: [{ url: "https://acme.example/news", text: "Acme launched an AI practice." }],
+    criteria: baseCriteria,
+    druidContext: "",
+  });
+
+  assert.equal(promptWithOmittedField, promptWithEmptyString, "omitting druidContext and passing '' must produce identical prompts");
+  assert.ok(!promptWithOmittedField.includes("DRUID VERIFIED CONTEXT"), "baseline prompt must never contain a DRUID VERIFIED CONTEXT section");
+  assert.ok(
+    promptWithOmittedField.startsWith(
+      "You are an assistant that evaluates whether a company found via a web search is a good potential channel/alliance partner for DRUID, an enterprise conversational/agentic AI platform vendor.",
+    ),
+    "baseline prompt must start with the exact original intro sentence",
+  );
+  assert.ok(
+    promptWithOmittedField.includes(
+      "This is your ONLY source of truth. Never invent a fact, event, product, partnership, or capability not present in this text.",
+    ),
+    "existing evidence rule text must remain unchanged",
+  );
+});
+
 // ---- Production hotfix: split qualification vs identity timeouts --------
 
 test("check: main qualification timeout is 60 seconds", () => {

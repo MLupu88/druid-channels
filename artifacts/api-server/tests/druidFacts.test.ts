@@ -304,6 +304,25 @@ test("listTrustedDruidFacts returns only active=true AND verification_status=ver
   assert.ok(!trustedIds.has(inactiveUnverified.id), "inactive+unverified must be excluded");
 });
 
+test("listTrustedDruidFacts orders deterministically: created_at DESC, id ASC as a tie-breaker", async () => {
+  const factA = await makeFact({ category: "product", factText: "Tie-break fact A", sourceUrl: "https://druidai.com/tie-a" });
+  await verifyDruidFact(factA.id, adminUserId);
+  const factB = await makeFact({ category: "product", factText: "Tie-break fact B", sourceUrl: "https://druidai.com/tie-b" });
+  await verifyDruidFact(factB.id, adminUserId);
+
+  // Force an identical created_at on both so this genuinely exercises the
+  // tie-breaker, not just created_at's own natural ordering (which would
+  // pass even without the id tie-break).
+  const tiedTimestamp = new Date("2026-01-01T00:00:00.000Z");
+  await db.update(druidFactsTable).set({ createdAt: tiedTimestamp }).where(eq(druidFactsTable.id, factA.id));
+  await db.update(druidFactsTable).set({ createdAt: tiedTimestamp }).where(eq(druidFactsTable.id, factB.id));
+
+  const trusted = await listTrustedDruidFacts();
+  const tiedOrder = trusted.filter((f) => f.id === factA.id || f.id === factB.id).map((f) => f.id);
+  const [smallerId, largerId] = [factA.id, factB.id].sort();
+  assert.deepEqual(tiedOrder, [smallerId, largerId], "rows with an identical created_at must be ordered by id ascending as a deterministic tie-breaker");
+});
+
 test("listDruidFacts returns the full admin view, including inactive/unverified rows", async () => {
   const fact = await makeFact({ category: "other", factText: "Admin-visible regardless of state" });
   await deactivateDruidFact(fact.id, adminUserId);
