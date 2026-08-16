@@ -98,8 +98,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SectionCard, SectionCardHeader, SectionCardContent } from '@/components/section-card';
 import { useToast } from '@/hooks/use-toast';
 import { sortConnectionsByDisplayOrder, getConnectionTone, isErrorTone } from '@/lib/connection-display';
+import { CONNECTION_PROVIDER_META } from '@/lib/connection-provider-meta';
 import { parseMultiValueInput, formatMultiValueInput, parseLineDelimitedInput, formatLineDelimitedInput } from '@/lib/multi-value-input';
 import {
   Pencil, Save, Database, Sparkles, Unplug, CheckCircle2, Search, Bot, Loader2, XCircle, Eye,
@@ -1047,12 +1049,13 @@ function ReplaceConnectionSecretDialog({ connection, onClose }: { connection: Co
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [value, setValue] = useState('');
+  const displayName = CONNECTION_PROVIDER_META[connection.provider_type]?.displayName ?? connection.provider_name;
 
   const setSecretMutation = useSetConnectionSecret({
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListConnectionsQueryKey() });
-        toast({ title: 'Credential saved', description: `${connection.provider_name}'s stored credential was updated.` });
+        toast({ title: 'Credential saved', description: `${displayName}'s stored credential was updated.` });
         onClose();
       },
       onError: (err: any) => {
@@ -1065,7 +1068,7 @@ function ReplaceConnectionSecretDialog({ connection, onClose }: { connection: Co
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListConnectionsQueryKey() });
-        toast({ title: 'Stored credential cleared', description: `${connection.provider_name} now falls back to its environment variable, if set.` });
+        toast({ title: 'Stored credential cleared', description: `${displayName} now falls back to its environment variable, if set.` });
         onClose();
       },
       onError: (err: any) => {
@@ -1080,7 +1083,7 @@ function ReplaceConnectionSecretDialog({ connection, onClose }: { connection: Co
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Replace {connection.provider_name} credential</DialogTitle>
+          <DialogTitle>Replace {displayName} credential</DialogTitle>
           <DialogDescription>
             Stored encrypted at rest. Only the last 4 characters are ever shown again after saving.
           </DialogDescription>
@@ -1165,6 +1168,48 @@ function ConnectionCard({ connection }: { connection: Connection }) {
     },
   });
 
+  // Phase 11.6D: provider display identity is frontend-only metadata keyed
+  // by the stable, unmutated provider_type -- see lib/connection-provider-
+  // meta.ts. connection.provider_name (the raw DB value, e.g. "AI") is
+  // never patched or renamed, and provider_type itself is never rendered
+  // in this normal product-facing card (11.6D amendment) -- it is simply
+  // not information Irina needs here.
+  const meta = CONNECTION_PROVIDER_META[connection.provider_type];
+  const displayName = meta?.displayName ?? connection.provider_name;
+
+  const nameHeader = (
+    <span className="flex items-center gap-3">
+      <span className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center text-primary shrink-0">
+        <Icon className="h-5 w-5" />
+      </span>
+      {displayName}
+    </span>
+  );
+
+  // Phase 11.6D amendment: HubSpot has no real connection today (OAuth is
+  // the future model, not implemented) -- its card must not imply the
+  // integration is testable/configurable. This renders a deliberately
+  // minimal, distinct layout: no ConnectionStatusBadge (that reflects
+  // backend `status`/`last_error`, which would misleadingly imply an
+  // active integration exists), no credential/env-var details, no Enable/
+  // Disable, no Replace, no Test connection -- only the product-facing
+  // "Not connected" state and the OAuth-oriented copy. The backend
+  // connections row itself (status, last_error, credential_env_var, etc.)
+  // is completely untouched; this is a presentation-only branch.
+  if (meta?.notYetAvailable) {
+    return (
+      <SectionCard>
+        <SectionCardHeader
+          title={nameHeader}
+          actions={<Badge variant="outline" className="text-muted-foreground font-normal shrink-0">Not connected</Badge>}
+        />
+        <SectionCardContent>
+          <p className="text-xs text-muted-foreground">{meta.purpose}</p>
+        </SectionCardContent>
+      </SectionCard>
+    );
+  }
+
   const credentialLine = secretManageable
     ? connection.has_db_secret
       ? `Stored credential: •••• ${connection.secret_last4}`
@@ -1174,61 +1219,73 @@ function ConnectionCard({ connection }: { connection: Connection }) {
     : <>Credential: <code className="text-[11px]">{connection.credential_env_var}</code>{connection.has_credential ? ' (set)' : ' (not set)'}</>;
 
   return (
-    <Card className="shadow-none border-border/60">
-      <CardHeader className="flex flex-row items-start justify-between py-4 px-5 border-b border-border/50 bg-muted/20 space-y-0">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center text-primary">
-            <Icon className="h-5 w-5" />
-          </div>
+    <SectionCard>
+      <SectionCardHeader
+        title={nameHeader}
+        description={meta?.purpose}
+        actions={
+          <span className="flex items-center gap-3 shrink-0">
+            {secretManageable && (
+              <span className="flex items-center gap-1.5">
+                <Switch
+                  checked={connection.enabled}
+                  disabled={enabledMutation.isPending}
+                  onCheckedChange={(checked) => enabledMutation.mutate({ id: connection.id, data: { enabled: checked } })}
+                  aria-label={`${connection.enabled ? 'Disable' : 'Enable'} ${displayName}`}
+                />
+                <span className="text-xs text-muted-foreground">{connection.enabled ? 'Enabled' : 'Disabled'}</span>
+              </span>
+            )}
+            <ConnectionStatusBadge status={connection.status} hasCredential={connection.has_credential} enabled={connection.enabled} />
+          </span>
+        }
+      />
+      <SectionCardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">{credentialLine}</p>
+
+        {meta && meta.powers.length > 0 && (
           <div>
-            <CardTitle className="text-base font-medium">{connection.provider_name}</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">{credentialLine}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70 mb-1.5">Powers</p>
+            <div className="flex flex-wrap gap-1.5">
+              {meta.powers.map((power) => (
+                <Badge key={power} variant="outline" className="font-normal text-[11px] text-muted-foreground border-border/70">
+                  {power}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-4 pt-1">
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>
+              <span className="font-medium text-foreground">Last tested: </span>
+              {connection.last_tested_at ? format(new Date(connection.last_tested_at), 'MMM d, HH:mm') : 'Never'}
+            </p>
+            {connection.last_error && (
+              <p className={isErrorTone(getConnectionTone(connection.status, connection.has_credential, connection.enabled)) ? 'text-rose-600' : 'text-muted-foreground'}>{connection.last_error}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {secretManageable && (
+              <Button variant="outline" size="sm" onClick={() => setReplaceDialogOpen(true)}>
+                Replace
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={testMutation.isPending}
+              onClick={() => testMutation.mutate({ id: connection.id })}
+            >
+              {testMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
+              Test connection
+            </Button>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          {secretManageable && (
-            <div className="flex items-center gap-1.5">
-              <Switch
-                checked={connection.enabled}
-                disabled={enabledMutation.isPending}
-                onCheckedChange={(checked) => enabledMutation.mutate({ id: connection.id, data: { enabled: checked } })}
-                aria-label={`${connection.enabled ? 'Disable' : 'Enable'} ${connection.provider_name}`}
-              />
-              <span className="text-xs text-muted-foreground">{connection.enabled ? 'Enabled' : 'Disabled'}</span>
-            </div>
-          )}
-          <ConnectionStatusBadge status={connection.status} hasCredential={connection.has_credential} enabled={connection.enabled} />
-        </div>
-      </CardHeader>
-      <CardContent className="p-5 flex items-center justify-between gap-4">
-        <div className="text-xs text-muted-foreground space-y-1">
-          <p>
-            <span className="font-medium text-foreground">Last tested: </span>
-            {connection.last_tested_at ? format(new Date(connection.last_tested_at), 'MMM d, HH:mm') : 'Never'}
-          </p>
-          {connection.last_error && (
-            <p className={isErrorTone(getConnectionTone(connection.status, connection.has_credential, connection.enabled)) ? 'text-rose-600' : 'text-muted-foreground'}>{connection.last_error}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {secretManageable && (
-            <Button variant="outline" size="sm" onClick={() => setReplaceDialogOpen(true)}>
-              Replace
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={testMutation.isPending}
-            onClick={() => testMutation.mutate({ id: connection.id })}
-          >
-            {testMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
-            Test connection
-          </Button>
-        </div>
-      </CardContent>
+      </SectionCardContent>
       {replaceDialogOpen && <ReplaceConnectionSecretDialog connection={connection} onClose={() => setReplaceDialogOpen(false)} />}
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -1770,18 +1827,32 @@ function ExcludedResearchResultsSection() {
   );
 }
 
+// Phase 11.6D: web_reader is genuinely unwired (see lib/connection-
+// provider-meta.ts) -- filtered out of the product-facing list here, not
+// deleted or altered at the source. Its DB row and backend provider_type
+// are completely untouched; an admin/debug surface could still list every
+// row directly from GET /connections if ever needed.
+function visibleConnections(connections: Connection[] | undefined): Connection[] {
+  return sortConnectionsByDisplayOrder(connections ?? []).filter((c) => !CONNECTION_PROVIDER_META[c.provider_type]?.hiddenFromList);
+}
+
 function ConnectionsDataTab() {
   const { data: connections, isLoading: connectionsLoading } = useListConnections();
   const { data: mappings, isLoading: mappingsLoading } = useListMetricMappings();
   const [editingMapping, setEditingMapping] = useState<MetricMapping | null>(null);
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-10 max-w-4xl">
+      {/* Phase 11.6D: Connections and Metric Setup are different concepts
+          (which external tools DRUID Channels talks to, vs. which internal
+          data source backs each KPI) -- kept as clearly separated sections
+          (heading tier + divider) rather than one continuous scroll, per
+          the 11.6D product-owner requirement. Behavior/content of Metric
+          Setup is unchanged -- only the surrounding heading/spacing moved. */}
       <div>
-        <h3 className="text-sm font-medium mb-1">Connections</h3>
+        <h3 className="text-section-title mb-1">Connections</h3>
         <p className="text-xs text-muted-foreground mb-4">
-          AI and Web Search credentials can be entered here (encrypted at rest, masked after saving) or left as
-          environment variables. HubSpot and Web Reader credentials are managed as environment variables only.
+          The external tools DRUID Channels actually talks to, what each one powers, and where its credential comes from.
         </p>
         {connectionsLoading ? (
           <div className="space-y-3">
@@ -1790,13 +1861,13 @@ function ConnectionsDataTab() {
           </div>
         ) : (
           <div className="space-y-3">
-            {sortConnectionsByDisplayOrder(connections ?? []).map((c) => <ConnectionCard key={c.id} connection={c} />)}
+            {visibleConnections(connections).map((c) => <ConnectionCard key={c.id} connection={c} />)}
           </div>
         )}
       </div>
 
-      <div>
-        <h3 className="text-sm font-medium mb-1">Metric setup</h3>
+      <div className="border-t border-border/60 pt-8">
+        <h3 className="text-section-title mb-1">Metric setup</h3>
         <p className="text-xs text-muted-foreground mb-4">
           Every Overview KPI is backed by exactly one data source. Metrics without a live connection show
           seeded demo data or a manual value — never fabricated numbers — and are labeled accordingly.
@@ -1837,7 +1908,9 @@ function ConnectionsDataTab() {
         </div>
       </div>
 
-      <ExcludedResearchResultsSection />
+      <div className="border-t border-border/60 pt-8">
+        <ExcludedResearchResultsSection />
+      </div>
 
       {editingMapping && (
         <MetricMappingDrawer mapping={editingMapping} onClose={() => setEditingMapping(null)} />
