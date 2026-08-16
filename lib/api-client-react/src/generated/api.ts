@@ -49,6 +49,9 @@ import type {
   DeleteProspectResult,
   DeleteResult,
   DiscoveryExclusion,
+  DruidFact,
+  DruidFactCreateInput,
+  DruidFactUpdateInput,
   ExportManagementPptxParams,
   ExportQuarterlyPptxParams,
   GetAiChannelBriefParams,
@@ -4724,6 +4727,439 @@ export const useRestoreDiscoveryExclusion = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getRestoreDiscoveryExclusionMutationOptions(options));
+    }
+
+export const getListDruidFactsUrl = () => {
+
+
+
+
+  return `/api/druid-facts`
+}
+
+/**
+ * @summary List every DRUID fact, active or not, verified or not (admin-only full management view)
+ */
+export const listDruidFacts = async ( options?: Parameters<typeof customFetch>[1]): Promise<DruidFact[]> => {
+
+  return customFetch<DruidFact[]>(getListDruidFactsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDruidFactsQueryKey = () => {
+    return [
+    `/api/druid-facts`
+    ] as const;
+    }
+
+
+export const getListDruidFactsQueryOptions = <TData = Awaited<ReturnType<typeof listDruidFacts>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDruidFacts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDruidFactsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDruidFacts>>> = ({ signal }) => listDruidFacts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDruidFacts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDruidFactsQueryResult = NonNullable<Awaited<ReturnType<typeof listDruidFacts>>>
+export type ListDruidFactsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List every DRUID fact, active or not, verified or not (admin-only full management view)
+ */
+
+export function useListDruidFacts<TData = Awaited<ReturnType<typeof listDruidFacts>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDruidFacts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDruidFactsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateDruidFactUrl = () => {
+
+
+
+
+  return `/api/druid-facts`
+}
+
+/**
+ * @summary Create a DRUID fact (admin-only). Always starts source_type=manual, verification_status=unverified, active=true -- these are server-owned and cannot be set by the caller.
+ */
+export const createDruidFact = async (druidFactCreateInput: DruidFactCreateInput, options?: Parameters<typeof customFetch>[1]): Promise<DruidFact> => {
+
+  return customFetch<DruidFact>(getCreateDruidFactUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(druidFactCreateInput)
+  }
+);}
+
+
+
+
+
+export const getCreateDruidFactMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDruidFact>>, TError,{data: BodyType<DruidFactCreateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDruidFact>>, TError,{data: BodyType<DruidFactCreateInput>}, TContext> => {
+
+const mutationKey = ['createDruidFact'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDruidFact>>, {data: BodyType<DruidFactCreateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDruidFact(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDruidFactMutationResult = NonNullable<Awaited<ReturnType<typeof createDruidFact>>>
+    export type CreateDruidFactMutationBody = BodyType<DruidFactCreateInput>
+    export type CreateDruidFactMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a DRUID fact (admin-only). Always starts source_type=manual, verification_status=unverified, active=true -- these are server-owned and cannot be set by the caller.
+ */
+export const useCreateDruidFact = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDruidFact>>, TError,{data: BodyType<DruidFactCreateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDruidFact>>,
+        TError,
+        {data: BodyType<DruidFactCreateInput>},
+        TContext
+      > => {
+      return useMutation(getCreateDruidFactMutationOptions(options));
+    }
+
+export const getUpdateDruidFactUrl = (id: string,) => {
+
+
+
+
+  return `/api/druid-facts/${id}`
+}
+
+/**
+ * @summary Edit a DRUID fact's category/text/source (admin-only). If the fact was verified, this resets verification_status to unverified and clears the verifier -- an edited fact always needs re-review.
+ */
+export const updateDruidFact = async (id: string,
+    druidFactUpdateInput: DruidFactUpdateInput, options?: Parameters<typeof customFetch>[1]): Promise<DruidFact> => {
+
+  return customFetch<DruidFact>(getUpdateDruidFactUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(druidFactUpdateInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateDruidFactMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDruidFact>>, TError,{id: string;data: BodyType<DruidFactUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateDruidFact>>, TError,{id: string;data: BodyType<DruidFactUpdateInput>}, TContext> => {
+
+const mutationKey = ['updateDruidFact'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateDruidFact>>, {id: string;data: BodyType<DruidFactUpdateInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateDruidFact(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateDruidFactMutationResult = NonNullable<Awaited<ReturnType<typeof updateDruidFact>>>
+    export type UpdateDruidFactMutationBody = BodyType<DruidFactUpdateInput>
+    export type UpdateDruidFactMutationError = ErrorType<void>
+
+    /**
+ * @summary Edit a DRUID fact's category/text/source (admin-only). If the fact was verified, this resets verification_status to unverified and clears the verifier -- an edited fact always needs re-review.
+ */
+export const useUpdateDruidFact = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDruidFact>>, TError,{id: string;data: BodyType<DruidFactUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateDruidFact>>,
+        TError,
+        {id: string;data: BodyType<DruidFactUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateDruidFactMutationOptions(options));
+    }
+
+export const getVerifyDruidFactUrl = (id: string,) => {
+
+
+
+
+  return `/api/druid-facts/${id}/verify`
+}
+
+/**
+ * @summary Mark a DRUID fact verified (admin-only). Rejected with 422 if the fact has neither a non-empty source_url nor a non-empty source_note -- a fact can never become verified DRUID truth with zero provenance.
+ */
+export const verifyDruidFact = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<DruidFact> => {
+
+  return customFetch<DruidFact>(getVerifyDruidFactUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getVerifyDruidFactMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyDruidFact>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyDruidFact>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['verifyDruidFact'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyDruidFact>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  verifyDruidFact(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyDruidFactMutationResult = NonNullable<Awaited<ReturnType<typeof verifyDruidFact>>>
+
+    export type VerifyDruidFactMutationError = ErrorType<void>
+
+    /**
+ * @summary Mark a DRUID fact verified (admin-only). Rejected with 422 if the fact has neither a non-empty source_url nor a non-empty source_note -- a fact can never become verified DRUID truth with zero provenance.
+ */
+export const useVerifyDruidFact = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyDruidFact>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof verifyDruidFact>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getVerifyDruidFactMutationOptions(options));
+    }
+
+export const getDeactivateDruidFactUrl = (id: string,) => {
+
+
+
+
+  return `/api/druid-facts/${id}/deactivate`
+}
+
+/**
+ * @summary Deactivate a DRUID fact (admin-only). Kept, not deleted; records who deactivated it and when. Verification status is left untouched.
+ */
+export const deactivateDruidFact = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<DruidFact> => {
+
+  return customFetch<DruidFact>(getDeactivateDruidFactUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeactivateDruidFactMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateDruidFact>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deactivateDruidFact>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deactivateDruidFact'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deactivateDruidFact>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deactivateDruidFact(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeactivateDruidFactMutationResult = NonNullable<Awaited<ReturnType<typeof deactivateDruidFact>>>
+
+    export type DeactivateDruidFactMutationError = ErrorType<void>
+
+    /**
+ * @summary Deactivate a DRUID fact (admin-only). Kept, not deleted; records who deactivated it and when. Verification status is left untouched.
+ */
+export const useDeactivateDruidFact = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateDruidFact>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deactivateDruidFact>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeactivateDruidFactMutationOptions(options));
+    }
+
+export const getReactivateDruidFactUrl = (id: string,) => {
+
+
+
+
+  return `/api/druid-facts/${id}/reactivate`
+}
+
+/**
+ * @summary Reactivate a DRUID fact (admin-only). Clears the deactivation audit fields, and also resets verification_status to unverified (clearing the verifier) -- a reactivated fact is never automatically trusted again; it must be explicitly re-verified.
+ */
+export const reactivateDruidFact = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<DruidFact> => {
+
+  return customFetch<DruidFact>(getReactivateDruidFactUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReactivateDruidFactMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactivateDruidFact>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reactivateDruidFact>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['reactivateDruidFact'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reactivateDruidFact>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  reactivateDruidFact(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReactivateDruidFactMutationResult = NonNullable<Awaited<ReturnType<typeof reactivateDruidFact>>>
+
+    export type ReactivateDruidFactMutationError = ErrorType<void>
+
+    /**
+ * @summary Reactivate a DRUID fact (admin-only). Clears the deactivation audit fields, and also resets verification_status to unverified (clearing the verifier) -- a reactivated fact is never automatically trusted again; it must be explicitly re-verified.
+ */
+export const useReactivateDruidFact = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactivateDruidFact>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reactivateDruidFact>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getReactivateDruidFactMutationOptions(options));
     }
 
 export const getListMetricMappingsUrl = () => {

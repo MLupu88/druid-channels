@@ -28,6 +28,7 @@ import channelChiefRouter from "./channel_chief";
 import weeklyReportingRouter from "./weekly_reporting";
 import managementReportingRouter from "./management_reporting";
 import discoveryExclusionsRouter from "./discovery_exclusions";
+import druidFactsRouter from "./druid_facts";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(channelChiefRouter);
 router.use(weeklyReportingRouter);
 router.use(managementReportingRouter);
 router.use(discoveryExclusionsRouter);
+router.use(druidFactsRouter);
 
 export default router;

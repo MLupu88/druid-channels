@@ -1382,6 +1382,83 @@ export interface DiscoveryExclusion {
   restored_by_user_id?: string | null;
 }
 
+/**
+ * The kind of DRUID fact this row captures.
+ */
+export type DruidFactCategory = typeof DruidFactCategory[keyof typeof DruidFactCategory];
+
+
+export const DruidFactCategory = {
+  product: 'product',
+  positioning: 'positioning',
+  ideal_partner_profile: 'ideal_partner_profile',
+  technology_ecosystem: 'technology_ecosystem',
+  proof_point: 'proof_point',
+  other: 'other',
+} as const;
+
+/**
+ * How this fact entered the store. "manual" is the only value in Phase 11.5C.1 -- 11.5C.2 adds "ingested" for Tavily-sourced candidate material.
+ */
+export type DruidFactSourceType = typeof DruidFactSourceType[keyof typeof DruidFactSourceType];
+
+
+export const DruidFactSourceType = {
+  manual: 'manual',
+} as const;
+
+/**
+ * Whether an admin has confirmed this fact as trusted DRUID truth. Always starts "unverified"; reset to "unverified" on edit or reactivation.
+ */
+export type DruidFactVerificationStatus = typeof DruidFactVerificationStatus[keyof typeof DruidFactVerificationStatus];
+
+
+export const DruidFactVerificationStatus = {
+  unverified: 'unverified',
+  verified: 'verified',
+} as const;
+
+export interface DruidFact {
+  id: string;
+  category: DruidFactCategory;
+  fact_text: string;
+  source_type: DruidFactSourceType;
+  source_url?: string | null;
+  source_note?: string | null;
+  verification_status: DruidFactVerificationStatus;
+  verified_by_user_id?: string | null;
+  verified_at?: string | null;
+  active: boolean;
+  deactivated_by_user_id?: string | null;
+  deactivated_at?: string | null;
+  created_by_user_id?: string | null;
+  created_at: string;
+  updated_by_user_id?: string | null;
+  updated_at: string;
+}
+
+/**
+ * The only fields an admin may set on create. source_type, verification_status, active, and every audit id/timestamp are server-owned and deliberately absent from this shape.
+ */
+export interface DruidFactCreateInput {
+  category: DruidFactCategory;
+  /** @minLength 1 */
+  fact_text: string;
+  source_url?: string | null;
+  source_note?: string | null;
+}
+
+/**
+ * The only fields an admin may edit. Same server-owned exclusions as DruidFactCreateInput -- verification/lifecycle state can only change through their dedicated actions (verify/deactivate/reactivate).
+ */
+export interface DruidFactUpdateInput {
+  category?: DruidFactCategory;
+  /** @minLength 1 */
+  fact_text?: string;
+  source_url?: string | null;
+  source_note?: string | null;
+}
+
 export interface UserEditInput {
   /** @minLength 1 */
   name?: string;

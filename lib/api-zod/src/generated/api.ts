@@ -2363,6 +2363,181 @@ export const RestoreDiscoveryExclusionResponse = zod.object({
 
 
 /**
+ * @summary List every DRUID fact, active or not, verified or not (admin-only full management view)
+ */
+export const ListDruidFactsResponseItem = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
+  "fact_text": zod.string(),
+  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_url": zod.string().nullish(),
+  "source_note": zod.string().nullish(),
+  "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
+  "verified_by_user_id": zod.string().nullish(),
+  "verified_at": zod.coerce.date().nullish(),
+  "active": zod.boolean(),
+  "deactivated_by_user_id": zod.string().nullish(),
+  "deactivated_at": zod.coerce.date().nullish(),
+  "created_by_user_id": zod.string().nullish(),
+  "created_at": zod.coerce.date(),
+  "updated_by_user_id": zod.string().nullish(),
+  "updated_at": zod.coerce.date()
+})
+export const ListDruidFactsResponse = zod.array(ListDruidFactsResponseItem)
+
+
+/**
+ * @summary Create a DRUID fact (admin-only). Always starts source_type=manual, verification_status=unverified, active=true -- these are server-owned and cannot be set by the caller.
+ */
+
+
+
+export const CreateDruidFactBody = zod.object({
+  "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
+  "fact_text": zod.string().min(1),
+  "source_url": zod.string().nullish(),
+  "source_note": zod.string().nullish()
+}).describe('The only fields an admin may set on create. source_type, verification_status, active, and every audit id\/timestamp are server-owned and deliberately absent from this shape.')
+
+export const CreateDruidFactResponse = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
+  "fact_text": zod.string(),
+  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_url": zod.string().nullish(),
+  "source_note": zod.string().nullish(),
+  "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
+  "verified_by_user_id": zod.string().nullish(),
+  "verified_at": zod.coerce.date().nullish(),
+  "active": zod.boolean(),
+  "deactivated_by_user_id": zod.string().nullish(),
+  "deactivated_at": zod.coerce.date().nullish(),
+  "created_by_user_id": zod.string().nullish(),
+  "created_at": zod.coerce.date(),
+  "updated_by_user_id": zod.string().nullish(),
+  "updated_at": zod.coerce.date()
+})
+
+
+/**
+ * @summary Edit a DRUID fact's category/text/source (admin-only). If the fact was verified, this resets verification_status to unverified and clears the verifier -- an edited fact always needs re-review.
+ */
+export const UpdateDruidFactParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+
+
+export const UpdateDruidFactBody = zod.object({
+  "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).optional().describe('The kind of DRUID fact this row captures.'),
+  "fact_text": zod.string().min(1).optional(),
+  "source_url": zod.string().nullish(),
+  "source_note": zod.string().nullish()
+}).describe('The only fields an admin may edit. Same server-owned exclusions as DruidFactCreateInput -- verification\/lifecycle state can only change through their dedicated actions (verify\/deactivate\/reactivate).')
+
+export const UpdateDruidFactResponse = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
+  "fact_text": zod.string(),
+  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_url": zod.string().nullish(),
+  "source_note": zod.string().nullish(),
+  "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
+  "verified_by_user_id": zod.string().nullish(),
+  "verified_at": zod.coerce.date().nullish(),
+  "active": zod.boolean(),
+  "deactivated_by_user_id": zod.string().nullish(),
+  "deactivated_at": zod.coerce.date().nullish(),
+  "created_by_user_id": zod.string().nullish(),
+  "created_at": zod.coerce.date(),
+  "updated_by_user_id": zod.string().nullish(),
+  "updated_at": zod.coerce.date()
+})
+
+
+/**
+ * @summary Mark a DRUID fact verified (admin-only). Rejected with 422 if the fact has neither a non-empty source_url nor a non-empty source_note -- a fact can never become verified DRUID truth with zero provenance.
+ */
+export const VerifyDruidFactParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const VerifyDruidFactResponse = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
+  "fact_text": zod.string(),
+  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_url": zod.string().nullish(),
+  "source_note": zod.string().nullish(),
+  "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
+  "verified_by_user_id": zod.string().nullish(),
+  "verified_at": zod.coerce.date().nullish(),
+  "active": zod.boolean(),
+  "deactivated_by_user_id": zod.string().nullish(),
+  "deactivated_at": zod.coerce.date().nullish(),
+  "created_by_user_id": zod.string().nullish(),
+  "created_at": zod.coerce.date(),
+  "updated_by_user_id": zod.string().nullish(),
+  "updated_at": zod.coerce.date()
+})
+
+
+/**
+ * @summary Deactivate a DRUID fact (admin-only). Kept, not deleted; records who deactivated it and when. Verification status is left untouched.
+ */
+export const DeactivateDruidFactParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeactivateDruidFactResponse = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
+  "fact_text": zod.string(),
+  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_url": zod.string().nullish(),
+  "source_note": zod.string().nullish(),
+  "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
+  "verified_by_user_id": zod.string().nullish(),
+  "verified_at": zod.coerce.date().nullish(),
+  "active": zod.boolean(),
+  "deactivated_by_user_id": zod.string().nullish(),
+  "deactivated_at": zod.coerce.date().nullish(),
+  "created_by_user_id": zod.string().nullish(),
+  "created_at": zod.coerce.date(),
+  "updated_by_user_id": zod.string().nullish(),
+  "updated_at": zod.coerce.date()
+})
+
+
+/**
+ * @summary Reactivate a DRUID fact (admin-only). Clears the deactivation audit fields, and also resets verification_status to unverified (clearing the verifier) -- a reactivated fact is never automatically trusted again; it must be explicitly re-verified.
+ */
+export const ReactivateDruidFactParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ReactivateDruidFactResponse = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['product', 'positioning', 'ideal_partner_profile', 'technology_ecosystem', 'proof_point', 'other']).describe('The kind of DRUID fact this row captures.'),
+  "fact_text": zod.string(),
+  "source_type": zod.enum(['manual']).describe('How this fact entered the store. \"manual\" is the only value in Phase 11.5C.1 -- 11.5C.2 adds \"ingested\" for Tavily-sourced candidate material.'),
+  "source_url": zod.string().nullish(),
+  "source_note": zod.string().nullish(),
+  "verification_status": zod.enum(['unverified', 'verified']).describe('Whether an admin has confirmed this fact as trusted DRUID truth. Always starts \"unverified\"; reset to \"unverified\" on edit or reactivation.'),
+  "verified_by_user_id": zod.string().nullish(),
+  "verified_at": zod.coerce.date().nullish(),
+  "active": zod.boolean(),
+  "deactivated_by_user_id": zod.string().nullish(),
+  "deactivated_at": zod.coerce.date().nullish(),
+  "created_by_user_id": zod.string().nullish(),
+  "created_at": zod.coerce.date(),
+  "updated_by_user_id": zod.string().nullish(),
+  "updated_at": zod.coerce.date()
+})
+
+
+/**
  * @summary List every canonical KPI's data-source mapping and status
  */
 export const ListMetricMappingsResponseItem = zod.object({

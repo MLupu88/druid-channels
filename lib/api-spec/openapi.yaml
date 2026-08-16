@@ -62,6 +62,8 @@ tags:
     description: Phase 7 -- weekly PAM operating reports and the Head/Admin consolidated team view. Every commercial/recruitment/marketing figure is computed by calling the existing canonical services (kpiService, targetService, partnerRecruitmentService, partnerRelationshipService, campaignService), never a second KPI engine. A draft/current week is always live; a submitted week is a permanent, immutable frozen snapshot.
   - name: management-reporting
     description: Phase 8 -- Head/Admin management reporting. A composition layer only, over Phase 7's weekly reporting and the canonical kpiService/targetService/partnerRecruitmentService/campaignService -- introduces no second KPI engine. report_context/weekly/quarter_to_date/comparisons/management_insights/data_quality are kept explicitly separate so a selected historical week is never confused with the always-current quarter-to-date figures alongside it.
+  - name: druid-facts
+    description: Phase 11.5C.1 -- admin-curated facts about DRUID itself (product, positioning, ideal partner profile), kept separate from partner evidence and AI hypotheses. Not yet wired into Discovery/Channel Radar qualification (11.5C.3).
 
 paths:
   /auth/login:
@@ -1553,6 +1555,130 @@ paths:
                 $ref: "#/components/schemas/DiscoveryExclusion"
         "404":
           description: Not found, or already restored
+
+  /druid-facts:
+    get:
+      operationId: listDruidFacts
+      tags: [druid-facts]
+      summary: List every DRUID fact, active or not, verified or not (admin-only full management view)
+      responses:
+        "200":
+          description: All DRUID facts, most recently created first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DruidFact"
+    post:
+      operationId: createDruidFact
+      tags: [druid-facts]
+      summary: Create a DRUID fact (admin-only). Always starts source_type=manual, verification_status=unverified, active=true -- these are server-owned and cannot be set by the caller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DruidFactCreateInput"
+      responses:
+        "201":
+          description: Created fact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DruidFact"
+
+  /druid-facts/{id}:
+    patch:
+      operationId: updateDruidFact
+      tags: [druid-facts]
+      summary: Edit a DRUID fact's category/text/source (admin-only). If the fact was verified, this resets verification_status to unverified and clears the verifier -- an edited fact always needs re-review.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DruidFactUpdateInput"
+      responses:
+        "200":
+          description: Updated fact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DruidFact"
+        "404":
+          description: Not found
+
+  /druid-facts/{id}/verify:
+    post:
+      operationId: verifyDruidFact
+      tags: [druid-facts]
+      summary: Mark a DRUID fact verified (admin-only). Rejected with 422 if the fact has neither a non-empty source_url nor a non-empty source_note -- a fact can never become verified DRUID truth with zero provenance.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Verified fact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DruidFact"
+        "404":
+          description: Not found
+        "422":
+          description: Fact has no source_url and no source_note -- cannot be verified
+
+  /druid-facts/{id}/deactivate:
+    post:
+      operationId: deactivateDruidFact
+      tags: [druid-facts]
+      summary: Deactivate a DRUID fact (admin-only). Kept, not deleted; records who deactivated it and when. Verification status is left untouched.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deactivated fact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DruidFact"
+        "404":
+          description: Not found
+
+  /druid-facts/{id}/reactivate:
+    post:
+      operationId: reactivateDruidFact
+      tags: [druid-facts]
+      summary: Reactivate a DRUID fact (admin-only). Clears the deactivation audit fields, and also resets verification_status to unverified (clearing the verifier) -- a reactivated fact is never automatically trusted again; it must be explicitly re-verified.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reactivated fact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DruidFact"
+        "404":
+          description: Not found
 
   /metric-mappings:
     get:
@@ -4107,6 +4233,113 @@ components:
           format: date-time
           nullable: true
         restored_by_user_id:
+          type: string
+          nullable: true
+
+    DruidFactCategory:
+      type: string
+      description: The kind of DRUID fact this row captures.
+      enum: [product, positioning, ideal_partner_profile, technology_ecosystem, proof_point, other]
+
+    DruidFactSourceType:
+      type: string
+      description: How this fact entered the store. "manual" is the only value in Phase 11.5C.1 -- 11.5C.2 adds "ingested" for Tavily-sourced candidate material.
+      enum: [manual]
+
+    DruidFactVerificationStatus:
+      type: string
+      description: Whether an admin has confirmed this fact as trusted DRUID truth. Always starts "unverified"; reset to "unverified" on edit or reactivation.
+      enum: [unverified, verified]
+
+    DruidFact:
+      type: object
+      required:
+        [
+          id,
+          category,
+          fact_text,
+          source_type,
+          verification_status,
+          active,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+        category:
+          $ref: "#/components/schemas/DruidFactCategory"
+        fact_text:
+          type: string
+        source_type:
+          $ref: "#/components/schemas/DruidFactSourceType"
+        source_url:
+          type: string
+          nullable: true
+        source_note:
+          type: string
+          nullable: true
+        verification_status:
+          $ref: "#/components/schemas/DruidFactVerificationStatus"
+        verified_by_user_id:
+          type: string
+          nullable: true
+        verified_at:
+          type: string
+          format: date-time
+          nullable: true
+        active:
+          type: boolean
+        deactivated_by_user_id:
+          type: string
+          nullable: true
+        deactivated_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_by_user_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_by_user_id:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+
+    DruidFactCreateInput:
+      type: object
+      description: The only fields an admin may set on create. source_type, verification_status, active, and every audit id/timestamp are server-owned and deliberately absent from this shape.
+      required: [category, fact_text]
+      properties:
+        category:
+          $ref: "#/components/schemas/DruidFactCategory"
+        fact_text:
+          type: string
+          minLength: 1
+        source_url:
+          type: string
+          nullable: true
+        source_note:
+          type: string
+          nullable: true
+
+    DruidFactUpdateInput:
+      type: object
+      description: The only fields an admin may edit. Same server-owned exclusions as DruidFactCreateInput -- verification/lifecycle state can only change through their dedicated actions (verify/deactivate/reactivate).
+      properties:
+        category:
+          $ref: "#/components/schemas/DruidFactCategory"
+        fact_text:
+          type: string
+          minLength: 1
+        source_url:
+          type: string
+          nullable: true
+        source_note:
           type: string
           nullable: true
 

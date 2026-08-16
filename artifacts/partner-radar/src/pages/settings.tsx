@@ -26,6 +26,13 @@ import {
   useListDiscoveryExclusions,
   useRestoreDiscoveryExclusion,
   getListDiscoveryExclusionsQueryKey,
+  useListDruidFacts,
+  useCreateDruidFact,
+  useUpdateDruidFact,
+  useVerifyDruidFact,
+  useDeactivateDruidFact,
+  useReactivateDruidFact,
+  getListDruidFactsQueryKey,
   getListUsersQueryKey,
   getListTerritoriesQueryKey,
   getListScanConfigsQueryKey,
@@ -37,7 +44,7 @@ import {
   getListManualMetricValuesQueryKey,
   SourceType,
 } from '@workspace/api-client-react';
-import type { Connection, MetricMapping, KpiDetail } from '@workspace/api-client-react';
+import type { Connection, MetricMapping, KpiDetail, DruidFact } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Table,
@@ -1833,6 +1840,282 @@ function ConnectionsDataTab() {
   );
 }
 
+// Phase 11.5C.1: DRUID Context foundation -- admin-curated facts about DRUID
+// itself (product, positioning, ideal partner profile), kept deliberately
+// plain (no "prompt playground", no chunk/embedding UI). Not yet wired into
+// Discovery or Channel Radar -- only verified, active facts are ever
+// eligible to ground research, once that wiring lands in a later slice.
+const DRUID_FACT_CATEGORY_LABELS: Record<string, string> = {
+  product: 'Product',
+  positioning: 'Positioning',
+  ideal_partner_profile: 'Ideal partner profile',
+  technology_ecosystem: 'Technology ecosystem',
+  proof_point: 'Proof point',
+  other: 'Other',
+};
+
+function DruidFactStatusBadge({ fact }: { fact: DruidFact }) {
+  if (!fact.active) {
+    return <Badge variant="outline" className="text-muted-foreground font-normal">Inactive</Badge>;
+  }
+  if (fact.verification_status === 'verified') {
+    return <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 font-normal">Verified</Badge>;
+  }
+  return <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-normal">Unverified</Badge>;
+}
+
+/** Add/edit dialog. `fact === null` is create mode. */
+function DruidFactFormDialog({ fact, onClose }: { fact: DruidFact | null; onClose: () => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const isEdit = !!fact;
+
+  const [category, setCategory] = useState<string>(fact?.category ?? 'product');
+  const [factText, setFactText] = useState(fact?.fact_text ?? '');
+  const [sourceUrl, setSourceUrl] = useState(fact?.source_url ?? '');
+  const [sourceNote, setSourceNote] = useState(fact?.source_note ?? '');
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getListDruidFactsQueryKey() });
+
+  const createMutation = useCreateDruidFact({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        toast({ title: 'Fact added', description: 'New facts start unverified until reviewed.' });
+        onClose();
+      },
+      onError: (err: any) => {
+        toast({ variant: 'destructive', title: 'Could not add fact', description: err?.data?.error ?? err?.message ?? 'Unknown error' });
+      },
+    },
+  });
+
+  const updateMutation = useUpdateDruidFact({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        toast({ title: 'Fact updated' });
+        onClose();
+      },
+      onError: (err: any) => {
+        toast({ variant: 'destructive', title: 'Could not update fact', description: err?.data?.error ?? err?.message ?? 'Unknown error' });
+      },
+    },
+  });
+
+  const busy = createMutation.isPending || updateMutation.isPending;
+
+  const submit = () => {
+    const data = {
+      category: category as DruidFact['category'],
+      fact_text: factText.trim(),
+      source_url: sourceUrl.trim() || null,
+      source_note: sourceNote.trim() || null,
+    };
+    if (isEdit) updateMutation.mutate({ id: fact!.id, data });
+    else createMutation.mutate({ data });
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? 'Edit DRUID fact' : 'Add DRUID fact'}</DialogTitle>
+          <DialogDescription>
+            {isEdit && fact!.verification_status === 'verified'
+              ? 'This fact is verified -- saving changes resets it to unverified, and it will need to be verified again.'
+              : "A short, standalone fact about DRUID's product, positioning, or the kind of partner it's looking for."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Category</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(DRUID_FACT_CATEGORY_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="druid-fact-text">Fact</Label>
+            <Textarea
+              id="druid-fact-text"
+              rows={3}
+              value={factText}
+              onChange={(e) => setFactText(e.target.value)}
+              placeholder="e.g. DRUID is an enterprise conversational/agentic AI platform vendor."
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="druid-fact-source-url">Source URL (optional)</Label>
+            <Input
+              id="druid-fact-source-url"
+              value={sourceUrl}
+              onChange={(e) => setSourceUrl(e.target.value)}
+              placeholder="https://druidai.com/..."
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="druid-fact-source-note">Source note (optional)</Label>
+            <Input
+              id="druid-fact-source-note"
+              value={sourceNote}
+              onChange={(e) => setSourceNote(e.target.value)}
+              placeholder="e.g. internal positioning statement, agreed with Head of Channels"
+            />
+            <p className="text-xs text-muted-foreground">
+              A source URL or a source note is required before this fact can be verified.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button disabled={busy || !factText.trim()} onClick={submit}>{isEdit ? 'Save' : 'Add fact'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DruidFactsSection() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: facts, isLoading } = useListDruidFacts();
+  const { data: users } = useListUsers();
+  // null = create mode, a DruidFact = edit mode, undefined = dialog closed.
+  const [editingFact, setEditingFact] = useState<DruidFact | null | undefined>(undefined);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getListDruidFactsQueryKey() });
+
+  const verifyMutation = useVerifyDruidFact({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        toast({ title: 'Fact verified' });
+      },
+      onError: (err: any) => {
+        toast({ variant: 'destructive', title: 'Could not verify', description: err?.data?.error ?? err?.message ?? 'The fact could not be verified.' });
+      },
+    },
+  });
+
+  const deactivateMutation = useDeactivateDruidFact({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        toast({ title: 'Fact deactivated' });
+      },
+      onError: (err: any) => {
+        toast({ variant: 'destructive', title: 'Could not deactivate', description: err?.data?.error ?? err?.message ?? 'Unknown error' });
+      },
+    },
+  });
+
+  const reactivateMutation = useReactivateDruidFact({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        toast({ title: 'Fact reactivated', description: 'It is unverified again until re-reviewed.' });
+      },
+      onError: (err: any) => {
+        toast({ variant: 'destructive', title: 'Could not reactivate', description: err?.data?.error ?? err?.message ?? 'Unknown error' });
+      },
+    },
+  });
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-medium">DRUID facts</h3>
+        <Button size="sm" onClick={() => setEditingFact(null)}>
+          <Plus className="h-4 w-4 mr-1" /> Add fact
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        What DRUID is, its positioning, and the kind of partner it's looking for. Only verified, active facts are ever eligible to ground research -- not yet used by Discovery or Channel Radar.
+      </p>
+      {isLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      ) : !facts || facts.length === 0 ? (
+        <p className="text-sm text-muted-foreground border border-dashed border-border/60 rounded-md p-4">
+          No DRUID facts yet.
+        </p>
+      ) : (
+        <div className="border border-border/60 rounded-md bg-card overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Category</TableHead>
+                <TableHead>Fact</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Updated by</TableHead>
+                <TableHead className="text-right">&nbsp;</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {facts.map((f) => (
+                <TableRow key={f.id}>
+                  <TableCell className="text-muted-foreground whitespace-nowrap">{DRUID_FACT_CATEGORY_LABELS[f.category] ?? f.category}</TableCell>
+                  <TableCell className="font-medium max-w-[320px]">{f.fact_text}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm max-w-[220px] truncate">
+                    {f.source_url ? (
+                      <a href={f.source_url} target="_blank" rel="noreferrer" className="underline">{f.source_url}</a>
+                    ) : (
+                      f.source_note || '—'
+                    )}
+                  </TableCell>
+                  <TableCell><DruidFactStatusBadge fact={f} /></TableCell>
+                  <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                    {users?.find((u) => u.id === f.updated_by_user_id)?.name || '—'}
+                    <span className="block text-xs">{format(new Date(f.updated_at), 'MMM d, yyyy')}</span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setEditingFact(f)}>Edit</Button>
+                      {f.active && f.verification_status === 'unverified' && (
+                        <Button variant="outline" size="sm" disabled={verifyMutation.isPending} onClick={() => verifyMutation.mutate({ id: f.id })}>
+                          Verify
+                        </Button>
+                      )}
+                      {f.active ? (
+                        <Button variant="outline" size="sm" disabled={deactivateMutation.isPending} onClick={() => deactivateMutation.mutate({ id: f.id })}>
+                          Deactivate
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" disabled={reactivateMutation.isPending} onClick={() => reactivateMutation.mutate({ id: f.id })}>
+                          Reactivate
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      {editingFact !== undefined && <DruidFactFormDialog fact={editingFact} onClose={() => setEditingFact(undefined)} />}
+    </div>
+  );
+}
+
+function DruidContextTab() {
+  return (
+    <div className="space-y-6">
+      <DruidFactsSection />
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { isGlobalUser } = useAuth();
   if (!isGlobalUser) {
@@ -1853,6 +2136,7 @@ export default function SettingsPage() {
           <TabsTrigger value="what-to-look-for">Partner search criteria</TabsTrigger>
           <TabsTrigger value="channel-radar">Channel Radar</TabsTrigger>
           <TabsTrigger value="connections">Connections & data</TabsTrigger>
+          <TabsTrigger value="druid-context">DRUID context</TabsTrigger>
         </TabsList>
         <TabsContent value="team" className="mt-6">
           <TeamTab />
@@ -1865,6 +2149,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="connections" className="mt-6">
           <ConnectionsDataTab />
+        </TabsContent>
+        <TabsContent value="druid-context" className="mt-6">
+          <DruidContextTab />
         </TabsContent>
       </Tabs>
     </div>
