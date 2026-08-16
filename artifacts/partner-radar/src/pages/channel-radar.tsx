@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { InterpretationBlock } from '@/components/interpretation-block';
 import { X, ExternalLink, Loader2, Satellite, ShieldAlert, Link2, ChevronLeft, ChevronRight, Rows3, Ungroup } from 'lucide-react';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { useAuth } from '@/contexts/auth-context';
@@ -99,9 +100,13 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline" className={`font-normal capitalize ${styles[status] ?? ''}`}>{status}</Badge>;
 }
 
+// Phase 11.6F: migrated from a hand-copied orange literal to the shared
+// 11.6A --attention token -- same "needs validation" meaning
+// (requires_validation, computed server-side, unchanged), only the color
+// source changed.
 function ValidationBadge() {
   return (
-    <Badge variant="outline" className="font-normal bg-orange-50 text-orange-700 border-orange-200 gap-1">
+    <Badge variant="outline" className="font-normal bg-attention/10 text-attention border-attention-border gap-1">
       <ShieldAlert className="h-3 w-3" /> Needs validation
     </Badge>
   );
@@ -576,18 +581,28 @@ export default function ChannelRadar() {
                     <p className="text-sm text-foreground leading-relaxed">{detail.summary}</p>
                   </div>
 
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">Why DRUID should care</h4>
-                    <p className="text-sm text-foreground leading-relaxed">{detail.why_it_matters}</p>
-                  </div>
+                  {/* Phase 11.6F: AI interpretation, distinct from the
+                      factual Evidence list below -- "why it matters" and
+                      "recommended action" are the model's own reasoning, not
+                      sourced facts. */}
+                  <InterpretationBlock label="Why it matters">{detail.why_it_matters}</InterpretationBlock>
+                  <InterpretationBlock label="Recommended action">{detail.recommended_action}</InterpretationBlock>
 
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">Recommended action</h4>
-                    <p className="text-sm text-foreground leading-relaxed">{detail.recommended_action}</p>
-                    {detail.druid_partner_motion && (
-                      <p className="text-xs text-muted-foreground mt-1.5">DRUID motion: {detail.druid_partner_motion}</p>
-                    )}
-                  </div>
+                  {/* Phase 11.6F: DRUID motion gets its OWN block (muted
+                      purple-gray "DRUID knowledge" tone), no longer an
+                      inline suffix line inside Recommended action -- it is
+                      the one field in this payload that is explicitly
+                      DRUID-context-informed (see channelRadarProviders/ai.ts
+                      's DRUID_CONTEXT_FRAMING), so its origin deserves to
+                      read separately from a generic recommendation. This is
+                      still the model's own interpretation informed by
+                      DRUID context, never a direct quote of a verified DRUID
+                      fact -- labeled "DRUID motion", not "DRUID context" or
+                      "Verified DRUID context", since no individual trusted
+                      fact is being displayed here. */}
+                  {detail.druid_partner_motion && (
+                    <InterpretationBlock label="DRUID motion" tone="druid">{detail.druid_partner_motion}</InterpretationBlock>
+                  )}
 
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">

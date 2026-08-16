@@ -38,6 +38,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { InterpretationBlock } from '@/components/interpretation-block';
 import { 
   Dialog, 
   DialogContent, 
@@ -870,15 +871,12 @@ export default function Prospects() {
                 
                 <div className="p-5">
                   <TabsContent value="summary" className="m-0 space-y-6">
-                    <div>
-                      <h4 className="text-sm font-medium mb-2">Why it fits</h4>
-                      <p className="text-sm text-foreground/80 leading-relaxed">{detail.why_it_fits}</p>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-medium mb-2">Why now</h4>
-                      <p className="text-sm text-foreground/80 leading-relaxed">{detail.why_now}</p>
-                    </div>
-                    
+                    {/* Phase 11.6F: AI-generated interpretation, distinct from
+                        the raw Evidence tab below -- one shared Sparkles
+                        marker per block, not a badge on every line. */}
+                    <InterpretationBlock label="Why it fits">{detail.why_it_fits}</InterpretationBlock>
+                    <InterpretationBlock label="Why now">{detail.why_now}</InterpretationBlock>
+
                     <div className="bg-card border border-border/60 rounded-md p-4 space-y-3">
                       <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-2">Qualification checklist</h4>
                       
@@ -934,8 +932,11 @@ export default function Prospects() {
                             </p>
                           </div>
                           
+                          {/* Phase 11.6F: neutral/slate, not brand green --
+                              this is a quoted external evidence excerpt, not
+                              a DRUID-branded element. */}
                           {signal.raw_excerpt && (
-                            <blockquote className="border-l-2 border-primary/40 pl-3 py-1 my-2 text-sm text-muted-foreground italic bg-muted/20">
+                            <blockquote className="border-l-2 border-muted-foreground/30 pl-3 py-1 my-2 text-sm text-muted-foreground italic bg-muted/20">
                               "{signal.raw_excerpt}"
                             </blockquote>
                           )}
