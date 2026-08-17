@@ -745,6 +745,13 @@ export async function resolveCandidateCompanyIdentity(
   if (!resolved) return null;
   const resolvedRegistrableDomain = toRegistrableDomain(resolved.domain);
   if (!resolvedRegistrableDomain) return null; // resolved identity's domain string wasn't safely parseable either
+  // Same defense-in-depth guard as the first-party fast path above, applied
+  // here too: the third-party identity search hands DeepSeek raw web-search
+  // results to interpret, which is exactly the path most likely to mistake a
+  // social/video/job-board URL for "the official site" -- a resolved domain
+  // is never trusted as company identity just because it came from this
+  // branch instead of the evidence-domain branch.
+  if (isKnownNonCorporateDomain(resolvedRegistrableDomain)) return null;
   return { companyName: resolved.name, companyDomain: resolvedRegistrableDomain };
 }
 

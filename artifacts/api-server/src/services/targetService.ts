@@ -415,30 +415,45 @@ export async function getAnnualCascade(metricKey: string, year: number): Promise
     computeAnnualActual(metricKey, year),
   ]);
 
-  const territoryById = new Map(allTerritories.map((t) => [t.id, t]));
   const userById = new Map(allUsers.map((u) => [u.id, u]));
 
+  // Seed one allocation entry per canonically-owned territory -- same
+  // ownership-enumeration pattern getTeamTargets already uses above (filter
+  // territories.owner_user_id !== null, skip a stale FK rather than
+  // fabricate a name) -- so a PAM who owns a territory but has never had a
+  // quarter target row saved for this metric+year still appears, with all
+  // four quarters honestly null, instead of being invisible to the cascade.
   const byPamTerritory = new Map<string, PamAllocation>();
+  for (const territory of allTerritories) {
+    if (!territory.ownerUserId) continue;
+    const pam = userById.get(territory.ownerUserId);
+    if (!pam) continue; // stale FK -- stay honest, skip rather than fabricate a name
+    const key = `${territory.ownerUserId}|${territory.id}`;
+    byPamTerritory.set(key, {
+      pamUserId: territory.ownerUserId,
+      pamName: pam.name,
+      territoryId: territory.id,
+      territoryName: territory.name,
+      q1: null,
+      q2: null,
+      q3: null,
+      q4: null,
+    });
+  }
+
+  // Overlay any existing quarter rows onto the seeded allocations above.
   for (const row of quarterRows) {
     // Only real PAM+territory rows participate in the cascade -- a
     // malformed/legacy row missing either is excluded rather than
-    // half-attributed.
+    // half-attributed. A row whose (pam, territory) pair is no longer a
+    // canonical ownership match (e.g. ownership since reassigned) has no
+    // seeded entry to overlay onto and is likewise skipped here -- it never
+    // fabricates a new allocation entry outside the ownership enumeration
+    // above.
     if (!row.pamUserId || !row.territoryId || !isTargetQuarterKey(row.period)) continue;
     const key = `${row.pamUserId}|${row.territoryId}`;
-    let entry = byPamTerritory.get(key);
-    if (!entry) {
-      entry = {
-        pamUserId: row.pamUserId,
-        pamName: userById.get(row.pamUserId)?.name ?? "Unknown",
-        territoryId: row.territoryId,
-        territoryName: territoryById.get(row.territoryId)?.name ?? "Unknown",
-        q1: null,
-        q2: null,
-        q3: null,
-        q4: null,
-      };
-      byPamTerritory.set(key, entry);
-    }
+    const entry = byPamTerritory.get(key);
+    if (!entry) continue;
     entry[row.period] = Number(row.targetValue);
   }
 

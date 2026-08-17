@@ -119,6 +119,60 @@ test("D: a LinkedIn company-page URL's evidence never becomes companyDomain even
   assert.deepEqual(result, { companyName: "Acme Systems", companyDomain: "acme.example" });
 });
 
+// ---- Phase 11.6.1 P0 fix: the non-corporate-domain guard also applies to
+// the third-party AI-resolution branch, not just the first-party fast path
+// above. Confirmed bug: a third-party identity search hands DeepSeek raw
+// web-search results to interpret -- exactly the path most likely to
+// mistake a social/video/job-board URL for "the official site" (e.g.
+// resolving "UiPath" to a prominent youtube.com result) -- yet the guard
+// used to run only on the first-party branch's evidence domain, never on
+// this branch's resolved domain.
+
+test("P0: a third-party resolver returning youtube.com is rejected as company identity, not returned", async () => {
+  const resolveIdentity = async () => ({ name: "UiPath", domain: "youtube.com" });
+  const result = await resolveCandidateCompanyIdentity(
+    { sourceIsFirstParty: false, subjectCompanyName: "UiPath" },
+    "some-news-site.example",
+    resolveIdentity,
+  );
+  assert.equal(result, null, "a resolved identity on a known non-corporate/platform domain must never be trusted as company identity");
+});
+
+test("P0: a third-party resolver returning another known non-corporate/platform domain (lever.co) is also rejected", async () => {
+  const resolveIdentity = async () => ({ name: "Some Company", domain: "lever.co" });
+  const result = await resolveCandidateCompanyIdentity(
+    { sourceIsFirstParty: false, subjectCompanyName: "Some Company" },
+    "some-news-site.example",
+    resolveIdentity,
+  );
+  assert.equal(result, null, "the guard is not youtube.com-specific -- it reuses the same isKnownNonCorporateDomain list as the first-party path");
+});
+
+test("P0: a third-party resolver returning a genuine, valid corporate domain is still accepted", async () => {
+  const resolveIdentity = async () => ({ name: "Acme Systems", domain: "acme.example" });
+  const result = await resolveCandidateCompanyIdentity(
+    { sourceIsFirstParty: false, subjectCompanyName: "Acme Systems" },
+    "some-news-site.example",
+    resolveIdentity,
+  );
+  assert.deepEqual(result, { companyName: "Acme Systems", companyDomain: "acme.example" }, "the fix must not reject legitimate resolved domains");
+});
+
+test("P0: first-party fast-path behavior is unchanged by this fix -- a safe evidence domain still resolves directly, no resolver call", async () => {
+  let called = false;
+  const resolveIdentity = async () => {
+    called = true;
+    return null;
+  };
+  const result = await resolveCandidateCompanyIdentity(
+    { sourceIsFirstParty: true, subjectCompanyName: "Acme Systems" },
+    "acme.example",
+    resolveIdentity,
+  );
+  assert.deepEqual(result, { companyName: "Acme Systems", companyDomain: "acme.example" });
+  assert.equal(called, false);
+});
+
 test("identifyCompanyViaDeepSeek returns a resolved identity from the supplied candidates only", async () => {
   mockFetchOnce(200, {
     choices: [
