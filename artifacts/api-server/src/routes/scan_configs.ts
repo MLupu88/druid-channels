@@ -38,6 +38,7 @@ function shapeLastRun(r: typeof scanRunsTable.$inferSelect | undefined, territor
     duplicates_removed: r.duplicatesRemoved,
     candidates_sent_to_llm: r.candidatesSentToLlm,
     candidates_qualified: r.candidatesQualified,
+    candidates_skipped_recent: r.candidatesSkippedRecent,
     stopped_reason: r.stoppedReason,
   };
 }
