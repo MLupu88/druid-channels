@@ -680,20 +680,43 @@ export function buildPartnerSearchCriteria(config: ScanConfig, territory: Territ
 // has nothing to credential and would only ever block live discovery.
 const REQUIRED_PROVIDER_TYPES = ["web_search", "ai"] as const;
 
+// Phase 11.6.1 P3A: optional, additive context about the ORIGINAL evidence
+// that produced subjectCompanyName -- purely to help the AI confirmation
+// step (identifyCompanyViaDeepSeek) disambiguate two real companies that
+// happen to share a name (e.g. "Apex Consulting" operating independently in
+// two different countries). Never used to invent a domain; the search/
+// candidate-only rules are unchanged. A call site that omits this
+// (`resolveCompanyIdentity(name)`, the pre-P3A call shape) behaves
+// byte-identically to before this phase.
+export interface CompanyIdentityContext {
+  evidenceUrl?: string;
+  evidenceSnippet?: string;
+  territoryCountries?: string[];
+}
+
 // Only called for third-party evidence about a candidate that already
 // passed qualification (see the cost-control gate in attemptLiveDiscovery
-// below). Never invents a domain: DeepSeek is only ever shown the Tavily
-// results below and must say "unresolved" rather than recall a domain from
-// its own general knowledge. Any failure (search or AI call) is treated
-// the same as "could not resolve" -- logged and skipped, never allowed to
-// fail the whole scan over one candidate's identity lookup.
-async function resolveCompanyIdentity(subjectCompanyName: string): Promise<{ name: string; domain: string } | null> {
+// below), OR (Phase 11.6.1 P3A) for a bounded, ranked subset of
+// pre-qualification subjects needing contextual domain resolution (see
+// resolveCandidateIdentities below) -- same function, same guarantees,
+// either caller. Never invents a domain: DeepSeek is only ever shown the
+// Tavily results below and must say "unresolved" rather than recall a
+// domain from its own general knowledge. Any failure (search or AI call) is
+// treated the same as "could not resolve" -- logged and skipped, never
+// allowed to fail the whole scan over one candidate's identity lookup.
+async function resolveCompanyIdentity(
+  subjectCompanyName: string,
+  context?: CompanyIdentityContext,
+): Promise<{ name: string; domain: string } | null> {
   try {
     const results = await searchProvider.search(`"${subjectCompanyName}" official website`, { maxResults: 3 });
     if (results.length === 0) return null;
     return await aiProvider.identifyCompany({
       subjectCompanyName,
       candidates: results.map((r) => ({ url: r.url, title: r.title, snippet: r.snippet })),
+      evidenceUrl: context?.evidenceUrl,
+      evidenceSnippet: context?.evidenceSnippet,
+      territoryCountries: context?.territoryCountries,
     });
   } catch (err) {
     logger.warn(
@@ -753,6 +776,345 @@ export async function resolveCandidateCompanyIdentity(
   // branch instead of the evidence-domain branch.
   if (isKnownNonCorporateDomain(resolvedRegistrableDomain)) return null;
   return { companyName: resolved.name, companyDomain: resolvedRegistrableDomain };
+}
+
+// ---- Phase 11.6.1 P3A: company-level candidate pipeline -------------------
+//
+// Root cause (Phase 11.6.1 P3A forensic audit): MAX_CANDIDATES_TO_LLM
+// previously applied to raw search-result URLs in encounter order, with no
+// company-level grouping, ranking, or evidence aggregation -- so several
+// URLs about the same real company (its own site, a wire-service article, a
+// partner-directory listing) could each independently consume a
+// qualification slot, crowding out genuinely distinct companies, and each
+// qualification call ever saw exactly one fragment of evidence. This
+// section turns a pool of eligible search results into a bounded, ranked
+// set of DISTINCT CANDIDATE ENTRIES before any qualification slot is spent.
+// qualifyChecks, MAX_CANDIDATES_TO_LLM, and every persistence rule below are
+// completely untouched by this section.
+//
+// HARD CORRECTNESS RULE (do not weaken): subjectCompanyName is NEVER a
+// grouping key, a cache key, or a dedupe key. It is only ever (a) input to
+// a domain-resolution request, or (b) display/context. Two evidence items
+// may join one candidate group ONLY after EACH has independently, safely
+// established the SAME canonical registrable domain -- never because their
+// extracted names matched (two different real companies can share a name,
+// e.g. two unrelated "Apex Consulting" businesses in different countries --
+// see groupAnnotatedResults below, and the Phase 11.6.1 P3A design report's
+// Case E).
+
+// Bounded batch size for subject-extraction calls -- balances fewer calls
+// (larger batches) against a comfortably small, boundable per-call payload/
+// output (see aiProvider's SUBJECT_EXTRACTION_MAX_TOKENS). Runs over the
+// whole eligible pool, which is typically larger than the 20-slot
+// qualification budget itself.
+export const SUBJECT_EXTRACTION_BATCH_SIZE = 10;
+
+// Conservative initial cap on contextual external domain-resolution calls
+// (1 Tavily search + 1 DeepSeek identify per attempt) per run. Chosen
+// deliberately small relative to a typical eligible-result pool (the
+// audited production example surfaced ~66 results): bounds worst-case added
+// cost to a fixed, small number of extra call-pairs regardless of how many
+// distinct unresolved subjects a run turns up, while still large enough to
+// meaningfully improve grouping over the prior "1 candidate = 1 raw URL"
+// behavior. Raising this should be justified by measured production yield
+// data, not guessed -- see the Phase 11.6.1 P3A design report's cost model.
+export const CONTEXTUAL_RESOLUTION_MAX_K = 10;
+
+export const MAX_EVIDENCE_ITEMS_PER_CANDIDATE = 3;
+
+export interface EligibleResult {
+  resultId: string;
+  url: string;
+  title: string;
+  snippet: string;
+  publishedAt: string | null;
+  score: number;
+  evidenceDomain: string;
+  text: string;
+}
+
+export interface AnnotatedResult extends EligibleResult {
+  subjectCompanyName: string | null;
+  sourceIsFirstParty: boolean;
+  identityStatus: aiProvider.SubjectIdentityStatus;
+  // Set only once a canonical domain has been independently, safely
+  // established for THIS item (the free first-party fast path, or a
+  // successful bounded contextual resolution) -- null otherwise. Never set
+  // from subjectCompanyName alone.
+  canonicalDomain: string | null;
+}
+
+export interface ResolvedGroupEntry {
+  kind: "group";
+  canonicalDomain: string;
+  items: AnnotatedResult[];
+}
+
+export interface StandaloneEntry {
+  kind: "standalone";
+  item: AnnotatedResult;
+}
+
+export type CandidateEntry = ResolvedGroupEntry | StandaloneEntry;
+
+// Pure. Splits a flat list into fixed-size batches, preserving order.
+export function chunkIntoBatches<T>(items: readonly T[], batchSize: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    batches.push(items.slice(i, i + batchSize));
+  }
+  return batches;
+}
+
+// Pure. The ONLY place a domain is trusted "for free" without an external
+// resolution call: an item the subject-extraction stage marked
+// source_is_first_party=true AND identity_status="resolved" AND whose OWN
+// evidence domain is a safe, non-known-non-corporate registrable domain --
+// exactly the same defense-in-depth guard resolveCandidateCompanyIdentity's
+// first-party fast path already applies post-qualification, applied here
+// pre-qualification instead. Never trusts subjectCompanyName itself as a
+// domain source.
+export function freeFirstPartyDomain(result: AnnotatedResult): string | null {
+  if (!result.sourceIsFirstParty || result.identityStatus !== "resolved" || !result.subjectCompanyName) return null;
+  const registrable = toRegistrableDomain(result.evidenceDomain);
+  if (!registrable || isKnownNonCorporateDomain(registrable)) return null;
+  return registrable;
+}
+
+// Pure. Deterministic selection order for which still-unresolved items
+// receive a bounded, costly external resolution call -- Tavily's own
+// relevance score, with a stable encounter-order tiebreak (resultId is
+// assigned in encounter order -- see attemptLiveDiscovery). Never a
+// semantic judgment.
+function rankForContextualResolution(items: readonly AnnotatedResult[]): AnnotatedResult[] {
+  return [...items].sort((a, b) => b.score - a.score || Number(a.resultId) - Number(b.resultId));
+}
+
+export interface IdentityResolutionSummary {
+  eligibleCount: number;
+  subjectExtractionResolved: number;
+  subjectExtractionUnknown: number;
+  subjectExtractionAmbiguous: number;
+  freeFirstPartyResolutions: number;
+  contextualResolutionAttempted: number;
+  contextualResolutionSucceeded: number;
+  contextualResolutionFailed: number;
+}
+
+// Orchestrates the full pre-qualification identity stage: batched subject
+// extraction -> free first-party domains -> bounded (CONTEXTUAL_RESOLUTION_
+// MAX_K) contextual resolution for the highest-ranked remainder -> anything
+// else stays unresolved/standalone. Returns every eligible result annotated
+// (never grouped -- see groupAnnotatedResults) plus structured counts for
+// observability (Phase 11.6.1 P3A section 10 -- logged/tested, never a new
+// scan_runs column).
+export async function resolveCandidateIdentities(
+  eligibleResults: readonly EligibleResult[],
+  territoryCountries: string[],
+  resolveIdentityWithContext: (
+    subjectCompanyName: string,
+    context: CompanyIdentityContext,
+  ) => Promise<{ name: string; domain: string } | null> = resolveCompanyIdentity,
+  // Injected (defaults to the real aiProvider.extractSubjects) so tests can
+  // supply canned batch results without a live AI call or a DB-backed
+  // isConfigured() credential check -- same convention as
+  // resolveCandidateCompanyIdentity's injected resolveIdentity parameter.
+  extractSubjectsFn: (input: aiProvider.SubjectExtractionBatchInput) => Promise<aiProvider.SubjectExtractionResult[]> = aiProvider.extractSubjects,
+): Promise<{ results: AnnotatedResult[]; summary: IdentityResolutionSummary }> {
+  const batches = chunkIntoBatches(eligibleResults, SUBJECT_EXTRACTION_BATCH_SIZE);
+  const extractionByResultId = new Map<string, aiProvider.SubjectExtractionResult>();
+
+  for (const batch of batches) {
+    if (batch.length === 0) continue;
+    try {
+      const extracted = await extractSubjectsFn({
+        candidates: batch.map((r) => ({ resultId: r.resultId, title: r.title, url: r.url, snippet: r.snippet.slice(0, 500) })),
+        territoryCountries,
+      });
+      for (const r of extracted) extractionByResultId.set(r.resultId, r);
+    } catch (err) {
+      // Deliberately different severity from a qualification-call failure:
+      // losing one batch's subject extraction only means those items fall
+      // back to standalone processing (exactly today's original per-URL
+      // behavior for that item) -- it never means the scan can't evaluate
+      // ANY candidates, so it must never abort the run the way a
+      // provider-wide qualification failure does.
+      logger.warn(
+        { batchSize: batch.length, errorName: err instanceof Error ? err.name : typeof err },
+        "Discovery: subject-extraction batch failed; items in this batch fall back to standalone processing",
+      );
+    }
+  }
+
+  let subjectExtractionResolved = 0;
+  let subjectExtractionUnknown = 0;
+  let subjectExtractionAmbiguous = 0;
+  let freeFirstPartyResolutions = 0;
+
+  const annotated: AnnotatedResult[] = eligibleResults.map((r) => {
+    const extracted = extractionByResultId.get(r.resultId);
+    const identityStatus: aiProvider.SubjectIdentityStatus = extracted?.identityStatus ?? "unknown";
+    if (identityStatus === "resolved") subjectExtractionResolved++;
+    else if (identityStatus === "ambiguous") subjectExtractionAmbiguous++;
+    else subjectExtractionUnknown++;
+
+    return {
+      ...r,
+      subjectCompanyName: extracted?.subjectCompanyName ?? null,
+      sourceIsFirstParty: extracted?.sourceIsFirstParty ?? false,
+      identityStatus,
+      canonicalDomain: null,
+    };
+  });
+
+  for (const result of annotated) {
+    const free = freeFirstPartyDomain(result);
+    if (free) {
+      result.canonicalDomain = free;
+      freeFirstPartyResolutions++;
+    }
+  }
+
+  const stillUnresolved = annotated.filter(
+    (r) => r.canonicalDomain === null && r.identityStatus === "resolved" && r.subjectCompanyName,
+  );
+  const toResolve = rankForContextualResolution(stillUnresolved).slice(0, CONTEXTUAL_RESOLUTION_MAX_K);
+
+  let contextualResolutionSucceeded = 0;
+  let contextualResolutionFailed = 0;
+
+  for (const result of toResolve) {
+    const resolved = await resolveIdentityWithContext(result.subjectCompanyName!, {
+      evidenceUrl: result.url,
+      evidenceSnippet: result.snippet.slice(0, 600),
+      territoryCountries,
+    });
+    if (!resolved) {
+      contextualResolutionFailed++;
+      continue;
+    }
+    const registrable = toRegistrableDomain(resolved.domain);
+    if (!registrable || isKnownNonCorporateDomain(registrable)) {
+      contextualResolutionFailed++;
+      continue;
+    }
+    result.canonicalDomain = registrable;
+    contextualResolutionSucceeded++;
+  }
+
+  return {
+    results: annotated,
+    summary: {
+      eligibleCount: eligibleResults.length,
+      subjectExtractionResolved,
+      subjectExtractionUnknown,
+      subjectExtractionAmbiguous,
+      freeFirstPartyResolutions,
+      contextualResolutionAttempted: toResolve.length,
+      contextualResolutionSucceeded,
+      contextualResolutionFailed,
+    },
+  };
+}
+
+// Pure. Groups ONLY by an already-established canonical domain
+// (AnnotatedResult.canonicalDomain) -- never by subjectCompanyName, never
+// by evidenceDomain/publisher domain. Everything without a canonical domain
+// becomes its own standalone entry, in original encounter order, never
+// discarded.
+export function groupAnnotatedResults(results: readonly AnnotatedResult[]): CandidateEntry[] {
+  const groups = new Map<string, AnnotatedResult[]>();
+  const standalone: AnnotatedResult[] = [];
+
+  for (const result of results) {
+    if (result.canonicalDomain) {
+      const existing = groups.get(result.canonicalDomain);
+      if (existing) existing.push(result);
+      else groups.set(result.canonicalDomain, [result]);
+    } else {
+      standalone.push(result);
+    }
+  }
+
+  const entries: CandidateEntry[] = [];
+  for (const [canonicalDomain, items] of groups) {
+    entries.push({ kind: "group", canonicalDomain, items });
+  }
+  for (const item of standalone) {
+    entries.push({ kind: "standalone", item });
+  }
+  return entries;
+}
+
+// Pure, deterministic, non-semantic ranking of the final candidate entries
+// (groups + standalone, mixed) -- decides which up to MAX_CANDIDATES_TO_LLM
+// entries are worth an expensive qualification call. Never predicts
+// partner fit; only how well-supported/distinct a candidate looks from
+// already-known, non-semantic signals: (1) first-party evidence present
+// anywhere in the entry, (2) number of evidence items (more independent
+// corroboration), (3) the entry's strongest Tavily relevance score, (4) a
+// stable tiebreak by earliest encounter order.
+function candidateEntryRankKey(entry: CandidateEntry): { hasFirstParty: boolean; itemCount: number; maxScore: number; earliestResultId: number } {
+  const items = entry.kind === "group" ? entry.items : [entry.item];
+  return {
+    hasFirstParty: items.some((i) => i.sourceIsFirstParty),
+    itemCount: items.length,
+    maxScore: Math.max(...items.map((i) => i.score)),
+    earliestResultId: Math.min(...items.map((i) => Number(i.resultId))),
+  };
+}
+
+export function rankCandidateEntries(entries: readonly CandidateEntry[]): CandidateEntry[] {
+  return [...entries].sort((a, b) => {
+    const ka = candidateEntryRankKey(a);
+    const kb = candidateEntryRankKey(b);
+    if (ka.hasFirstParty !== kb.hasFirstParty) return ka.hasFirstParty ? -1 : 1;
+    if (ka.itemCount !== kb.itemCount) return kb.itemCount - ka.itemCount;
+    if (ka.maxScore !== kb.maxScore) return kb.maxScore - ka.maxScore;
+    return ka.earliestResultId - kb.earliestResultId;
+  });
+}
+
+// Pure. Selects at most maxItems evidence items for one qualification call:
+// (1) the strongest first-party item if any, then (2)-(3) the strongest
+// items from DISTINCT source domains not already represented -- never
+// blindly the top-N by score alone, which could select several
+// near-duplicate pages from the same domain instead of genuinely
+// corroborating, diverse evidence. Only once true source diversity is
+// exhausted does it fill any remaining slots with the next-best real items
+// regardless of domain repeat -- it never pads with fabricated content, and
+// a candidate with fewer than maxItems items overall simply returns fewer.
+export function selectEvidenceItems(
+  items: readonly AnnotatedResult[],
+  maxItems: number = MAX_EVIDENCE_ITEMS_PER_CANDIDATE,
+): AnnotatedResult[] {
+  const selected: AnnotatedResult[] = [];
+  const usedDomains = new Set<string>();
+
+  const firstParty = [...items].filter((i) => i.sourceIsFirstParty).sort((a, b) => b.score - a.score)[0];
+  if (firstParty) {
+    selected.push(firstParty);
+    usedDomains.add(firstParty.evidenceDomain);
+  }
+
+  const remainingByScore = [...items].filter((i) => i !== firstParty).sort((a, b) => b.score - a.score);
+
+  for (const item of remainingByScore) {
+    if (selected.length >= maxItems) break;
+    if (usedDomains.has(item.evidenceDomain)) continue;
+    selected.push(item);
+    usedDomains.add(item.evidenceDomain);
+  }
+
+  if (selected.length < maxItems) {
+    for (const item of remainingByScore) {
+      if (selected.length >= maxItems) break;
+      if (selected.includes(item)) continue;
+      selected.push(item);
+    }
+  }
+
+  return selected.slice(0, maxItems);
 }
 
 export interface LiveDiscoveryStats {
@@ -821,13 +1183,45 @@ export const CANDIDATE_LEVEL_AI_ERROR_CODES: ReadonlySet<string> = new Set([
   "schema_invalid",
 ]);
 
+// Phase 11.6.1 P3A: injectable provider dependencies -- every field optional
+// and defaulting to the real provider module, so the existing production
+// call site (runDiscoveryForConfig's `attemptLiveDiscovery(config,
+// territory, run!.id)`, no 4th argument) is completely unaffected. Exists
+// solely so an integration test can exercise this function's REAL,
+// unmodified control flow (grouping/ranking/evidence-aggregation) against a
+// real database without a live Tavily/DeepSeek credential or network call --
+// same "inject the provider call, default to the real one" convention
+// already used by resolveCandidateCompanyIdentity's resolveIdentity
+// parameter and resolveCandidateIdentities' own two injected parameters.
+// extractionProvider.extract is deliberately NOT made injectable here: it
+// is already pure/local (bounds already-supplied text, no network/DB call
+// of its own -- see discoveryProviders/extraction.ts), so the real
+// implementation is safe to use directly in any test.
+export interface LiveDiscoveryDeps {
+  searchFn?: (query: string, opts: { maxResults: number; startDate?: string }) => Promise<searchProvider.WebSearchResult[]>;
+  qualifyFn?: (input: aiProvider.AiQualificationInput) => Promise<aiProvider.AiQualificationOutput>;
+  resolveIdentityWithContext?: (
+    subjectCompanyName: string,
+    context: CompanyIdentityContext,
+  ) => Promise<{ name: string; domain: string } | null>;
+  extractSubjectsFn?: (input: aiProvider.SubjectExtractionBatchInput) => Promise<aiProvider.SubjectExtractionResult[]>;
+}
+
 // Stage 6.5 Cost-Aware Adaptive Discovery: bounded initial batch -> evaluate
 // new-candidate yield -> optional bounded expansion -> stop on a hard cap or
 // sustained poor yield (see discoveryBudget.ts's decideNextBatch). Territory
 // size affects how much of the existing MAX_QUERIES_PER_RUN/
 // MAX_CANDIDATES_TO_LLM ceiling a run actually uses -- it never raises the
 // ceiling itself, and it never changes qualifyChecks' qualification bar.
-async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, runId: string): Promise<LiveDiscoveryResult | null> {
+export async function attemptLiveDiscovery(
+  config: ScanConfig,
+  territory: Territory,
+  runId: string,
+  deps: LiveDiscoveryDeps = {},
+): Promise<LiveDiscoveryResult | null> {
+  const search = deps.searchFn ?? searchProvider.search;
+  const qualify = deps.qualifyFn ?? aiProvider.qualify;
+
   const rows = await db.select().from(connectionsTable).where(inArray(connectionsTable.providerType, REQUIRED_PROVIDER_TYPES));
   const byType = new Map(rows.map((r) => [r.providerType, r]));
   const ready = REQUIRED_PROVIDER_TYPES.every((t) => hasCredential(byType.get(t)?.credentialEnvVar ?? null));
@@ -848,11 +1242,12 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
     // -- a separate, deterministic guard from config.excludedDomains above
     // (admin-maintained free-text list), loaded once per run, same
     // territory scope. Checked twice below: as early as the evidence
-    // domain is known (before the DeepSeek/extraction cost), and again at
-    // the same point excludedDomains is checked (using the resolved
-    // canonical domain, since evidence can legitimately come from a
-    // third-party source whose own domain was never excluded).
+    // domain is known (before the extraction/subject-extraction cost), and
+    // again at the same point excludedDomains is checked (using the
+    // resolved canonical domain, since evidence can legitimately come from
+    // a third-party source whose own domain was never excluded).
     const discoveryExclusionDomains = await loadActiveExclusionDomains(territory.id);
+    const territoryCountries = (territory.countries as string[]) ?? [];
     // Phase 11.5C.3: trusted DRUID context, loaded and formatted once per
     // run (same tier as criteria/discoveryExclusionDomains above) and
     // passed to every qualification call below -- never a per-candidate DB
@@ -876,23 +1271,18 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
     }
     const candidates: Candidate[] = [];
     // Cross-query dedup: the same URL can legitimately surface from more
-    // than one query variant (see buildAutomaticQueries) -- only qualify it
-    // once, both to avoid duplicate prospects and to avoid spending a
-    // second AI call on evidence already assessed. This is deliberately the
-    // *only* pre-qualification dedupe keyed on the result itself (5B-R
-    // hotfix -- a prior version also dropped any later result whose
-    // evidence *domain* repeated, e.g. a second reuters.com URL, on the
-    // assumption a repeated domain meant a repeated company. That's false
-    // for third-party sources: wire services, PR distributors, and analyst
-    // sites legitimately carry evidence about many different companies, and
-    // the real subject company isn't known until after qualification +
-    // identity resolution below -- so domain-only suppression here could
-    // silently drop a real, distinct company before it was ever evaluated.
-    // Company-level dedupe still happens, just at the right point: by the
-    // *resolved* company domain, after identity resolution, in
-    // resolveOrCreateCanonicalCompany/persistCandidate below; and
-    // knownDomainRecords just below still avoids a second AI call for
-    // evidence whose domain is already a known company's own domain.)
+    // than one query variant (see buildAutomaticQueries) -- only collect it
+    // once. This is deliberately the *only* dedupe keyed on the result
+    // itself at this stage (5B-R hotfix -- a prior version also dropped any
+    // later result whose evidence *domain* repeated, e.g. a second
+    // reuters.com URL, on the assumption a repeated domain meant a repeated
+    // company. That's false for third-party sources: wire services, PR
+    // distributors, and analyst sites legitimately carry evidence about
+    // many different companies. Phase 11.6.1 P3A: the real subject company
+    // is now determined by subject extraction + contextual domain
+    // resolution below, and company-level grouping happens explicitly by
+    // canonical domain -- never by evidence domain, never by name -- see
+    // resolveCandidateIdentities/groupAnnotatedResults.)
     const seenUrls = new Set<string>();
 
     // Cost control B (evaluation cache): one query for every already-known
@@ -925,6 +1315,21 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
     let stoppedReason: BudgetStopReason = "completed";
     const recentYields: number[] = [];
 
+    // ---- Stage 1: adaptive search collection (unchanged logic/counters) ---
+    // Exactly today's existing URL dedupe, excluded-domain filtering,
+    // freshness-cache filtering, and adaptive query-batch budget
+    // (decideNextBatch/MAX_QUERIES_PER_RUN/MAX_BATCHES_PER_RUN/saturation --
+    // all untouched, discoveryBudget.ts). The only change from before Phase
+    // 11.6.1 P3A: a surviving result is collected into eligibleResults
+    // instead of being immediately extracted and qualified in place.
+    // MAX_CANDIDATES_TO_LLM no longer gates this collection loop at all --
+    // it now gates candidate-ENTRY selection in Stage 3, after grouping and
+    // ranking (see below) -- so candidatesSentToLlm is legitimately always
+    // 0 throughout this stage (nothing has been qualified yet); the other
+    // decideNextBatch stop conditions (query/batch caps, saturation) are
+    // completely unaffected and still bound how large this pool can grow.
+    const eligibleResults: EligibleResult[] = [];
+
     const allQueries = criteria.searchIntent;
     const queryBatches: string[][] = [];
     for (let i = 0; i < allQueries.length; i += QUERIES_PER_BATCH) {
@@ -944,7 +1349,7 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
 
       for (const query of queryBatches[batchIndex]!) {
         queriesRun++;
-        const results = await searchProvider.search(query, { maxResults: config.maxResults });
+        const results = await search(query, { maxResults: config.maxResults });
         for (const result of results) {
           batchRaw++;
           if (shouldSkipBeforeQualification(seenUrls, result.url)) {
@@ -957,12 +1362,12 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
           const evidenceDomain = extractDomain(result.url);
 
           // Phase 11.5A: earliest safe exclusion check -- before the
-          // extraction/DeepSeek qualification cost below. Matched on the
-          // registrable domain, same normalization companies.domain itself
-          // uses, so "www.example.com" and "app.example.com" both match an
-          // exclusion for "example.com". This can only under-match, never
-          // over-match: if this evidence is a third-party source (e.g. a
-          // press-release wire) rather than the company's own site,
+          // extraction/subject-extraction/qualification cost below. Matched
+          // on the registrable domain, same normalization companies.domain
+          // itself uses, so "www.example.com" and "app.example.com" both
+          // match an exclusion for "example.com". This can only under-match,
+          // never over-match: if this evidence is a third-party source
+          // (e.g. a press-release wire) rather than the company's own site,
           // evidenceDomain won't equal the excluded company's domain here --
           // the second check below (after identity resolution, on the
           // actual resolved company domain) is what guarantees correctness
@@ -985,7 +1390,7 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
               continue; // cache hit -- never call DeepSeek for a freshly-evaluated known company
             }
             // stale or never actually qualified (e.g. a Portfolio-only
-            // company) -- falls through to a real (refresh) qualification
+            // company) -- falls through to real (refresh) consideration
             // below, but is still not counted as a NEW company for yield.
           } else {
             newCompaniesCount++;
@@ -993,123 +1398,23 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
           }
           uniqueCompaniesSeen++;
 
-          if (candidatesSentToLlm >= MAX_CANDIDATES_TO_LLM) continue; // hard cap -- never exceeded
-
           // Tavily's search result already carries usable content -- no
-          // second external call. extract() only validates/bounds it.
+          // second external call. extract() only validates/bounds it, and
+          // is cheap/local, so it now runs for every eligible result (Stage
+          // 2's subject extraction needs the text too), not only the ones
+          // that eventually get qualified.
           const page = await extractionProvider.extract(result.url, { text: result.snippet, publishedAt: result.publishedAt });
-          // Checkpoint 3: recorded as "sent" the moment the call is made,
-          // before awaiting the result -- if qualify() itself throws
-          // (timeout, network error, etc.), this candidate genuinely was
-          // sent, and that fact is already durable.
-          candidatesSentToLlm++;
-          await writeScanRunProgress(runId, { candidatesSentToLlm });
-          let qualification: aiProvider.AiQualificationOutput;
-          try {
-            qualification = await aiProvider.qualify({
-              companyName: result.title,
-              domain: evidenceDomain,
-              evidence: [{ url: result.url, text: page.text }],
-              criteria,
-              druidContext,
-            });
-          } catch (err) {
-            // 5B-R hotfix: a candidate-level unusable AI response (malformed/
-            // empty/truncated/schema-invalid -- see CANDIDATE_LEVEL_AI_ERROR_CODES)
-            // must never fail the whole scan over one piece of evidence. Only
-            // the bounded, non-sensitive error code is logged, never a raw
-            // provider message/body. Provider-wide failures (timeout,
-            // network_error, http_error, oversized_response, or anything not
-            // an AiProviderError at all) fall through to the rethrow below,
-            // preserving the existing scan-abort + classifyDiscoveryFailure
-            // behavior for genuine outages/auth/rate-limit conditions.
-            if (err instanceof aiProvider.AiProviderError && CANDIDATE_LEVEL_AI_ERROR_CODES.has(err.code)) {
-              logger.warn(
-                { scanConfigId: config.id, evidenceUrl: result.url, code: err.code },
-                "Discovery: AI qualification returned an unusable response for this candidate; skipped, scan continuing",
-              );
-              continue;
-            }
-            throw err;
-          }
 
-          const checks: FiveChecks = {
-            enterpriseAccess: qualification.enterpriseAccess,
-            relevantCapability: qualification.relevantCapability,
-            technologyAdjacency: qualification.technologyAdjacency,
-            partnershipOpenness: qualification.partnershipOpenness,
-            recentTrigger: qualification.recentTrigger,
-          };
-
-          // Same qualification bar regardless of territory -- qualifyChecks
-          // and config.minChecksRequired are untouched by anything in this
-          // adaptive-budget loop. Result is kept (not just null-checked) --
-          // it's the exact QualificationResult persistCandidate needs below,
-          // never recomputed a second time.
-          const qualificationResult = qualifyChecks(checks, config.minChecksRequired);
-          if (qualificationResult.priority === null) continue;
-          candidatesQualified++;
-          await writeScanRunProgress(runId, { candidatesQualified });
-
-          // Cost control: identity resolution (an extra search + AI call)
-          // only runs for evidence that already clears the qualification bar
-          // -- unqualified evidence is never persisted regardless of whose
-          // identity it names, so resolving it would be wasted spend.
-          const identity = await resolveCandidateCompanyIdentity(qualification, evidenceDomain);
-          if (!identity) {
-            logger.warn(
-              { subjectCompanyName: qualification.subjectCompanyName, evidenceUrl: result.url },
-              "Discovery: company identity could not be resolved; candidate skipped",
-            );
-            continue; // never persist the publisher's identity in place of the real company
-          }
-
-          const candidate: Candidate = {
-            companyName: identity.companyName,
-            domain: identity.companyDomain,
-            country: "Unknown",
-            partnerType: qualification.partnerType,
-            recruitmentArchetype: qualification.recruitmentArchetype,
-            checks,
-            whyItFits: qualification.whyItFits,
-            whyNow: qualification.whyNow,
-            suggestedAngle: qualification.suggestedAngle,
-            suggestedTargetRole: qualification.suggestedTargetRole,
-            signals: qualification.evidenceUrls
-              .filter((url) => url === result.url) // never fabricate a source URL outside what was actually given as evidence
-              .map((url) => ({
-                signalType: qualification.signalType,
-                title: result.title,
-                summary: result.snippet,
-                sourceUrl: url,
-                sourceDomain: evidenceDomain, // always the evidence source domain -- may legitimately differ from companyDomain above
-                publishedAt: page.publishedAt, // honest: null when the provider gave no date, never defaulted to "today"
-                confidence: "medium" as Confidence,
-                rawExcerpt: page.text.slice(0, 400),
-              })),
-          };
-          // resultsFound (candidates.length, computed by the caller) counts
-          // every candidate that reached this point, regardless of the
-          // excluded-domain gate just below -- unchanged from before this
-          // hotfix, see the excludedDomains comment above.
-          candidates.push(candidate);
-
-          // Product decision (hotfix): persist immediately, not batched
-          // until the whole run succeeds -- so a later candidate's provider
-          // failure can never discard a candidate that already fully
-          // cleared qualification + identity resolution. Same
-          // persistCandidate call, same transaction/dedupe/evidence/
-          // canonicalization behavior as the pre-hotfix batched call; only
-          // WHEN it runs has changed.
-          // candidate.domain is always the resolved, registrable company
-          // domain (see resolveCandidateCompanyIdentity) -- the correctness
-          // net for the early evidenceDomain check above: an exclusion is
-          // never missed just because the evidence happened to come from a
-          // third-party source.
-          if (!isExcludedDomain(candidate.domain, excludedDomains) && !isDomainExcluded(candidate.domain, discoveryExclusionDomains)) {
-            const created = await persistCandidate(candidate, qualificationResult, territory, "connected");
-            if (created) prospectsCreated++;
-          }
+          eligibleResults.push({
+            resultId: String(eligibleResults.length),
+            url: result.url,
+            title: result.title,
+            snippet: result.snippet,
+            publishedAt: page.publishedAt,
+            score: result.score,
+            evidenceDomain,
+            text: page.text,
+          });
         }
 
         // Checkpoint 1/2: after this query's results are fully searched and
@@ -1119,6 +1424,202 @@ async function attemptLiveDiscovery(config: ScanConfig, territory: Territory, ru
       }
 
       recentYields.push(computeNewCandidateYield({ rawResults: batchRaw, uniqueCompanies: batchUnique, newCompanies: batchNew }));
+    }
+
+    // ---- Stage 2: batched subject extraction + bounded contextual domain resolution ----
+    // See resolveCandidateIdentities's own doc comment for the full
+    // algorithm; this call is the entire pre-qualification identity stage.
+    const { results: annotatedResults, summary: identitySummary } = await resolveCandidateIdentities(
+      eligibleResults,
+      territoryCountries,
+      deps.resolveIdentityWithContext,
+      deps.extractSubjectsFn,
+    );
+    logger.info(
+      {
+        scanConfigId: config.id,
+        eligibleResults: identitySummary.eligibleCount,
+        subjectExtractionResolved: identitySummary.subjectExtractionResolved,
+        subjectExtractionUnknown: identitySummary.subjectExtractionUnknown,
+        subjectExtractionAmbiguous: identitySummary.subjectExtractionAmbiguous,
+        freeFirstPartyResolutions: identitySummary.freeFirstPartyResolutions,
+        contextualResolutionAttempted: identitySummary.contextualResolutionAttempted,
+        contextualResolutionSucceeded: identitySummary.contextualResolutionSucceeded,
+        contextualResolutionFailed: identitySummary.contextualResolutionFailed,
+      },
+      "Discovery: pre-qualification identity resolution complete",
+    );
+
+    // ---- Stage 3: company-level grouping, ranking, top-N selection --------
+    // MAX_CANDIDATES_TO_LLM is applied HERE -- to distinct candidate
+    // ENTRIES (a canonical-domain group, or a standalone unresolved item),
+    // never to raw URLs. This is the actual fix for the confirmed root
+    // cause: previously, several URLs about the same real company could
+    // each independently consume one of these 20 slots.
+    const allEntries = groupAnnotatedResults(annotatedResults);
+    const rankedEntries = rankCandidateEntries(allEntries);
+    const selectedEntries = rankedEntries.slice(0, MAX_CANDIDATES_TO_LLM);
+    const groupCount = allEntries.filter((e) => e.kind === "group").length;
+    const standaloneCount = allEntries.filter((e) => e.kind === "standalone").length;
+    logger.info(
+      {
+        scanConfigId: config.id,
+        candidateGroupsFormed: groupCount,
+        standaloneCandidates: standaloneCount,
+        totalCandidateEntries: rankedEntries.length,
+        selectedForQualification: selectedEntries.length,
+        excludedByTop20Cap: Math.max(0, rankedEntries.length - selectedEntries.length),
+      },
+      "Discovery: candidate entries formed, ranked, and capped at MAX_CANDIDATES_TO_LLM",
+    );
+
+    // ---- Stage 4: existing qualification, now over ranked candidate entries ----
+    for (const entry of selectedEntries) {
+      // Grouped candidates get up to MAX_EVIDENCE_ITEMS_PER_CANDIDATE
+      // diverse evidence items (see selectEvidenceItems); a standalone
+      // candidate has exactly the one item it always had. Either way this
+      // is the exact same aiProvider.qualify(evidence: Array<{url,text}>)
+      // call as before -- only how many items are in the array changed.
+      const evidenceItems = entry.kind === "group" ? selectEvidenceItems(entry.items) : [entry.item];
+      const primary = evidenceItems[0]!;
+
+      // Checkpoint 3: recorded as "sent" the moment the call is made,
+      // before awaiting the result -- if qualify() itself throws (timeout,
+      // network error, etc.), this candidate genuinely was sent, and that
+      // fact is already durable.
+      candidatesSentToLlm++;
+      await writeScanRunProgress(runId, { candidatesSentToLlm });
+      let qualification: aiProvider.AiQualificationOutput;
+      try {
+        qualification = await qualify({
+          companyName: primary.title,
+          domain: primary.evidenceDomain,
+          evidence: evidenceItems.map((item) => ({ url: item.url, text: item.text })),
+          criteria,
+          druidContext,
+        });
+      } catch (err) {
+        // 5B-R hotfix: a candidate-level unusable AI response (malformed/
+        // empty/truncated/schema-invalid -- see CANDIDATE_LEVEL_AI_ERROR_CODES)
+        // must never fail the whole scan over one candidate. Only the
+        // bounded, non-sensitive error code is logged, never a raw provider
+        // message/body. Provider-wide failures (timeout, network_error,
+        // http_error, oversized_response, or anything not an
+        // AiProviderError at all) fall through to the rethrow below,
+        // preserving the existing scan-abort + classifyDiscoveryFailure
+        // behavior for genuine outages/auth/rate-limit conditions.
+        if (err instanceof aiProvider.AiProviderError && CANDIDATE_LEVEL_AI_ERROR_CODES.has(err.code)) {
+          logger.warn(
+            { scanConfigId: config.id, evidenceUrl: primary.url, code: err.code },
+            "Discovery: AI qualification returned an unusable response for this candidate; skipped, scan continuing",
+          );
+          continue;
+        }
+        throw err;
+      }
+
+      const checks: FiveChecks = {
+        enterpriseAccess: qualification.enterpriseAccess,
+        relevantCapability: qualification.relevantCapability,
+        technologyAdjacency: qualification.technologyAdjacency,
+        partnershipOpenness: qualification.partnershipOpenness,
+        recentTrigger: qualification.recentTrigger,
+      };
+
+      // Same qualification bar regardless of territory -- qualifyChecks and
+      // config.minChecksRequired are completely untouched by Phase 11.6.1
+      // P3A. Result is kept (not just null-checked) -- it's the exact
+      // QualificationResult persistCandidate needs below, never recomputed.
+      const qualificationResult = qualifyChecks(checks, config.minChecksRequired);
+      if (qualificationResult.priority === null) continue;
+      candidatesQualified++;
+      await writeScanRunProgress(runId, { candidatesQualified });
+
+      // Phase 11.6.1 P3A (section 9): a candidate that already entered
+      // qualification with an independently-established canonical domain
+      // (entry.kind === "group") reuses that identity directly -- it never
+      // runs a second, potentially-contradictory post-qualification
+      // identity-resolution pass over the same evidence. That domain was
+      // already run through toRegistrableDomain + isKnownNonCorporateDomain
+      // when it was first established (freeFirstPartyDomain, or the
+      // contextual-resolution branch in resolveCandidateIdentities above),
+      // so this is not a weakening of the P0 non-corporate-domain
+      // protection -- only avoiding a redundant, contradictory second
+      // check on evidence already safely identified. A standalone candidate
+      // (no canonical domain established pre-qualification) gets EXACTLY
+      // today's existing post-qualification resolveCandidateCompanyIdentity
+      // behavior, completely unchanged -- including its own independent
+      // non-corporate-domain guard on both its first-party and third-party
+      // branches.
+      let identity: { companyName: string; companyDomain: string } | null;
+      if (entry.kind === "group") {
+        identity = { companyName: qualification.subjectCompanyName, companyDomain: entry.canonicalDomain };
+      } else {
+        // Cost control: identity resolution (an extra search + AI call)
+        // only runs for evidence that already clears the qualification bar
+        // -- unqualified evidence is never persisted regardless of whose
+        // identity it names, so resolving it would be wasted spend.
+        identity = await resolveCandidateCompanyIdentity(qualification, primary.evidenceDomain);
+      }
+      if (!identity) {
+        logger.warn(
+          { subjectCompanyName: qualification.subjectCompanyName, evidenceUrl: primary.url },
+          "Discovery: company identity could not be resolved; candidate skipped",
+        );
+        continue; // never persist the publisher's identity in place of the real company
+      }
+
+      // One signal per evidence item DeepSeek actually grounded its answer
+      // in (qualification.evidenceUrls, a subset of what was given) --
+      // generalizes the pre-P3A single-item logic to however many items
+      // were actually sent (1-3); source provenance stays attached
+      // per-item, never collapsed into one row.
+      const evidenceByUrl = new Map(evidenceItems.map((item) => [item.url, item]));
+      const candidate: Candidate = {
+        companyName: identity.companyName,
+        domain: identity.companyDomain,
+        country: "Unknown",
+        partnerType: qualification.partnerType,
+        recruitmentArchetype: qualification.recruitmentArchetype,
+        checks,
+        whyItFits: qualification.whyItFits,
+        whyNow: qualification.whyNow,
+        suggestedAngle: qualification.suggestedAngle,
+        suggestedTargetRole: qualification.suggestedTargetRole,
+        signals: qualification.evidenceUrls
+          .map((url) => evidenceByUrl.get(url))
+          .filter((item): item is AnnotatedResult => !!item) // never fabricate a source URL outside what was actually given as evidence
+          .map((item) => ({
+            signalType: qualification.signalType,
+            title: item.title,
+            summary: item.snippet,
+            sourceUrl: item.url,
+            sourceDomain: item.evidenceDomain, // always the evidence source domain -- may legitimately differ from companyDomain above
+            publishedAt: item.publishedAt, // honest: null when the provider gave no date, never defaulted to "today"
+            confidence: "medium" as Confidence,
+            rawExcerpt: item.text.slice(0, 400),
+          })),
+      };
+      // resultsFound (candidates.length, computed by the caller) counts
+      // every candidate that reached this point, regardless of the
+      // excluded-domain gate just below -- unchanged from before this
+      // hotfix, see the excludedDomains comment above.
+      candidates.push(candidate);
+
+      // Product decision (hotfix): persist immediately, not batched until
+      // the whole run succeeds -- so a later candidate's provider failure
+      // can never discard a candidate that already fully cleared
+      // qualification + identity resolution. Same persistCandidate call,
+      // same transaction/dedupe/evidence/canonicalization behavior as
+      // before Phase 11.6.1 P3A; only how the candidate/evidence set was
+      // assembled changed. candidate.domain is always the resolved,
+      // registrable company domain -- the correctness net for the early
+      // evidenceDomain check above: an exclusion is never missed just
+      // because the evidence happened to come from a third-party source.
+      if (!isExcludedDomain(candidate.domain, excludedDomains) && !isDomainExcluded(candidate.domain, discoveryExclusionDomains)) {
+        const created = await persistCandidate(candidate, qualificationResult, territory, "connected");
+        if (created) prospectsCreated++;
+      }
     }
 
     return {

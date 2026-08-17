@@ -397,6 +397,20 @@ export interface IdentitySearchCandidate {
 export interface IdentityResolutionInput {
   subjectCompanyName: string;
   candidates: IdentitySearchCandidate[];
+  // Phase 11.6.1 P3A: optional, additive context about the ORIGINAL piece
+  // of evidence that produced subjectCompanyName -- e.g. a Reuters article
+  // that named "Apex Consulting". Existing callers that omit these fields
+  // get the exact byte-identical prompt as before this phase (see
+  // buildIdentitySystemPrompt below); when present, they let the AI
+  // confirm the winning candidate actually describes the SAME company the
+  // evidence was about, not merely a company with a matching/similar name
+  // -- this is the fix for the same-name-different-company collision risk
+  // (two distinct "Apex Consulting" businesses in different countries).
+  // Never used to invent a domain; only to disambiguate among the supplied
+  // candidates, same as the existing rules.
+  evidenceUrl?: string;
+  evidenceSnippet?: string;
+  territoryCountries?: string[];
 }
 
 export interface ResolvedIdentity {
@@ -411,18 +425,45 @@ const IdentityResolutionSchema = z.object({
 });
 
 const IDENTITY_MAX_TOKENS = 200;
+// Original evidence snippet is context for disambiguation only, never
+// re-qualified against -- bounded well under a single evidence item's own
+// cap (extraction.ts's MAX_TEXT_LENGTH=4000) since only enough text to
+// recognize "is this the same company" is needed, not the full article.
+const IDENTITY_EVIDENCE_SNIPPET_MAX_CHARS = 600;
 
-const IDENTITY_SYSTEM_PROMPT = `You are given a company name and up to 3 web search results returned for the query: "<company name>" official website.
+const IDENTITY_SYSTEM_PROMPT_BASE = `You are given a company name and up to 3 web search results returned for the query: "<company name>" official website.
 
 Using ONLY the supplied candidates (title, url, snippet), determine which one (if any) is that company's own official website, and extract its domain.
 
 Rules:
 - You may only use the supplied candidates. Never invent, guess, or recall a domain from your own general knowledge, even if you recognize the company.
 - If none of the supplied candidates is clearly that company's own official site (e.g. all are unrelated, or all are third-party directories, social profiles, or news about the company rather than the company's own site), respond with resolved: false and name/domain: null.
-- If confident, respond with resolved: true, name being the company's real/canonical name (from the winning candidate), and domain being that candidate's registrable domain (e.g. "acme.com", not the full URL).
+- If confident, respond with resolved: true, name being the company's real/canonical name (from the winning candidate), and domain being that candidate's registrable domain (e.g. "acme.com", not the full URL).`;
+
+// Phase 11.6.1 P3A: only appended when the caller actually supplies
+// original-evidence context (evidenceUrl/evidenceSnippet/territoryCountries)
+// -- a call with none of those fields gets the exact pre-P3A prompt,
+// byte-identical, so every existing call site continues to behave exactly
+// as before this phase.
+const IDENTITY_EVIDENCE_CONTEXT_RULE = `
+
+You are also given ORIGINAL EVIDENCE CONTEXT: the URL/snippet that named this company, and (if known) the territory/countries it was found in. Use this ONLY to confirm the winning candidate genuinely describes the SAME company as the original evidence -- never to invent a domain the candidates don't support. Two different real companies can share an identical or similar name (e.g. "Apex Consulting" operating independently in different countries). If the original evidence and a candidate appear to describe different companies -- different country, different industry, different specifics -- despite the name matching, respond resolved: false rather than guessing.`;
+
+const IDENTITY_SYSTEM_PROMPT_RESPONSE_SHAPE = `
 
 Respond with ONLY a single JSON object, no markdown, no commentary, matching exactly this shape:
 { "resolved": boolean, "name": string | null, "domain": string | null }`;
+
+// Byte-identical to the pre-P3A IDENTITY_SYSTEM_PROMPT constant when no
+// evidence context is supplied -- same convention as qualifyViaDeepSeek's
+// buildSystemPrompt.
+function buildIdentitySystemPrompt(hasEvidenceContext: boolean): string {
+  return (
+    IDENTITY_SYSTEM_PROMPT_BASE +
+    (hasEvidenceContext ? IDENTITY_EVIDENCE_CONTEXT_RULE : "") +
+    IDENTITY_SYSTEM_PROMPT_RESPONSE_SHAPE
+  );
+}
 
 export async function identifyCompany(input: IdentityResolutionInput): Promise<ResolvedIdentity | null> {
   if (!(await isConfigured())) throw new AiNotImplementedError();
@@ -441,6 +482,15 @@ export async function identifyCompany(input: IdentityResolutionInput): Promise<R
 // apiKey is now an explicit parameter rather than read from process.env
 // internally (see qualifyViaDeepSeek's comment above).
 export async function identifyCompanyViaDeepSeek(apiKey: string, input: IdentityResolutionInput): Promise<ResolvedIdentity | null> {
+  const hasEvidenceContext = !!(input.evidenceUrl || input.evidenceSnippet || (input.territoryCountries && input.territoryCountries.length > 0));
+  const userPayload: Record<string, unknown> = { subject_company_name: input.subjectCompanyName, candidates: input.candidates };
+  if (hasEvidenceContext) {
+    userPayload.original_evidence = {
+      url: input.evidenceUrl ?? null,
+      snippet: input.evidenceSnippet ? input.evidenceSnippet.slice(0, IDENTITY_EVIDENCE_SNIPPET_MAX_CHARS) : null,
+      territory_countries: input.territoryCountries ?? [],
+    };
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), IDENTITY_TIMEOUT_MS);
@@ -457,8 +507,8 @@ export async function identifyCompanyViaDeepSeek(apiKey: string, input: Identity
         max_tokens: IDENTITY_MAX_TOKENS,
         temperature: 0,
         messages: [
-          { role: "system", content: IDENTITY_SYSTEM_PROMPT },
-          { role: "user", content: JSON.stringify({ subject_company_name: input.subjectCompanyName, candidates: input.candidates }) },
+          { role: "system", content: buildIdentitySystemPrompt(hasEvidenceContext) },
+          { role: "user", content: JSON.stringify(userPayload) },
         ],
       }),
     });
@@ -503,6 +553,184 @@ export async function identifyCompanyViaDeepSeek(apiKey: string, input: Identity
   if (!validated.data.resolved || !validated.data.name || !validated.data.domain) return null;
 
   return { name: validated.data.name, domain: validated.data.domain };
+}
+
+// ---- Batched subject extraction (Phase 11.6.1 P3A) ------------------------
+//
+// Answers ONE question, cheaply, for a bounded batch of raw search results:
+// WHO is this evidence about? It deliberately does NOT resolve or invent a
+// canonical domain (that stays resolveCompanyIdentity/identifyCompany's job,
+// run afterward and only for a cost-bounded subset -- see
+// discoveryEngine.ts). unknown and ambiguous are first-class, expected
+// outcomes, never forced into a guess -- a genuinely multi-company piece of
+// evidence (a "top 10 vendors" listicle, a market roundup) must return
+// ambiguous rather than picking one company arbitrarily and silently
+// discarding the others named in the same text.
+//
+// subjectCompanyName is never a grouping key by itself anywhere downstream
+// (discoveryEngine.ts groups only by an independently-established canonical
+// domain) -- this function only narrows "who" for the sake of deciding
+// whether -- and with what evidence text -- to spend a domain-resolution
+// call on a given result.
+
+export type SubjectIdentityStatus = "resolved" | "unknown" | "ambiguous";
+
+export interface SubjectExtractionCandidate {
+  resultId: string;
+  title: string;
+  url: string;
+  // Bounded by the caller (discoveryEngine.ts uses the same per-item text
+  // already extracted for qualification, truncated further here) -- this
+  // call only needs enough text to identify the subject, not the full
+  // evidence body.
+  snippet: string;
+}
+
+export interface SubjectExtractionBatchInput {
+  candidates: SubjectExtractionCandidate[];
+  // Context only, exactly like PartnerSearchCriteria.territoryCountries
+  // elsewhere in this file -- never a filter on which subjects are valid.
+  territoryCountries: string[];
+}
+
+export interface SubjectExtractionResult {
+  resultId: string;
+  subjectCompanyName: string | null;
+  sourceIsFirstParty: boolean;
+  identityStatus: SubjectIdentityStatus;
+}
+
+const SubjectExtractionItemSchema = z.object({
+  result_id: z.string().min(1),
+  subject_company_name: z.string().min(1).max(200).nullable(),
+  source_is_first_party: z.boolean(),
+  identity_status: z.enum(["resolved", "unknown", "ambiguous"]),
+});
+
+const SubjectExtractionBatchSchema = z.object({
+  results: z.array(SubjectExtractionItemSchema),
+});
+
+// Generous headroom for a 10-item batch of small structured objects (each
+// far smaller than one qualification call's long free-text fields) -- see
+// discoveryEngine.ts's SUBJECT_EXTRACTION_BATCH_SIZE for the batch-size
+// constant this is sized against.
+const SUBJECT_EXTRACTION_MAX_TOKENS = 1200;
+export const SUBJECT_EXTRACTION_TIMEOUT_MS = 30_000;
+
+const SUBJECT_EXTRACTION_SYSTEM_PROMPT = `You are given a batch of web search results. For EACH result, identify which single company (if any) the evidence is primarily ABOUT -- not the publisher, not a company merely mentioned in passing.
+
+You will be given, for each result: a result_id, title, url, and a bounded snippet of its content, plus the territory/countries this search was run for (context only, never a filter on which subjects are valid).
+
+For each result, independently determine:
+- subject_company_name: the single company this evidence is primarily about, or null if none can be confidently identified.
+- source_is_first_party: true only if the URL/domain appears to be that SAME subject company's own website (their own blog, newsroom, partner page, careers page); false for any third-party publisher (news site, wire service, analyst firm, directory, marketplace, tender/procurement portal, or anyone else). This describes the SOURCE only -- it never changes which company is the subject.
+- identity_status: "resolved" if you are confident in a single dominant subject company; "unknown" if no company can be identified with any confidence at all; "ambiguous" if the evidence discusses multiple companies without one clearly being the primary subject (e.g. a "top vendors" listicle, a market roundup, a directory page listing several companies).
+
+Rules:
+- Never invent a company name not actually present in the given title/url/snippet.
+- Do not guess a single subject out of genuinely multi-company evidence -- use "ambiguous" instead. This is an expected, safe outcome, never a failure to avoid.
+- Do not resolve, guess, or invent a domain for the subject company here -- domain resolution is a separate step. Only identify the company by name.
+- Every result_id you were given must appear exactly once in your response, in any order.
+
+Respond with ONLY a single JSON object, no markdown, no commentary, matching exactly this shape:
+{ "results": [ { "result_id": "string", "subject_company_name": "string or null", "source_is_first_party": boolean, "identity_status": "resolved" | "unknown" | "ambiguous" }, ... ] }`;
+
+export async function extractSubjects(input: SubjectExtractionBatchInput): Promise<SubjectExtractionResult[]> {
+  if (!(await isConfigured())) throw new AiNotImplementedError();
+
+  switch (process.env.AI_PROVIDER) {
+    case "deepseek": {
+      const apiKey = await resolveProviderSecret("ai");
+      if (!apiKey) throw new AiNotImplementedError();
+      return extractSubjectsViaDeepSeek(apiKey, input);
+    }
+    default:
+      throw new AiNotImplementedError();
+  }
+}
+
+// Exported (not just called internally) so it can be unit-tested directly
+// against a mocked fetch -- same convention as qualifyViaDeepSeek/
+// identifyCompanyViaDeepSeek above.
+export async function extractSubjectsViaDeepSeek(apiKey: string, input: SubjectExtractionBatchInput): Promise<SubjectExtractionResult[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SUBJECT_EXTRACTION_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: "deepseek-v4-flash",
+        thinking: { type: "disabled" },
+        response_format: { type: "json_object" },
+        max_tokens: SUBJECT_EXTRACTION_MAX_TOKENS,
+        temperature: 0,
+        messages: [
+          { role: "system", content: SUBJECT_EXTRACTION_SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: JSON.stringify({
+              territory_countries: input.territoryCountries,
+              results: input.candidates.map((c) => ({ result_id: c.resultId, title: c.title, url: c.url, snippet: c.snippet })),
+            }),
+          },
+        ],
+      }),
+    });
+  } catch (err) {
+    throw new AiProviderError(err instanceof Error && err.name === "AbortError" ? "timeout" : "network_error");
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!res.ok) throw new AiProviderError("http_error");
+
+  const text = await res.text();
+  if (Buffer.byteLength(text, "utf8") > MAX_PROVIDER_RESPONSE_BYTES) {
+    throw new AiProviderError("oversized_response");
+  }
+
+  let body: any;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new AiProviderError("malformed_json");
+  }
+
+  const choice = body?.choices?.[0];
+  const rawContent = choice?.message?.content;
+  if (!choice || typeof rawContent !== "string" || rawContent.trim() === "") {
+    throw new AiProviderError("empty_response");
+  }
+  if (choice.finish_reason === "length") {
+    throw new AiProviderError("truncated");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawContent);
+  } catch {
+    throw new AiProviderError("malformed_json");
+  }
+
+  const validated = SubjectExtractionBatchSchema.safeParse(parsed);
+  if (!validated.success) throw new AiProviderError("schema_invalid");
+
+  // Only ever return results for result_ids actually given -- a
+  // hallucinated or duplicated result_id must never leak into the caller's
+  // mapping back to real search results.
+  const validResultIds = new Set(input.candidates.map((c) => c.resultId));
+  return validated.data.results
+    .filter((r) => validResultIds.has(r.result_id))
+    .map((r) => ({
+      resultId: r.result_id,
+      subjectCompanyName: r.subject_company_name,
+      sourceIsFirstParty: r.source_is_first_party,
+      identityStatus: r.identity_status,
+    }));
 }
 
 const TEST_TIMEOUT_MS = 15_000;

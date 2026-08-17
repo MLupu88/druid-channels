@@ -31,6 +31,14 @@ export interface WebSearchResult {
   // never fabricated as "today". Honestly null unless a provider actually
   // supplies one.
   publishedAt: string | null;
+  // Phase 11.6.1 P3A: Tavily's own documented per-result relevance score
+  // (verified against Tavily's /search API reference) -- previously
+  // returned by the provider but silently discarded. Used only as a
+  // deterministic ranking signal for candidate selection before AI
+  // qualification (discoveryEngine.ts); never used to infer identity or
+  // company grouping. Defaults to 0 if the provider ever omits it (never
+  // fabricated as a high-confidence score).
+  score: number;
 }
 
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -128,6 +136,7 @@ export async function searchViaTavily(apiKey: string, query: string, opts: { max
       title: r.title,
       snippet: typeof r.content === "string" ? r.content : "",
       publishedAt: null,
+      score: typeof r.score === "number" ? r.score : 0,
     }));
 }
 
