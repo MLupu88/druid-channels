@@ -73,6 +73,314 @@ export function normalizeUrl(rawUrl: string): string {
   return `${hostname}${pathname}${query}`;
 }
 
+// Phase 11.6.1: cross-page site-chrome removal, validated against a real
+// captured 17-page druidai.com Tavily /crawl response (~107K chars raw;
+// see the task report for the full corpus inspection -- the capture
+// itself is local-only, gitignored, and never committed). This is the one
+// stage in the pipeline with visibility across the WHOLE crawled batch,
+// which cross-page repetition requires -- cleanExtractedText below runs
+// per-page and structurally cannot see this signal. See
+// refreshDruidContextSources for exactly where this runs (before any
+// per-page cleaning/bounding/hashing).
+//
+// TWO deterministic signals, combined (see the task report for the full
+// evidence trail behind each refinement):
+//
+//   (A) High-confidence SINGLE-LINE chrome (computeSingleLineChromeSet):
+//       a line repeated on >=5 distinct pages, with >=3 words, that isn't
+//       a quoted statement or a quantified proof point (same protection as
+//       signal B's block guard below -- a stat line reaching the
+//       page-count floor on its own must never be removed just because it
+//       didn't happen to repeat as part of a detected block). The
+//       word-count floor is a real-corpus-driven
+//       refinement: at pageCount>=5 alone, genuinely ambiguous bare
+//       business/product/category terms -- "Druid Agent" (2 words),
+//       "Healthcare", "Insurance" (1 word each) -- were being removed
+//       solely because they repeat, with no other evidence they're chrome
+//       (they read as UI/filter-widget labels, but that's a *guess*, not
+//       proof). A >=3-word floor is not a revival of the explicitly
+//       rejected "short consecutive line run" heuristic (that heuristic
+//       had NO cross-page corroboration at all, and wrongly stripped a
+//       real single-page capability list); here it only narrows an
+//       ALREADY cross-page-proven candidate set, protecting short bare
+//       terms from single-line removal unless corroborated by signal (B)
+//       below. The accepted cost: "0%" (a bare client-rendered stat-widget
+//       placeholder) and "BLOG" (a nav label) also survive as single
+//       lines now -- an accepted, disclosed trade favoring never deleting
+//       real content over catching every noise instance.
+//
+//   (B) Repeated MULTI-LINE BLOCK removal (computeCrossPageBlockKeys): a
+//       contiguous run of >=3 non-empty normalized lines, identical on
+//       >=2 distinct pages, is structural evidence of a shared widget/
+//       card/section (nav clusters, footer/certification-badge/social-
+//       link clusters, "Featured Resources" resource cards, BLOG
+//       article-card teasers, and -- once corroborated by an identical
+//       3-line demo-dialogue block on >=2 pages, not just a lone repeated
+//       line -- a reused interactive demo-widget transcript). This is
+//       what actually reaches "Featured Resources" (only 2 pages) and
+//       "BLOG" (protected from removal as a lone word by (A), but
+//       legitimately removed here as part of its repeated article-card
+//       block) without needing a lower, unsafe single-line threshold.
+//       Every block containing a quoted line OR a quantified proof-point
+//       (a percentage or dollar figure) is excluded outright, regardless
+//       of page count -- real customer testimonials and stats in the
+//       corpus repeat as part of a "social proof" block shape exactly
+//       like genuine chrome blocks do, and must never be caught by
+//       association.
+//
+// CRITICAL real-corpus finding behind dedupePagesForFrequencyAnalysis
+// below: the capture contains "https://druidai.com/" and
+// "https://www.druidai.com/" as two separate crawled entries for what is
+// the SAME logical home page (normalizeUrl already collapses them to one
+// persistence key). Counting both as independent "pages" wrongly inflated
+// a genuine, unique, substantive product paragraph (a multi-sentence
+// description of "The Druid Conductor") to "repeated on 2 pages" -- pure
+// crawl-duplication noise, not real cross-page repetition. Frequency
+// analysis (both signals A and B) is computed over a deduplicated
+// reference set (one text per normalizedUrl, preferring the longer/fuller
+// crawled text as a general, content-based tiebreak); the resulting
+// chrome-line/block sets are then applied to every raw crawled page
+// (duplicates included), so no page goes uncleaned.
+export interface CrossPageLineFrequency {
+  line: string;
+  pageCount: number;
+}
+
+/** Pure, deterministic -- exported separately so its exact behavior is independently testable/auditable. */
+export function computeCrossPageLineFrequencies(pagesText: readonly string[]): CrossPageLineFrequency[] {
+  const pageCountByLine = new Map<string, number>();
+  for (const pageText of pagesText) {
+    // A line can appear multiple times WITHIN one page -- only count it
+    // once per page here, so a single noisy page can never inflate the
+    // cross-page count on its own.
+    const linesOnThisPage = new Set(
+      pageText
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0),
+    );
+    for (const line of linesOnThisPage) {
+      pageCountByLine.set(line, (pageCountByLine.get(line) ?? 0) + 1);
+    }
+  }
+  return [...pageCountByLine.entries()].map(([line, pageCount]) => ({ line, pageCount }));
+}
+
+// A line entirely wrapped in matching quotation marks (straight " or
+// curly " ") is an attributed statement (a customer testimonial, a quoted
+// claim) -- real evidence from the captured corpus shows exactly this
+// shape being reused verbatim across several pages as a shared
+// quote-carousel widget. Never removed (as a single line OR as part of a
+// block), regardless of repeat count. General structural signal, not a
+// druidai.com-specific rule.
+const QUOTE_PAIRS: Record<string, string> = { '"': '"', "“": "”" };
+
+export function isQuotedLine(line: string): boolean {
+  if (line.length < 2) return false;
+  const first = line[0]!;
+  const last = line[line.length - 1]!;
+  return QUOTE_PAIRS[first] === last;
+}
+
+// A general, purely structural signal (digits + "%" or "$" + digit) --
+// never semantic/fuzzy. Real-corpus evidence: quantified proof points
+// ("96% accuracy of answers delivered by AI agents", "$2.4M in additional
+// enrollment revenue") repeat as part of the same "social proof" block
+// shape as genuine chrome and must never be caught by association with a
+// nearby quote or company name. Any line matching this, and any BLOCK
+// containing such a line, is excluded from removal outright.
+const QUANTIFIED_STAT_PATTERN = /\d+%|\$\d/;
+
+export function containsQuantifiedStat(line: string): boolean {
+  return QUANTIFIED_STAT_PATTERN.test(line);
+}
+
+const CROSS_PAGE_CHROME_MIN_PAGE_OCCURRENCES = 5;
+const CROSS_PAGE_CHROME_MIN_WORD_COUNT = 3;
+
+function wordCount(line: string): number {
+  return line.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * High-confidence single-line chrome (signal A above): repeated on
+ * >=minPageOccurrences distinct pages, at least minWordCount words, never
+ * a quoted statement, never a quantified proof point (same protection the
+ * block signal below applies -- a stat line reaching the page-count floor
+ * on its own must be protected exactly like one embedded in a block; see
+ * this file's cross-page-chrome comment for the real-corpus testimonial/
+ * proof-point evidence behind both guards). Returns the SET of exact line
+ * strings to remove -- pure and deterministic, exported separately for
+ * independent testing.
+ */
+export function computeSingleLineChromeSet(
+  pagesText: readonly string[],
+  minPageOccurrences = CROSS_PAGE_CHROME_MIN_PAGE_OCCURRENCES,
+  minWordCount = CROSS_PAGE_CHROME_MIN_WORD_COUNT,
+): Set<string> {
+  const frequencies = computeCrossPageLineFrequencies(pagesText);
+  return new Set(
+    frequencies
+      .filter(
+        (f) =>
+          f.pageCount >= minPageOccurrences &&
+          wordCount(f.line) >= minWordCount &&
+          !isQuotedLine(f.line) &&
+          !containsQuantifiedStat(f.line),
+      )
+      .map((f) => f.line),
+  );
+}
+
+const CROSS_PAGE_BLOCK_WINDOW_SIZE = 3;
+const CROSS_PAGE_BLOCK_MIN_PAGE_OCCURRENCES = 2;
+// Separator joining a block's lines into one map key -- lines are always
+// individually trimmed and never contain a raw newline themselves (they
+// were produced by splitting on "\n"), so this can never collide with real
+// line content.
+const BLOCK_KEY_SEPARATOR = "\n";
+
+function nonEmptyLineRecords(pageText: string): Array<{ originalIndex: number; text: string }> {
+  const lines = pageText.split("\n");
+  const records: Array<{ originalIndex: number; text: string }> = [];
+  lines.forEach((rawLine, originalIndex) => {
+    const trimmed = rawLine.trim();
+    if (trimmed.length > 0) records.push({ originalIndex, text: trimmed });
+  });
+  return records;
+}
+
+/**
+ * Repeated multi-line block detection (signal B above): a contiguous run
+ * of `windowSize` non-empty normalized lines, identical on
+ * >=minBlockPageOccurrences distinct pages. Any block containing a quoted
+ * line or a quantified stat is excluded outright. Returns the SET of
+ * qualifying block keys (each line joined by BLOCK_KEY_SEPARATOR) -- pure
+ * and deterministic, exported separately for independent testing.
+ */
+export function computeCrossPageBlockKeys(
+  pagesText: readonly string[],
+  windowSize = CROSS_PAGE_BLOCK_WINDOW_SIZE,
+  minBlockPageOccurrences = CROSS_PAGE_BLOCK_MIN_PAGE_OCCURRENCES,
+): Set<string> {
+  const blockKeyToPages = new Map<string, Set<number>>();
+  pagesText.forEach((pageText, pageIndex) => {
+    const records = nonEmptyLineRecords(pageText);
+    // Dedupe within-page occurrences of the same block, same rationale as
+    // computeCrossPageLineFrequencies -- one noisy page can't inflate a
+    // block's cross-page count on its own.
+    const blockKeysOnThisPage = new Set<string>();
+    for (let start = 0; start + windowSize <= records.length; start++) {
+      const key = records
+        .slice(start, start + windowSize)
+        .map((r) => r.text)
+        .join(BLOCK_KEY_SEPARATOR);
+      blockKeysOnThisPage.add(key);
+    }
+    for (const key of blockKeysOnThisPage) {
+      if (!blockKeyToPages.has(key)) blockKeyToPages.set(key, new Set());
+      blockKeyToPages.get(key)!.add(pageIndex);
+    }
+  });
+
+  const qualifying = new Set<string>();
+  for (const [key, pageSet] of blockKeyToPages.entries()) {
+    if (pageSet.size < minBlockPageOccurrences) continue;
+    const lines = key.split(BLOCK_KEY_SEPARATOR);
+    if (lines.some((l) => isQuotedLine(l) || containsQuantifiedStat(l))) continue;
+    qualifying.add(key);
+  }
+  return qualifying;
+}
+
+/**
+ * Collapses a crawled page batch to one text per normalizedUrl (reusing
+ * the same normalizeUrl already used for persistence -- see its own
+ * comment) for FREQUENCY-ANALYSIS PURPOSES ONLY, preferring the longer
+ * (fuller) crawled text as a general, content-based tiebreak when the same
+ * URL was crawled twice under different hostname/path variants. See this
+ * file's cross-page-chrome-removal comment above for the real-corpus
+ * finding this fixes (a duplicate www/non-www home-page crawl entry
+ * inflating a genuine single-page product paragraph into a false
+ * "repeated on 2 pages" chrome candidate). Every ORIGINAL crawled page
+ * still gets cleaned (see pruneCrossPageChrome below) -- only the
+ * evidence used to decide WHAT counts as chrome is deduplicated.
+ */
+export function dedupePagesForFrequencyAnalysis(pages: readonly { url: string; text: string }[]): string[] {
+  const byNormalizedUrl = new Map<string, string>();
+  for (const page of pages) {
+    const key = normalizeUrl(page.url);
+    const existing = byNormalizedUrl.get(key);
+    if (existing === undefined || page.text.length > existing.length) {
+      byNormalizedUrl.set(key, page.text);
+    }
+  }
+  return [...byNormalizedUrl.values()];
+}
+
+/** Applies a precomputed chrome-line set and block-key set to one page's text -- pure, deterministic. */
+export function applyCrossPageChromeToPage(pageText: string, chromeLines: ReadonlySet<string>, qualifyingBlockKeys: ReadonlySet<string>): string {
+  const records = nonEmptyLineRecords(pageText);
+  const removeOriginalIndices = new Set<number>();
+  for (let start = 0; start + CROSS_PAGE_BLOCK_WINDOW_SIZE <= records.length; start++) {
+    const window = records.slice(start, start + CROSS_PAGE_BLOCK_WINDOW_SIZE);
+    const key = window.map((r) => r.text).join(BLOCK_KEY_SEPARATOR);
+    if (qualifyingBlockKeys.has(key)) {
+      for (const r of window) removeOriginalIndices.add(r.originalIndex);
+    }
+  }
+
+  const lines = pageText.split("\n");
+  return lines
+    .filter((rawLine, idx) => {
+      if (removeOriginalIndices.has(idx)) return false; // removed as part of a repeated block
+      return !chromeLines.has(rawLine.trim()); // or removed as a high-confidence single line
+    })
+    .join("\n");
+}
+
+/**
+ * Top-level orchestration: computes both chrome signals from a
+ * deduplicated reference view of the batch, then applies them to every
+ * raw crawled page. This is the one function refreshDruidContextSources
+ * calls -- pure and deterministic given the same input, independent of
+ * page order (see the regression suite for the order-independence proof).
+ */
+export function pruneCrossPageChrome(pages: readonly { url: string; text: string }[]): string[] {
+  const referenceTexts = dedupePagesForFrequencyAnalysis(pages);
+  const chromeLines = computeSingleLineChromeSet(referenceTexts);
+  const qualifyingBlockKeys = computeCrossPageBlockKeys(referenceTexts);
+  return pages.map((p) => applyCrossPageChromeToPage(p.text, chromeLines, qualifyingBlockKeys));
+}
+
+// A line that is JUST a bare filename with an image/font extension (e.g.
+// "logo.svg") is never meaningful prose -- narrower and different from the
+// SVG-path-command dump regex below (SVG_PATH_LINE), which catches raw
+// path-command characters, not a filename.
+//
+// The second pattern (TRUNCATED_MARKDOWN_IMAGE_REF_LINE) is a real-corpus
+// finding: the captured crawl contains 48 occurrences of the bare
+// fragment ".svg)" across 2 pages -- the tail end of a markdown image
+// reference (`![alt](...logo.svg)`) whose leading `![alt](...` portion was
+// dropped by Tavily's plain-text extraction, leaving only the closing
+// `.svg)` behind. This is a general structural shape (a truncated
+// markdown image-reference remnant), not a druidai.com-specific string --
+// anchored to start with a literal "." and end with ")", so it can never
+// match real prose (e.g. "Register for Orientation (Aug 19-20)" does not
+// start with a dot and is untouched).
+const BARE_ASSET_FILENAME_LINE = /^[\w-]+\.(svg|png|jpe?g|gif|webp|ico|woff2?|ttf)$/i;
+const TRUNCATED_MARKDOWN_IMAGE_REF_LINE = /^\.(svg|png|jpe?g|gif|webp|ico|woff2?|ttf)\)$/i;
+
+export function pruneAssetNoiseLines(pageText: string): string {
+  return pageText
+    .split("\n")
+    .filter((rawLine) => {
+      const trimmed = rawLine.trim();
+      return !(BARE_ASSET_FILENAME_LINE.test(trimmed) || TRUNCATED_MARKDOWN_IMAGE_REF_LINE.test(trimmed));
+    })
+    .join("\n");
+}
+
 // Phase 11.6E: conservative, deterministic garbage removal applied to a
 // crawled page's raw text BEFORE boundExtractedText/computeContentHash --
 // see refreshDruidContextSources below, the only caller. This is NOT
@@ -223,28 +531,44 @@ export async function refreshDruidContextSources(
 ): Promise<RefreshSummary> {
   const pages = await crawlFn();
 
+  // Phase 11.6.1: cross-page chrome removal runs ONCE, over the full
+  // crawled batch, BEFORE any per-page cleaning/bounding/hashing -- this
+  // is the only point in the pipeline with visibility across pages, which
+  // both cross-page signals (repeated single lines, repeated multi-line
+  // blocks) require (see pruneCrossPageChrome's own comment for the full
+  // real-corpus evidence behind this rule). Order within `pages` never
+  // affects the outcome -- both signals are order-independent -- so each
+  // page's own persistence below still depends on nothing but its own
+  // content.
+  const crossPageCleanedTexts = pruneCrossPageChrome(pages);
+
   let newSources = 0;
   let updatedSources = 0;
 
-  for (const page of pages) {
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i]!;
     const normalizedUrl = normalizeUrl(page.url);
-    // Phase 11.6E: deterministic garbage removal runs BEFORE bounding/
-    // hashing -- the persisted extractedText and the contentHash/versioning
-    // key are both over the cleaned text, never the raw crawl output.
+    // Phase 11.6E/11.6.1: deterministic garbage removal runs BEFORE
+    // bounding/hashing -- the persisted extractedText and the
+    // contentHash/versioning key are both over the cleaned text, never the
+    // raw crawl output. Per-page asset-noise pruning runs first (it needs
+    // no batch context), then the existing per-page cleanExtractedText.
     //
     // Version-transition note: existing druid_context_sources rows are
     // NEVER rewritten by this change (no migration/backfill exists) -- an
-    // existing row's content_hash was computed from the OLD, uncleaned
+    // existing row's content_hash was computed from the OLD, less-cleaned
     // text. So on the FIRST refresh after this feature ships, a page whose
-    // only real-world change is exactly the kind of noise cleanExtractedText
-    // now strips will still (correctly, given the stored comparison target)
-    // produce a hash that does NOT match that old raw-text row, and a new
-    // pending_review version is created -- this is expected and acceptable,
-    // not a defect. From that point on, once a CLEANED version of a page
-    // exists in the table, later crawls whose cleaned text is unchanged
-    // hash-match THAT version normally and only bump last_seen_at, exactly
-    // as the pre-existing versioning logic (untouched here) already did.
-    const boundedText = boundExtractedText(cleanExtractedText(page.text));
+    // only real-world change is exactly the kind of noise this cleanup now
+    // strips will still (correctly, given the stored comparison target)
+    // produce a hash that does NOT match that old row, and a new
+    // pending_review version is created -- this is expected and
+    // acceptable, not a defect (identical to the Phase 11.6E transition
+    // note this one extends). From that point on, once a CLEANED version
+    // of a page exists in the table, later crawls whose cleaned text is
+    // unchanged hash-match THAT version normally and only bump
+    // last_seen_at, exactly as the pre-existing versioning logic
+    // (untouched here) already did.
+    const boundedText = boundExtractedText(cleanExtractedText(pruneAssetNoiseLines(crossPageCleanedTexts[i]!)));
     const contentHash = computeContentHash(boundedText);
 
     const [existing] = await db

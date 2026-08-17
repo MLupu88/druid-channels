@@ -53,3 +53,10 @@ Thumbs.db
 .env.*
 !.env.example
 !**/.env.example
+
+# Phase 11.6.1: local-only captured provider payloads (e.g. a real Tavily
+# /crawl response saved for offline analysis, see
+# artifacts/api-server/src/scripts/captureDruidCrawlLocally.ts) -- never
+# committed, may contain a full site's raw crawled text.
+.local-captures/
+**/.local-captures/
