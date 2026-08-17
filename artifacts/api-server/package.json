@@ -27,6 +27,7 @@
     "test:candidate-identity-resolution": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/candidateIdentityResolution.test.ts",
     "test:candidate-grouping-ranking": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/candidateGroupingRanking.test.ts",
     "test:attempt-live-discovery-pipeline": "tsx --test tests/attemptLiveDiscoveryPipeline.test.ts",
+    "test:channel-radar-recency-gap": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/channelRadarRecencyGap.test.ts",
     "test:company-duplicate-audit": "tsx --test tests/companyDuplicateAudit.test.ts",
     "test:migration-invariants": "tsx --test tests/migrationInvariants.test.ts",
     "test:pam-action-queue": "tsx --test tests/pamActionQueue.test.ts",

@@ -2,7 +2,7 @@
 // and list pagination footer math -- no React rendering, no network.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupSignalsByEntity, computeListPageRange } from "../src/lib/channel-radar-group";
+import { groupSignalsByEntity, computeListPageRange, formatRadarSignalDate } from "../src/lib/channel-radar-group";
 
 test("groupSignalsByEntity groups rows sharing the same entity_name together", () => {
   const rows = [
@@ -85,4 +85,35 @@ test("computeListPageRange: total undefined (summary not loaded yet) never enabl
   const result = computeListPageRange(0, 50, 50, undefined);
   assert.equal(result.hasNextPage, false);
   assert.equal(result.end, 50, "end falls back to offset+rowCount when the real total isn't known yet");
+});
+
+// Phase 11.6.1 Radar recency fix: formatRadarSignalDate is what stops the
+// list/drawer from ever presenting Radar's own observation time as if it
+// were the article's real date. A signal discovered today about a
+// year-old article must never visually imply "this happened today."
+test("formatRadarSignalDate: prefers the verified article date (Published) when source_published_at exists", () => {
+  const result = formatRadarSignalDate({
+    source_published_at: "2025-06-01",
+    last_evidence_at: "2026-08-17T00:00:00.000Z",
+    discovered_at: "2026-08-17T00:00:00.000Z",
+  });
+  assert.deepEqual(result, { label: "Published", date: "2025-06-01" });
+});
+
+test("formatRadarSignalDate: falls back to 'Last seen' (last_evidence_at) when no verified article date exists", () => {
+  const result = formatRadarSignalDate({
+    source_published_at: null,
+    last_evidence_at: "2026-08-10T00:00:00.000Z",
+    discovered_at: "2026-08-01T00:00:00.000Z",
+  });
+  assert.deepEqual(result, { label: "Last seen", date: "2026-08-10T00:00:00.000Z" });
+});
+
+test("formatRadarSignalDate: falls back to 'First discovered' only when there's neither a published date nor a last_evidence_at (legacy rows)", () => {
+  const result = formatRadarSignalDate({
+    source_published_at: null,
+    last_evidence_at: "" as unknown as string,
+    discovered_at: "2026-01-15T00:00:00.000Z",
+  } as any);
+  assert.deepEqual(result, { label: "First discovered", date: "2026-01-15T00:00:00.000Z" });
 });

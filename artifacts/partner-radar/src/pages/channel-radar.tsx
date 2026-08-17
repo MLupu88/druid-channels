@@ -38,7 +38,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { computeRunRadarButtonState } from '@/lib/channel-radar-run';
-import { groupSignalsByEntity, computeListPageRange } from '@/lib/channel-radar-group';
+import { groupSignalsByEntity, computeListPageRange, formatRadarSignalDate } from '@/lib/channel-radar-group';
 import { PageHeader } from '@/components/page-header';
 import { statusTone } from '@/lib/status-tone';
 
@@ -123,6 +123,7 @@ interface RadarSignalRow {
   recommended_action: string;
   discovered_at: string;
   last_evidence_at: string;
+  source_published_at: string | null;
   evidence_count: number;
   requires_validation: boolean;
 }
@@ -204,6 +205,7 @@ export default function ChannelRadar() {
     selectedId || '',
     { query: { enabled: !!selectedId, queryKey: getGetChannelRadarSignalQueryKey(selectedId || '') } },
   );
+  const drawerDate = detail ? formatRadarSignalDate(detail) : null;
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getListChannelRadarSignalsQueryKey() });
@@ -251,6 +253,7 @@ export default function ChannelRadar() {
   });
 
   function renderRow(s: RadarSignalRow) {
+    const dateCell = formatRadarSignalDate(s);
     return (
       <TableRow key={s.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setSelectedId(s.id)}>
         <TableCell className="font-medium">
@@ -270,7 +273,9 @@ export default function ChannelRadar() {
         <TableCell className="max-w-[220px] truncate text-muted-foreground">{s.headline}</TableCell>
         <TableCell className="max-w-[180px] truncate text-muted-foreground">{s.recommended_action}</TableCell>
         <TableCell>{s.requires_validation && <ValidationBadge />}</TableCell>
-        <TableCell className="text-muted-foreground">{new Date(s.last_evidence_at).toLocaleDateString()}</TableCell>
+        <TableCell className="text-muted-foreground whitespace-nowrap">
+          <span className="text-xs">{dateCell.label}</span> {new Date(dateCell.date).toLocaleDateString()}
+        </TableCell>
       </TableRow>
     );
   }
@@ -449,7 +454,7 @@ export default function ChannelRadar() {
                   <TableHead>What happened</TableHead>
                   <TableHead>Recommended action</TableHead>
                   <TableHead>Review</TableHead>
-                  <TableHead>Last update</TableHead>
+                  <TableHead>Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -552,9 +557,19 @@ export default function ChannelRadar() {
                       <p className="font-medium">{SIGNAL_TYPE_LABELS[detail.signal_type] ?? detail.signal_type}</p>
                     </div>
                     <div className="rounded-md border border-border/60 p-3">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Last update</p>
-                      <p className="font-medium">{new Date(detail.last_evidence_at).toLocaleDateString()}</p>
-                      {detail.last_evidence_at !== detail.discovered_at && (
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{drawerDate!.label}</p>
+                      <p className="font-medium">{new Date(drawerDate!.date).toLocaleDateString()}</p>
+                      {/* Phase 11.6.1: the primary date above is always
+                          explicitly labeled for what it is (a verified
+                          article date, our own last-observed time, or our
+                          own first-discovery time) -- never an unlabeled
+                          date implying "this happened today." Any other
+                          distinct date the signal carries is still shown,
+                          but only as clearly-labeled secondary metadata. */}
+                      {drawerDate!.label !== 'Last seen' && (
+                        <p className="text-xs text-muted-foreground mt-0.5">Last seen {new Date(detail.last_evidence_at).toLocaleDateString()}</p>
+                      )}
+                      {drawerDate!.label !== 'First discovered' && detail.discovered_at !== detail.last_evidence_at && (
                         <p className="text-xs text-muted-foreground mt-0.5">First discovered {new Date(detail.discovered_at).toLocaleDateString()}</p>
                       )}
                     </div>
@@ -623,7 +638,7 @@ export default function ChannelRadar() {
                           </p>
                           <p className="text-muted-foreground mt-0.5">
                             {e.source_domain ?? e.source_url}
-                            {e.source_published_at && ` · ${new Date(e.source_published_at).toLocaleDateString()}`}
+                            {e.source_published_at && ` · Published ${new Date(e.source_published_at).toLocaleDateString()}`}
                           </p>
                         </a>
                       ))}

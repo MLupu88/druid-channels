@@ -39,6 +39,27 @@ export interface ListPageRange {
   hasNextPage: boolean;
 }
 
+// Phase 11.6.1 Radar recency fix: the list table's single date cell (and
+// the drawer's headline date) must never present Radar's own observation
+// time as if it were the article's real date -- a signal discovered today
+// about a year-old article must never visually imply "this happened
+// today." Prefers the verified article date (source_published_at) when one
+// actually exists; otherwise falls back to when this system last saw
+// corroborating evidence (last_evidence_at), or -- for legacy rows that
+// never had one -- when it was first discovered. The label always names
+// what the date actually is; the cell content is never bare/unlabeled.
+export interface RadarSignalDateFields {
+  source_published_at?: string | null;
+  last_evidence_at: string;
+  discovered_at: string;
+}
+
+export function formatRadarSignalDate(signal: RadarSignalDateFields): { label: string; date: string } {
+  if (signal.source_published_at) return { label: "Published", date: signal.source_published_at };
+  if (signal.last_evidence_at) return { label: "Last seen", date: signal.last_evidence_at };
+  return { label: "First discovered", date: signal.discovered_at };
+}
+
 export function computeListPageRange(page: number, pageSize: number, rowCount: number, total: number | undefined): ListPageRange {
   const offset = page * pageSize;
   const start = rowCount > 0 ? offset + 1 : 0;

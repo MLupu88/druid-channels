@@ -27,9 +27,18 @@ export interface WebSearchResult {
   url: string;
   title: string;
   snippet: string;
-  // Tavily's documented search response has no per-result publish date --
-  // never fabricated as "today". Honestly null unless a provider actually
-  // supplies one.
+  // Tavily's own REST API reference documents `published_date` as an
+  // optional per-result field, populated for topic="news" results (the JS
+  // SDK exposes the same value camelCased as `publishedDate`; this file
+  // talks to the REST endpoint directly via fetch, so the raw snake_case
+  // `published_date` key is what actually appears on the wire -- see the
+  // mapping below). It is optional/best-effort even for news results, and
+  // Tavily does not document it being populated for topic="general" at
+  // all, so it is parsed defensively regardless of topic: present and
+  // valid -> a real date; missing or unparseable -> null, never fabricated
+  // or inferred from url/title/content. The Radar-side hard recency rule
+  // (see channelRadarEngine.ts's evaluateNewsRecency) treats a null value
+  // here as unverified, never as "recent."
   publishedAt: string | null;
   // Phase 11.6.1 P3A: Tavily's own documented per-result relevance score
   // (verified against Tavily's /search API reference) -- previously
@@ -39,6 +48,20 @@ export interface WebSearchResult {
   // company grouping. Defaults to 0 if the provider ever omits it (never
   // fabricated as a high-confidence score).
   score: number;
+}
+
+// Parses Tavily's documented `published_date` field (see
+// WebSearchResult.publishedAt's own comment) into a normalized date. Never
+// infers a date from anything but this one raw value -- no URL/title/
+// content inspection, no "today" fallback. Normalized to YYYY-MM-DD
+// (matching channel_radar_signals.source_published_at's `date` column
+// type) so it can be compared/persisted directly. Any value that isn't a
+// parseable date -> null, exactly like a missing/omitted field.
+function parseProviderPublishedDate(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
 }
 
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -54,7 +77,10 @@ export async function isConfigured(): Promise<boolean> {
   return process.env.SEARCH_PROVIDER === "tavily" && (await hasResolvableCredential("web_search"));
 }
 
-export async function search(query: string, opts: { maxResults: number; startDate?: string }): Promise<WebSearchResult[]> {
+export async function search(
+  query: string,
+  opts: { maxResults: number; startDate?: string; topic?: "general" | "news" }
+): Promise<WebSearchResult[]> {
   if (!(await isConfigured())) throw new SearchNotImplementedError();
 
   switch (process.env.SEARCH_PROVIDER) {
@@ -82,7 +108,20 @@ export async function search(query: string, opts: { maxResults: number; startDat
 // (Discovery's own live search doesn't), so it stays optional -- only
 // Channel Radar's lookback_days currently derives it (see
 // channelRadarEngine.ts's computeLookbackStartDate).
-export async function searchViaTavily(apiKey: string, query: string, opts: { maxResults: number; startDate?: string }): Promise<WebSearchResult[]> {
+//
+// topic (Phase 11.6.1 Radar recency fix): Tavily's own documented /search
+// parameter, "general" | "news" -- additive, defaults to "general" so
+// EVERY existing caller (Discovery's live search, company-identity
+// resolution evidence search, Channel Radar's own non-news queries) is
+// byte-identical in request behavior unless it explicitly opts in.
+// Channel Radar is the only caller that ever passes "news", and only for
+// its NEWS-LIKE signal-type queries -- see channelRadarEngine.ts's
+// NEWS_LIKE_SIGNAL_TYPES / buildRadarQueries.
+export async function searchViaTavily(
+  apiKey: string,
+  query: string,
+  opts: { maxResults: number; startDate?: string; topic?: "general" | "news" }
+): Promise<WebSearchResult[]> {
   const maxResults = Math.max(1, Math.min(20, opts.maxResults));
 
   const controller = new AbortController();
@@ -99,7 +138,7 @@ export async function searchViaTavily(apiKey: string, query: string, opts: { max
         search_depth: "basic",
         include_answer: false,
         include_raw_content: false,
-        topic: "general",
+        topic: opts.topic ?? "general",
         ...(opts.startDate ? { start_date: opts.startDate } : {}),
       }),
     });
@@ -135,7 +174,7 @@ export async function searchViaTavily(apiKey: string, query: string, opts: { max
       url: r.url,
       title: r.title,
       snippet: typeof r.content === "string" ? r.content : "",
-      publishedAt: null,
+      publishedAt: parseProviderPublishedDate(r.published_date),
       score: typeof r.score === "number" ? r.score : 0,
     }));
 }

@@ -36,12 +36,74 @@ const SIGNAL_TYPE_SEARCH_TERMS: Record<string, string> = {
   other: "news",
 };
 
+// Phase 11.6.1 Radar recency fix (corrected classification pass):
+// classification of the existing query families above into NEWS-LIKE (an
+// announced, dated ecosystem move -- "this happened on/around a specific
+// day, and being recent is the whole point of surfacing it") vs NON-NEWS/
+// WEB SIGNAL (a genuinely ongoing-state/directory page with no meaningful
+// "publish date"). No new signal-type category is invented here -- this
+// only labels the families that already exist in SIGNAL_TYPE_SEARCH_TERMS
+// above, re-audited per family against its actual query text and product
+// semantics (not "could an evergreen page exist for this," which is true
+// of almost any query and is not the test):
+//
+//   NEWS-LIKE: acquisition, partnership, reseller_distributor,
+//   regional_expansion, leadership_hire, funding, customer_win,
+//   product_gtm, event, other ("news" itself).
+//     - acquisition / partnership / regional_expansion / leadership_hire /
+//       funding / product_gtm: unambiguous dated announcements.
+//     - reseller_distributor ("reseller OR distributor OR systems
+//       integrator"): a NEW reseller/distributor/SI relationship is itself
+//       a dated ecosystem move (e.g. "X named as distributor of Y") --
+//       reclassified from the prior pass, which wrongly treated the whole
+//       family as evergreen just because a static partner-directory page
+//       could also exist for the same terms.
+//     - customer_win ("customer win OR case study"): a customer-win
+//       announcement is a dated event; reclassified from the prior pass
+//       for the same reason -- "case study" is one possible result shape,
+//       not proof the family is evergreen.
+//     - event ("conference OR webinar OR keynote"): the query text targets
+//       mentions of an entity's participation in a conference/webinar/
+//       keynote, not an evergreen events-calendar/listing page (no
+//       "schedule"/"calendar"/"upcoming events" wording) -- that is a
+//       dated-occurrence signal, so this stays NEWS-LIKE.
+//
+//   NON-NEWS/WEB SIGNAL: marketplace_listing ("marketplace listing OR app
+//   store") -- this is the one family whose query text is itself
+//   structurally directorial (a listing/catalog entry), not an
+//   announcement; genuinely has no reliable publish date and is not a news
+//   article reporting a dated event. Its evidence still flows through
+//   unchanged (never a fabricated date, see the hard rejection below,
+//   which applies ONLY to topic "news").
+const NEWS_LIKE_SIGNAL_TYPES = new Set<string>([
+  "acquisition",
+  "partnership",
+  "reseller_distributor",
+  "regional_expansion",
+  "leadership_hire",
+  "funding",
+  "customer_win",
+  "product_gtm",
+  "event",
+  "other",
+]);
+
+export function topicForSignalType(signalType: string): "general" | "news" {
+  return NEWS_LIKE_SIGNAL_TYPES.has(signalType) ? "news" : "general";
+}
+
 const MAX_RADAR_QUERIES = 12;
 const MAX_RESULTS_PER_QUERY = 3;
 
 export interface RadarQuery {
   query: string;
   entityHint: string;
+  // Phase 11.6.1: which Tavily search mode this query runs under -- "news"
+  // only for NEWS-LIKE signal-type families (see NEWS_LIKE_SIGNAL_TYPES
+  // above); "general" for every non-news family, preserving today's
+  // existing search behavior for those unchanged. Radar is never
+  // globally switched to news mode -- this is decided per query.
+  topic: "general" | "news";
 }
 
 // Stage 6.3: the small deterministic geo-term helper the query builder
@@ -70,26 +132,34 @@ export function buildGeoTerm(countries: string[], territoryName: string): string
 export function buildRadarQueries(entities: string[], signalTypes: string[], geoTerm: string): RadarQuery[] {
   const queries: RadarQuery[] = [];
   const seenQueryText = new Set<string>();
-  const push = (query: string, entityHint: string) => {
+  const push = (query: string, entityHint: string, topic: "general" | "news") => {
     const trimmed = query.trim();
     if (trimmed && !seenQueryText.has(trimmed) && queries.length < MAX_RADAR_QUERIES) {
       seenQueryText.add(trimmed);
-      queries.push({ query: trimmed, entityHint });
+      queries.push({ query: trimmed, entityHint, topic });
     }
   };
 
   if (entities.length === 0) return [];
 
-  const terms = signalTypes.map((s) => SIGNAL_TYPE_SEARCH_TERMS[s]).filter((t): t is string => !!t);
-  if (terms.length === 0) {
-    for (const entity of entities) push(`"${entity}" news ${geoTerm}`, entity);
+  // Carries each term's originating signalType alongside the search phrase
+  // so the round-robin loop below can decide topic per query -- the query
+  // string itself was already round-robin-blind to signal type; this only
+  // adds the classification needed to choose "general" vs "news".
+  const termEntries = signalTypes
+    .map((s) => (SIGNAL_TYPE_SEARCH_TERMS[s] ? { signalType: s, term: SIGNAL_TYPE_SEARCH_TERMS[s]! } : null))
+    .filter((t): t is { signalType: string; term: string } => t !== null);
+  if (termEntries.length === 0) {
+    // Fallback ("news" the literal search term) is itself a NEWS-LIKE
+    // family (mirrors signal_type "other" above) -- topic "news" here too.
+    for (const entity of entities) push(`"${entity}" news ${geoTerm}`, entity, "news");
     return queries;
   }
 
-  for (let round = 0; round < terms.length && queries.length < MAX_RADAR_QUERIES; round++) {
+  for (let round = 0; round < termEntries.length && queries.length < MAX_RADAR_QUERIES; round++) {
     for (let i = 0; i < entities.length && queries.length < MAX_RADAR_QUERIES; i++) {
-      const term = terms[(i + round) % terms.length];
-      push(`"${entities[i]}" ${term} ${geoTerm}`, entities[i]);
+      const entry = termEntries[(i + round) % termEntries.length]!;
+      push(`"${entities[i]}" ${entry.term} ${geoTerm}`, entities[i], topicForSignalType(entry.signalType));
     }
   }
 
@@ -97,16 +167,43 @@ export function buildRadarQueries(entities: string[], signalTypes: string[], geo
 }
 
 // Stage 6.3: derives a real Tavily `start_date` (YYYY-MM-DD) from
-// lookback_days -- the only formally-documented hard recency constraint
-// Tavily's /search endpoint supports (confirmed against Tavily's own API
-// reference; there is no per-result publish-date field in the response, so
-// individual results can never be verified/rejected client-side -- see
-// discoveryProviders/search.ts). This is real enforcement at the request
-// level, not text stuffed into the query string.
+// lookback_days -- a real, provider-enforced recency constraint at the
+// request level, not text stuffed into the query string. Tavily's own docs
+// describe start_date/end_date as filtering "based on publish date or last
+// updated date," an ambiguity this codebase cannot resolve from its side --
+// which is exactly why this alone is not sufficient for NEWS-LIKE queries.
+// Phase 11.6.1 adds a second, client-side check: Tavily's documented
+// `published_date` field (topic="news" results -- see
+// discoveryProviders/search.ts) is verified per result and a stale/
+// unverifiable one is rejected before persistence (see
+// evaluateNewsRecency below).
 export function computeLookbackStartDate(lookbackDays: number, now: Date = new Date()): string {
   const boundedDays = Math.max(1, Math.floor(lookbackDays));
   const start = new Date(now.getTime() - boundedDays * 86_400_000);
   return start.toISOString().slice(0, 10);
+}
+
+// Phase 11.6.1 Radar recency fix: the hard NEWS-LIKE recency rule, pure and
+// DB-free so it's directly unit-testable (same convention as
+// computeDedupeKey/isValidStatusTransition/computeRequiresValidation
+// above). publishedAt/cutoffStartDate are both YYYY-MM-DD, so a plain
+// string comparison is a correct chronological comparison.
+//   - publishedAt >= cutoff -> admit.
+//   - publishedAt < cutoff -> reject as "stale" (the exact production bug:
+//     an old article that slipped past the request-level start_date
+//     filter, now caught client-side before it's ever interpreted or
+//     persisted).
+//   - publishedAt == null -> reject as "publication-date-unverified". Never
+//     treated as recent -- an unknown date is not evidence of recency.
+// Only ever called for topic:"news" results -- never applied to non-news
+// evidence, which is handled on its own honest terms (see runRadarForConfig
+// below and NEWS_LIKE_SIGNAL_TYPES above).
+export type NewsRecencyDecision = { admit: true } | { admit: false; reason: "stale" | "publication-date-unverified" };
+
+export function evaluateNewsRecency(publishedAt: string | null, cutoffStartDate: string): NewsRecencyDecision {
+  if (!publishedAt) return { admit: false, reason: "publication-date-unverified" };
+  if (publishedAt < cutoffStartDate) return { admit: false, reason: "stale" };
+  return { admit: true };
 }
 
 function normalizeUrl(url: string): string {
@@ -535,15 +632,47 @@ export async function runRadarForConfig(configId: string): Promise<ChannelRadarR
 
   let resultsFound = 0;
   let resultsQualified = 0;
+  // Phase 11.6.1: structured, in-memory-only observability for the hard
+  // news-recency rule -- never persisted (no schema change), logged once as
+  // a run summary below. Lets a stale-news regression (or an unexpected
+  // rise in "publication-date-unverified" rejections -- Tavily's
+  // published_date is documented but optional/best-effort, so some
+  // fraction of genuine news results legitimately omitting it is expected;
+  // see WebSearchResult.publishedAt) be diagnosed from logs alone.
+  let newsResultsAccepted = 0;
+  let newsResultsRejectedStale = 0;
+  let newsResultsRejectedUnverifiedDate = 0;
+  let nonNewsResultsProcessed = 0;
 
   try {
     const seenUrls = new Set<string>();
-    for (const { query, entityHint } of queries) {
-      const results = await searchProvider.search(query, { maxResults: MAX_RESULTS_PER_QUERY, startDate });
+    for (const { query, entityHint, topic } of queries) {
+      const results = await searchProvider.search(query, { maxResults: MAX_RESULTS_PER_QUERY, startDate, topic });
       for (const result of results) {
         if (seenUrls.has(result.url)) continue;
         seenUrls.add(result.url);
         resultsFound++;
+
+        // Hard recency rule (NEWS-LIKE queries only, never applied to
+        // non-news evidence) -- reject before this result is ever
+        // interpreted or persisted. See evaluateNewsRecency above.
+        if (topic === "news") {
+          const decision = evaluateNewsRecency(result.publishedAt, startDate);
+          if (!decision.admit) {
+            if (decision.reason === "publication-date-unverified") newsResultsRejectedUnverifiedDate++;
+            else newsResultsRejectedStale++;
+            logger.info(
+              { configId, url: result.url, entityHint, publishedAt: result.publishedAt, cutoff: startDate, reason: decision.reason },
+              decision.reason === "publication-date-unverified"
+                ? "Channel Radar: publication-date-unverified -- news-topic result has no verifiable publish date and was rejected rather than assumed recent"
+                : "Channel Radar: news-topic result is older than the configured lookback window and was rejected",
+            );
+            continue;
+          }
+          newsResultsAccepted++;
+        } else {
+          nonNewsResultsProcessed++;
+        }
 
         const qualification = await radarAiProvider.qualifySignal({
           entityHint,
@@ -740,6 +869,19 @@ export async function runRadarForConfig(configId: string): Promise<ChannelRadarR
     );
     throw new ChannelRadarRunFailedError(safeMessage);
   }
+
+  logger.info(
+    {
+      configId,
+      resultsFound,
+      resultsQualified,
+      newsResultsAccepted,
+      newsResultsRejectedStale,
+      newsResultsRejectedUnverifiedDate,
+      nonNewsResultsProcessed,
+    },
+    "Channel Radar: run recency enforcement summary",
+  );
 
   return { resultsFound, resultsQualified };
 }

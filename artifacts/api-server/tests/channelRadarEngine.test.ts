@@ -73,6 +73,26 @@ test("buildRadarQueries with entities but no signal types falls back to one gene
   assert.ok(queries.every((q) => q.query.includes("Romania")));
 });
 
+// Phase 11.6.1 Radar recency fix: buildRadarQueries now threads a per-query
+// topic decision -- see channelRadarRecencyGap.test.ts for the full A-N
+// regression suite proving the classification/rejection rules; these two
+// stay here alongside the rest of buildRadarQueries' own tests.
+test("buildRadarQueries with no signal types configured falls back to topic 'news' (the fallback query is itself a generic news search)", () => {
+  const queries = buildRadarQueries(["Microsoft"], [], "Romania");
+  assert.ok(queries.length > 0);
+  assert.ok(queries.every((q) => q.topic === "news"));
+});
+
+test("buildRadarQueries never globally switches Radar to news: a config enabled ONLY for the non-news signal type produces zero news-topic queries", () => {
+  // marketplace_listing is the one genuinely evergreen/directorial family
+  // (see channelRadarEngine.ts's NEWS_LIKE_SIGNAL_TYPES comment) --
+  // reseller_distributor and customer_win are NEWS-LIKE (dated ecosystem
+  // moves), covered explicitly in channelRadarRecencyGap.test.ts's D1/D2.
+  const queries = buildRadarQueries(["Microsoft", "UiPath"], ["marketplace_listing"], "Romania");
+  assert.ok(queries.length > 0);
+  assert.ok(queries.every((q) => q.topic === "general"), `expected every query to be topic:general, got: ${JSON.stringify(queries.map((q) => q.topic))}`);
+});
+
 // Stage 6.3: territory geo-scoping -- the exact correctness gap this fixes
 // (a Romania scan's actual Tavily query previously carried no geographic
 // scope at all).

@@ -1726,7 +1726,10 @@ function ChannelRadarTab() {
                     onChange={(e) => setLocalConfig((prev: any) => ({ ...prev, lookback_days: Number(e.target.value) || 30 }))}
                   />
                   <p className="text-xs text-muted-foreground mt-2">
-                    Enforced as a real search-provider date filter -- Run Radar only searches from this many days ago onward.
+                    Applied as a real search-provider date filter on every query. For news-style signals (acquisitions, partnerships,
+                    funding, hires, launches, events), Radar also verifies each result's actual publish date and discards anything
+                    older than this window or with no verifiable date -- it never guesses. Non-news signals (e.g. reseller/partner
+                    pages, marketplace listings) don't carry a reliable publish date and are shown on their own honest terms.
                   </p>
                 </CardContent>
               </Card>
