@@ -54,6 +54,7 @@
     "test:period-resolution": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/periodResolution.test.ts",
     "test:pam-copilot": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/pamCopilot.test.ts",
     "test:discovery-budget": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryBudget.test.ts",
+    "test:discovery-budget-config": "tsx --test tests/discoveryBudgetConfig.test.ts",
     "test:territory-potential": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/territoryPotential.test.ts",
     "test:discovery-engine": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryEngine.test.ts",
     "test:annual-cascade": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/annualCascade.test.ts",

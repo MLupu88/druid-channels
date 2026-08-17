@@ -17,7 +17,48 @@
 export const MAX_QUERIES_PER_RUN = 12; // matches discoveryEngine's existing MAX_AUTOMATIC_QUERIES ceiling
 export const QUERIES_PER_BATCH = 4;
 export const MAX_BATCHES_PER_RUN = 3; // 3 * 4 = 12, i.e. never more than the existing query ceiling
-export const MAX_CANDIDATES_TO_LLM = 20;
+
+// Recall-fix (first Partner Radar recall fix, low-yield follow-up): a real
+// production run (unique_companies_seen=195) hit this cap at 20 candidate
+// ENTRIES (post-grouping/ranking, see discoveryEngine.ts's Stage 3) well
+// before qualification itself became the bottleneck -- candidates_qualified
+// was 7 of the 20 actually evaluated (35%), not 7 of 195. Raising the pool
+// size increases how many distinct, already-ranked candidates get an AI
+// qualification call; it does not touch qualifyChecks, the mandatory
+// enterpriseAccess/relevantCapability gate, the recruitment-archetype
+// allowlist, evidence caps, dedupe, or persistence -- see discoveryEngine.ts
+// Stage 3/4, both untouched by this change.
+export const DEFAULT_MAX_CANDIDATES_TO_LLM = 50;
+
+// Hard ceiling on top of the configured/default value -- a bad or
+// accidentally huge config value (env typo, extra zero) must never be able
+// to create unbounded per-run LLM fan-out/cost. Chosen as 2x the new
+// default: generous headroom for future tuning without being effectively
+// "no limit."
+export const MAX_CANDIDATES_TO_LLM_CEILING = 100;
+
+// Pure -- resolves the configured qualification-pool size from a raw env
+// string. Exported so tests can exercise every input shape (unset, valid,
+// zero/negative, non-integer, non-numeric, above the ceiling) without
+// mutating process.env or re-importing the module. Never throws: a
+// missing/malformed env var silently falls back to the default, exactly
+// like every other tuning constant in this module -- a config typo must
+// never crash a scan.
+export function resolveMaxCandidatesToLlm(rawEnvValue: string | undefined): number {
+  if (!rawEnvValue) return DEFAULT_MAX_CANDIDATES_TO_LLM;
+  const parsed = Number(rawEnvValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) return DEFAULT_MAX_CANDIDATES_TO_LLM;
+  return Math.min(parsed, MAX_CANDIDATES_TO_LLM_CEILING);
+}
+
+// The value every call site actually uses (discoveryBudget.ts's own
+// decideNextBatch below, and discoveryEngine.ts's Stage 3 candidate-entry
+// selection) -- resolved once at module load, same convention as this
+// module's other hard caps (e.g. index.ts's PORT). Configurable via
+// DISCOVERY_MAX_CANDIDATES_TO_LLM (see .env.example / docker-compose.yml);
+// defaults to DEFAULT_MAX_CANDIDATES_TO_LLM=50 when unset or invalid, never
+// exceeds MAX_CANDIDATES_TO_LLM_CEILING=100 regardless of what's configured.
+export const MAX_CANDIDATES_TO_LLM = resolveMaxCandidatesToLlm(process.env.DISCOVERY_MAX_CANDIDATES_TO_LLM);
 
 // A batch "expands" only while its new-company yield stays healthy;
 // "slowing" sits between the two thresholds instead of a single cliff, so a
