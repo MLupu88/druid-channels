@@ -33,3 +33,4 @@ export * from "./weekly_pam_reports";
 export * from "./discovery_exclusions";
 export * from "./druid_context_sources";
 export * from "./druid_facts";
+export * from "./channel_change_events";

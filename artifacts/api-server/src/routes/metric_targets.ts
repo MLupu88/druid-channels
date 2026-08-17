@@ -163,7 +163,7 @@ router.put("/metric-targets", requireAdmin, async (req, res): Promise<void> => {
 // Admin-only, same as PUT.
 router.delete("/metric-targets/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const deleted = await deleteTarget(id);
+  const deleted = await deleteTarget(id, req.actingUser!.id);
   if (!deleted) {
     res.status(404).json({ error: "Target not found" });
     return;

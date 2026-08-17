@@ -1432,6 +1432,36 @@ paths:
         "401":
           description: Missing or invalid Authorization Bearer service token, or the Channel Chief API is not configured
 
+  /channel-chief/changes:
+    get:
+      operationId: getChannelChiefChanges
+      tags: [channel-chief]
+      summary: Read-only, bounded feed of material business changes (recruitment stage changes, partner relationship status/owner/lifecycle events, metric target create/update/delete, opportunity create/material-field updates), normalized into one stable shape for Aniri/Channel Chief to later turn into leadership notifications. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as GET /channel-chief/snapshot -- never normal UI session auth. Never every technical write -- only changes that clearly affect commercial/operational interpretation; a no-op save (identical values re-submitted) never appears here. This endpoint is evidence infrastructure only -- it does not send notifications, call an LLM, or trigger anything; Aniri reads it and decides what to do with it entirely outside this codebase.
+      parameters:
+        - name: since
+          in: query
+          description: ISO timestamp. Only changes that occurred strictly after this instant are returned. Omit to get the most recent changes overall (still bounded by limit -- never a full-table dump).
+          schema:
+            type: ["string", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: ["number", "null"]
+          description: Max rows to return (default 50, max 200).
+      responses:
+        "200":
+          description: Material business changes, most recent first (deterministic ordering -- ties broken by id), bounded by limit
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelChangeFeedItem"
+        "400":
+          description: Invalid since timestamp
+        "401":
+          description: Missing or invalid Authorization Bearer service token, or the Channel Chief API is not configured
+
   /connections:
     get:
       operationId: listConnections
@@ -6168,6 +6198,54 @@ components:
           type: array
           items:
             type: string
+
+    ChannelChangeEntityType:
+      type: string
+      enum: [recruitment, partner_relationship, metric_target, opportunity]
+
+    # Phase 11.6.1: normalized shape for GET /channel-chief/changes -- merges
+    # partner_recruitment_history, partner_relationship_history, and the new
+    # channel_change_events table (metric_target/opportunity) into one
+    # stable read model. event_type is deliberately a plain string, not an
+    # enum: it's normalized from three independently-evolving source
+    # vocabularies (recruitment: recruitment_created/stage_changed;
+    # relationship: created/status_changed/owner_changed/reactivated/closed/
+    # recruitment_signed; channel_change_events: created/updated/deleted),
+    # and a single combined enum would need to grow every time any one of
+    # those three sources gains a value.
+    ChannelChangeFeedItem:
+      type: object
+      required: [id, entity_type, entity_id, event_type, actor_user_id, actor_name, occurred_at, old_values, new_values, context]
+      properties:
+        id:
+          type: string
+          description: The underlying source row's own id (partner_recruitment_history/partner_relationship_history/channel_change_events) -- stable, never re-derived.
+        entity_type:
+          $ref: "#/components/schemas/ChannelChangeEntityType"
+        entity_id:
+          type: string
+          description: The recruitment/relationship/metric_target/opportunity id this event is about.
+        event_type:
+          type: string
+        actor_user_id:
+          type: ["string", "null"]
+        actor_name:
+          type: ["string", "null"]
+        occurred_at:
+          type: string
+          description: The genuine business-event time (never an audit-write timestamp that happens to differ from it) -- see this endpoint's own summary.
+        old_values:
+          type: ["object", "null"]
+          additionalProperties: true
+          description: Only the fields that actually changed (or, for recruitment/relationship, the prior stage/status/owner) -- never a full snapshot, and null on a creation event.
+        new_values:
+          type: ["object", "null"]
+          additionalProperties: true
+          description: Only the fields that actually changed -- null on a deletion event.
+        context:
+          type: ["object", "null"]
+          additionalProperties: true
+          description: Small, display-oriented names (e.g. company_name, territory_name, pam_name) -- enough to write a useful leadership notification without a second lookup.
 
     # ---- Phase 7: weekly PAM reporting -----------------------------------
     # Mirrors lib/db/src/reporting/weeklyPamReportContract.ts's

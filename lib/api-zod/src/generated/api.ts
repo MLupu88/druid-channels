@@ -2216,6 +2216,29 @@ export const GetChannelChiefSnapshotResponse = zod.object({
 
 
 /**
+ * @summary Read-only, bounded feed of material business changes (recruitment stage changes, partner relationship status/owner/lifecycle events, metric target create/update/delete, opportunity create/material-field updates), normalized into one stable shape for Aniri/Channel Chief to later turn into leadership notifications. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as GET /channel-chief/snapshot -- never normal UI session auth. Never every technical write -- only changes that clearly affect commercial/operational interpretation; a no-op save (identical values re-submitted) never appears here. This endpoint is evidence infrastructure only -- it does not send notifications, call an LLM, or trigger anything; Aniri reads it and decides what to do with it entirely outside this codebase.
+ */
+export const GetChannelChiefChangesQueryParams = zod.object({
+  "since": zod.coerce.string().nullish().describe('ISO timestamp. Only changes that occurred strictly after this instant are returned. Omit to get the most recent changes overall (still bounded by limit -- never a full-table dump).'),
+  "limit": zod.coerce.number().nullish().describe('Max rows to return (default 50, max 200).')
+})
+
+export const GetChannelChiefChangesResponseItem = zod.object({
+  "id": zod.string().describe('The underlying source row\'s own id (partner_recruitment_history\/partner_relationship_history\/channel_change_events) -- stable, never re-derived.'),
+  "entity_type": zod.enum(['recruitment', 'partner_relationship', 'metric_target', 'opportunity']),
+  "entity_id": zod.string().describe('The recruitment\/relationship\/metric_target\/opportunity id this event is about.'),
+  "event_type": zod.string(),
+  "actor_user_id": zod.string().nullable(),
+  "actor_name": zod.string().nullable(),
+  "occurred_at": zod.string().describe('The genuine business-event time (never an audit-write timestamp that happens to differ from it) -- see this endpoint\'s own summary.'),
+  "old_values": zod.record(zod.string(), zod.unknown()).nullable().describe('Only the fields that actually changed (or, for recruitment\/relationship, the prior stage\/status\/owner) -- never a full snapshot, and null on a creation event.'),
+  "new_values": zod.record(zod.string(), zod.unknown()).nullable().describe('Only the fields that actually changed -- null on a deletion event.'),
+  "context": zod.record(zod.string(), zod.unknown()).nullable().describe('Small, display-oriented names (e.g. company_name, territory_name, pam_name) -- enough to write a useful leadership notification without a second lookup.')
+})
+export const GetChannelChiefChangesResponse = zod.array(GetChannelChiefChangesResponseItem)
+
+
+/**
  * @summary List configured integration connections (HubSpot, web search, web reader, AI) with live status
  */
 export const ListConnectionsResponseItem = zod.object({

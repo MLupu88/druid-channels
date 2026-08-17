@@ -13,8 +13,8 @@
 // the network (see services/fx.ts).
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { eq, and } from "drizzle-orm";
-import { db, pool, companiesTable, territoriesTable, usersTable, partnerOpportunitiesTable, metricTargetsTable } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
+import { db, pool, companiesTable, territoriesTable, usersTable, partnerOpportunitiesTable, metricTargetsTable, channelChangeEventsTable } from "@workspace/db";
 import { computeMetric } from "../src/services/kpiService";
 import { getAnnualCascade, upsertAnnualTarget, getAnnualTarget } from "../src/services/targetService";
 
@@ -82,6 +82,12 @@ after(async () => {
       .where(and(eq(metricTargetsTable.metricKey, metricKey), eq(metricTargetsTable.year, year), eq(metricTargetsTable.period, "annual")));
   }
   for (const id of createdCompanyIds) await db.delete(companiesTable).where(eq(companiesTable.id, id));
+  if (createdUserIds.length > 0) {
+    // upsertAnnualTarget records a channel_change_events row with actor_user_id
+    // set to the fixture user; that FK blocks deleting the user below unless
+    // this test's own audit rows are cleared first.
+    await db.delete(channelChangeEventsTable).where(inArray(channelChangeEventsTable.actorUserId, createdUserIds));
+  }
   for (const id of createdUserIds) await db.delete(usersTable).where(eq(usersTable.id, id));
   for (const id of createdTerritoryIds) await db.delete(territoriesTable).where(eq(territoriesTable.id, id));
   await pool.end();

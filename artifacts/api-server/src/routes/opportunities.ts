@@ -21,6 +21,7 @@ import {
   ForbiddenScopeError,
   type ActingUser,
 } from "../services/authz";
+import { recordChannelChangeEvent } from "../services/channelChangeEventsService";
 
 const router: IRouter = Router();
 
@@ -42,6 +43,128 @@ const SOURCE_EXTERNAL_UNIQUE_CONSTRAINT = "partner_opportunities_source_external
 export function isSourceExternalUniqueViolation(err: unknown): boolean {
   const cause = (err as { cause?: { code?: string; constraint?: string } } | undefined)?.cause;
   return cause?.code === "23505" && cause?.constraint === SOURCE_EXTERNAL_UNIQUE_CONSTRAINT;
+}
+
+// Aniri / Channel Chief evidence infrastructure: the explicit, narrow set of
+// fields whose change is commercially material -- deal identity/ownership
+// (company, territory, assigned user, attribution type), deal economics
+// (status, deal value, currency, credit value/date), and the dates that
+// govern reporting-period/commercial interpretation (opportunity_date,
+// expected_close_date, closed_at). customer_name is included -- it
+// identifies WHO the commercial counterpart is, not just internal metadata.
+// Deliberately EXCLUDED: name (a relabeling, not a commercial fact), note
+// (free-text commentary), source_system/external_id/source_updated_at/
+// last_synced_at (sync bookkeeping, not a business decision a human made).
+// A PATCH that only touches excluded fields is a real, saved write -- it
+// just never rises to a "material change" Aniri/Irina should hear about.
+function materialOpportunityFields(row: typeof partnerOpportunitiesTable.$inferSelect): Record<string, unknown> {
+  return {
+    company_id: row.companyId,
+    territory_id: row.territoryId,
+    assigned_user_id: row.assignedUserId,
+    attribution_type: row.attributionType,
+    status: row.status,
+    deal_value: Number(row.dealValue),
+    currency: row.currency,
+    opportunity_date: row.opportunityDate,
+    expected_close_date: row.expectedCloseDate,
+    closed_at: row.closedAt ? row.closedAt.toISOString() : null,
+    credit_value: row.creditValue !== null ? Number(row.creditValue) : null,
+    credit_date: row.creditDate,
+    customer_name: row.customerName,
+  };
+}
+
+// Pure, DB-free: compares the two ALREADY-normalized material-field maps
+// above and returns only the keys whose value actually differs -- never a
+// full snapshot of every material field, and never a result at all (null)
+// when nothing material changed, so a PATCH that only edits (e.g.) note or
+// name never produces a fabricated "material change" event.
+export function diffMaterialOpportunityFields(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): { oldValues: Record<string, unknown>; newValues: Record<string, unknown> } | null {
+  const oldValues: Record<string, unknown> = {};
+  const newValues: Record<string, unknown> = {};
+  for (const key of Object.keys(after)) {
+    if (before[key] !== after[key]) {
+      oldValues[key] = before[key];
+      newValues[key] = after[key];
+    }
+  }
+  return Object.keys(newValues).length > 0 ? { oldValues, newValues } : null;
+}
+
+// Same "run either standalone or embedded in a caller's own transaction"
+// pattern as partnerRelationshipService.ts/channelChangeEventsService.ts's
+// Executor type. Exported (not inlined in the route handlers) specifically
+// so the atomic mutation+event behavior is directly unit-testable against a
+// real DB, without an HTTP test harness -- see
+// tests/channelChangeFeed.test.ts.
+type Db = typeof db;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type Executor = Db | Tx;
+
+/** Inserts an opportunity and its channel_change_events "created" row atomically. A creation is always material. */
+export async function applyOpportunityCreate(
+  executor: Executor,
+  values: typeof partnerOpportunitiesTable.$inferInsert,
+): Promise<typeof partnerOpportunitiesTable.$inferSelect> {
+  const [row] = await executor.insert(partnerOpportunitiesTable).values(values).returning();
+  await recordChannelChangeEvent(executor, {
+    entityType: "opportunity",
+    entityId: row!.id,
+    eventType: "created",
+    actorUserId: values.createdByUserId ?? null,
+    oldValues: null,
+    newValues: materialOpportunityFields(row!),
+    // company_id/territory_id are duplicated into metadata (in addition to
+    // already being in new_values here) so channelChangeFeedService.ts can
+    // resolve company_name/territory_name for this entity from every one of
+    // its events uniformly -- see the "updated" branch below for why that
+    // matters.
+    metadata: { name: row!.name, company_id: row!.companyId, territory_id: row!.territoryId },
+  });
+  return row!;
+}
+
+/**
+ * Updates an opportunity and, only when at least one material field
+ * actually changed, records a channel_change_events "updated" row -- both
+ * atomically. A PATCH touching only non-material fields (note, name,
+ * sync bookkeeping) still saves normally but never records an event.
+ */
+export async function applyOpportunityUpdate(
+  executor: Executor,
+  existing: typeof partnerOpportunitiesTable.$inferSelect,
+  updates: Partial<typeof partnerOpportunitiesTable.$inferInsert>,
+  actorUserId: string,
+): Promise<typeof partnerOpportunitiesTable.$inferSelect> {
+  const [row] = await executor.update(partnerOpportunitiesTable).set(updates).where(eq(partnerOpportunitiesTable.id, existing.id)).returning();
+
+  const diff = diffMaterialOpportunityFields(materialOpportunityFields(existing), materialOpportunityFields(row!));
+  if (diff) {
+    await recordChannelChangeEvent(executor, {
+      entityType: "opportunity",
+      entityId: row!.id,
+      eventType: "updated",
+      actorUserId,
+      oldValues: diff.oldValues,
+      newValues: diff.newValues,
+      // company_id/territory_id are stable identity context, not part of
+      // the "what changed" diff -- an update that only touches e.g. status
+      // or deal_value never puts them in old_values/new_values (diff only
+      // ever contains the fields that actually changed), so without this
+      // the feed's context.company_name/territory_name would silently go
+      // missing for the common case of an update that doesn't reassign the
+      // opportunity. Always populated here (not conditionally), same as
+      // the "created" branch above, so every opportunity event resolves
+      // context the same way regardless of which fields changed.
+      metadata: { name: row!.name, company_id: row!.companyId, territory_id: row!.territoryId },
+    });
+  }
+
+  return row!;
 }
 
 // Batch-fetched company/territory/user name lookups -- same pattern as
@@ -208,11 +331,13 @@ router.post("/opportunities", requireAuth, async (req, res): Promise<void> => {
     throw err;
   }
 
+  // Phase 11.6.1: the insert and its channel_change_events "created" row are
+  // atomic -- see applyOpportunityCreate above (same convention as
+  // targetService.ts's upsertTarget).
   let created: typeof partnerOpportunitiesTable.$inferSelect;
   try {
-    [created] = await db
-      .insert(partnerOpportunitiesTable)
-      .values({
+    created = await db.transaction((tx) =>
+      applyOpportunityCreate(tx, {
         name: data.name,
         companyId: data.company_id,
         territoryId: data.territory_id,
@@ -232,9 +357,8 @@ router.post("/opportunities", requireAuth, async (req, res): Promise<void> => {
         externalId: data.external_id ?? null,
         sourceUpdatedAt: data.source_updated_at ? new Date(data.source_updated_at) : null,
         createdByUserId: actingUser.id,
-      })
-      .returning()
-      .then((rows) => rows as [typeof partnerOpportunitiesTable.$inferSelect]);
+      }),
+    );
   } catch (err) {
     // Guards partner_opportunities_source_external_unique specifically (see
     // schema): a repeat import upload for the same source_system+external_id
@@ -317,7 +441,9 @@ router.patch("/opportunities/:id", requireAuth, async (req, res): Promise<void> 
   if (data.external_id !== undefined) updates.externalId = data.external_id;
   if (data.source_updated_at !== undefined) updates.sourceUpdatedAt = data.source_updated_at ? new Date(data.source_updated_at) : null;
 
-  const [updated] = await db.update(partnerOpportunitiesTable).set(updates).where(eq(partnerOpportunitiesTable.id, id)).returning();
+  // Phase 11.6.1: the update and its conditional channel_change_events
+  // "updated" row are atomic -- see applyOpportunityUpdate above.
+  const updated = await db.transaction((tx) => applyOpportunityUpdate(tx, existing, updates, actingUser.id));
 
   res.json(UpdateOpportunityResponse.parse((await shapeRows([updated]))[0]));
 });

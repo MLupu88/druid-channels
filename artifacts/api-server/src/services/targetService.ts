@@ -8,6 +8,9 @@ import { metricTargetsTable, territoriesTable, usersTable, partnerOpportunitiesT
 import { eq, and, isNull, inArray, sql } from "drizzle-orm";
 import { METRIC_BY_KEY, TARGETABLE_METRIC_KEYS, isTargetableMetric, splitPeriodKey, joinPeriodKey, resolvePeriodRange } from "./kpiRegistry";
 import { computeMetric, buildUsdRateMap, usdValueOf } from "./kpiService";
+import { recordChannelChangeEvent } from "./channelChangeEventsService";
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class TargetNotTargetableError extends Error {}
 export class TargetInvalidPeriodError extends Error {}
@@ -46,9 +49,61 @@ async function assertPamOwnsTerritory(territoryId: string, pamUserId: string): P
   return { territoryName: territory.name, pamName: pam.name };
 }
 
+// The only two fields a target upsert can actually change (targetValue,
+// note) -- everything else on the row is identity (metric_key/year/period/
+// pam_user_id/territory_id, which the unique index guarantees can never
+// differ between "before" and "after" for the same upsert) or audit
+// metadata (created_by/updated_by/timestamps), neither of which belongs in
+// a "what changed" diff. Exported so this exact business-value shape is
+// independently unit-testable.
+export interface TargetMaterialValues {
+  target_value: number;
+  note: string | null;
+}
+
+function materialTargetValues(row: Pick<MetricTarget, "targetValue" | "note">): TargetMaterialValues {
+  return { target_value: Number(row.targetValue), note: row.note };
+}
+
+// Pure, DB-free: null before -> always material (a target now exists where
+// none did, old_values null). Otherwise returns null (no event) when
+// target_value AND note are both unchanged -- an upsert that re-saves the
+// exact same values (e.g. a no-op form submit) must never fabricate a
+// "material change" event for Aniri to later notify Irina about.
+export function diffTargetValues(
+  before: TargetMaterialValues | null,
+  after: TargetMaterialValues,
+): { oldValues: Record<string, unknown> | null; newValues: Record<string, unknown> } | null {
+  if (!before) return { oldValues: null, newValues: { ...after } };
+  if (before.target_value === after.target_value && before.note === after.note) return null;
+  return { oldValues: { ...before }, newValues: { ...after } };
+}
+
+// Concurrency: guarded by a transaction-scoped Postgres advisory lock keyed
+// on the exact upsert identity (metric_key+year+period+pam_user_id+
+// territory_id) -- same pattern as discoveryEngine.ts's
+// resolveOrCreateCanonicalCompany. The pre-image SELECT below has nothing
+// to lock when no row exists yet, so without this, two concurrent upserts
+// for a brand-new key could both see "no existing row" under READ
+// COMMITTED; the loser's audit event would then be falsely recorded as
+// "created" with old_values null even though the winner's row (and its own
+// prior values) already exist. The lock forces the second transaction to
+// block until the first commits, so its own SELECT always sees the
+// winner's already-committed row -- old_values/eventType stay truthful,
+// and the metric_target_*_unique constraint itself is untouched.
+async function lockTargetUpsertKey(tx: Tx, metricKey: string, year: number, period: string, pamUserId: string | null, territoryId: string | null): Promise<void> {
+  const key = `metric_target:${metricKey}:${year}:${period}:${pamUserId ?? ""}:${territoryId ?? ""}`;
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key})::bigint)`);
+}
+
 // Single atomic upsert (onConflictDoUpdate on the canonical
 // metric_key+period+pam_user_id+territory_id uniqueness) -- same
-// no-race-window convention used throughout this codebase.
+// no-race-window convention used throughout this codebase. Phase 11.6.1:
+// the pre-image SELECT, the upsert, and the conditional channel_change_events
+// insert now all run inside one transaction, so the business write and its
+// change event are atomic -- a failure anywhere rolls both back together,
+// and a reader of channel_change_events can never observe a target write
+// that didn't actually happen (or vice versa).
 export async function upsertTarget(input: UpsertTargetInput): Promise<MetricTarget> {
   if (!isTargetableMetric(input.metricKey)) {
     throw new TargetNotTargetableError(`"${input.metricKey}" is not a targetable metric.`);
@@ -71,29 +126,85 @@ export async function upsertTarget(input: UpsertTargetInput): Promise<MetricTarg
     updatedAt: now,
   };
 
-  const [saved] = await db
-    .insert(metricTargetsTable)
-    .values(values)
-    .onConflictDoUpdate({
-      target: [
-        metricTargetsTable.metricKey,
-        metricTargetsTable.year,
-        metricTargetsTable.period,
-        metricTargetsTable.pamUserId,
-        metricTargetsTable.territoryId,
-      ],
-      set: { targetValue: values.targetValue, note: values.note, updatedByUserId: values.updatedByUserId, updatedAt: values.updatedAt },
-    })
-    .returning();
+  return db.transaction(async (tx) => {
+    await lockTargetUpsertKey(tx, values.metricKey, values.year, values.period, values.pamUserId, values.territoryId);
 
-  return saved!;
+    const [existing] = await tx
+      .select()
+      .from(metricTargetsTable)
+      .where(
+        and(
+          eq(metricTargetsTable.metricKey, values.metricKey),
+          eq(metricTargetsTable.year, values.year),
+          eq(metricTargetsTable.period, values.period),
+          eq(metricTargetsTable.pamUserId, values.pamUserId),
+          eq(metricTargetsTable.territoryId, values.territoryId),
+        ),
+      );
+
+    const [saved] = await tx
+      .insert(metricTargetsTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [
+          metricTargetsTable.metricKey,
+          metricTargetsTable.year,
+          metricTargetsTable.period,
+          metricTargetsTable.pamUserId,
+          metricTargetsTable.territoryId,
+        ],
+        set: { targetValue: values.targetValue, note: values.note, updatedByUserId: values.updatedByUserId, updatedAt: values.updatedAt },
+      })
+      .returning();
+
+    const diff = diffTargetValues(existing ? materialTargetValues(existing) : null, materialTargetValues(saved!));
+    if (diff) {
+      await recordChannelChangeEvent(tx, {
+        entityType: "metric_target",
+        entityId: saved!.id,
+        eventType: existing ? "updated" : "created",
+        actorUserId: input.actingUserId,
+        occurredAt: now,
+        oldValues: diff.oldValues,
+        newValues: diff.newValues,
+        metadata: { metric_key: values.metricKey, year: values.year, period: values.period, pam_user_id: values.pamUserId, territory_id: values.territoryId },
+      });
+    }
+
+    return saved!;
+  });
 }
 
-export async function deleteTarget(id: string): Promise<MetricTarget | null> {
-  const [existing] = await db.select().from(metricTargetsTable).where(eq(metricTargetsTable.id, id));
-  if (!existing) return null;
-  await db.delete(metricTargetsTable).where(eq(metricTargetsTable.id, id));
-  return existing;
+// A single DELETE ... RETURNING, not a separate pre-image SELECT followed
+// by a DELETE: Postgres row-level locking makes this atomically race-safe
+// on its own -- if two callers race to delete the same id, only the
+// statement that actually removes the row gets rows back from RETURNING.
+// The loser's DELETE affects zero rows (the row is already gone by the
+// time it runs), so `deleted` is undefined here and it correctly reports
+// "not found" (null) rather than false success, and never records a
+// second, duplicate "deleted" channel_change_events row for a delete that
+// didn't actually happen.
+export async function deleteTarget(id: string, actingUserId: string): Promise<MetricTarget | null> {
+  return db.transaction(async (tx) => {
+    const [deleted] = await tx.delete(metricTargetsTable).where(eq(metricTargetsTable.id, id)).returning();
+    if (!deleted) return null;
+    await recordChannelChangeEvent(tx, {
+      entityType: "metric_target",
+      entityId: id,
+      eventType: "deleted",
+      actorUserId: actingUserId,
+      oldValues: { ...materialTargetValues(deleted) },
+      newValues: null,
+      metadata: {
+        metric_key: deleted.metricKey,
+        year: deleted.year,
+        period: deleted.period,
+        pam_user_id: deleted.pamUserId,
+        territory_id: deleted.territoryId,
+      },
+    });
+    return deleted;
+  });
 }
 
 export interface TeamTargetRow {
@@ -238,17 +349,48 @@ export async function upsertAnnualTarget(input: UpsertAnnualTargetInput): Promis
     updatedAt: now,
   };
 
-  const [saved] = await db
-    .insert(metricTargetsTable)
-    .values(values)
-    .onConflictDoUpdate({
-      target: [metricTargetsTable.metricKey, metricTargetsTable.year],
-      targetWhere: sql`${metricTargetsTable.pamUserId} is null and ${metricTargetsTable.territoryId} is null and ${metricTargetsTable.period} = 'annual'`,
-      set: { targetValue: values.targetValue, note: values.note, updatedByUserId: values.updatedByUserId, updatedAt: values.updatedAt },
-    })
-    .returning();
+  return db.transaction(async (tx) => {
+    await lockTargetUpsertKey(tx, values.metricKey, values.year, "annual", null, null);
 
-  return saved!;
+    const [existing] = await tx
+      .select()
+      .from(metricTargetsTable)
+      .where(
+        and(
+          eq(metricTargetsTable.metricKey, values.metricKey),
+          eq(metricTargetsTable.year, values.year),
+          eq(metricTargetsTable.period, "annual"),
+          isNull(metricTargetsTable.pamUserId),
+          isNull(metricTargetsTable.territoryId),
+        ),
+      );
+
+    const [saved] = await tx
+      .insert(metricTargetsTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [metricTargetsTable.metricKey, metricTargetsTable.year],
+        targetWhere: sql`${metricTargetsTable.pamUserId} is null and ${metricTargetsTable.territoryId} is null and ${metricTargetsTable.period} = 'annual'`,
+        set: { targetValue: values.targetValue, note: values.note, updatedByUserId: values.updatedByUserId, updatedAt: values.updatedAt },
+      })
+      .returning();
+
+    const diff = diffTargetValues(existing ? materialTargetValues(existing) : null, materialTargetValues(saved!));
+    if (diff) {
+      await recordChannelChangeEvent(tx, {
+        entityType: "metric_target",
+        entityId: saved!.id,
+        eventType: existing ? "updated" : "created",
+        actorUserId: input.actingUserId,
+        occurredAt: now,
+        oldValues: diff.oldValues,
+        newValues: diff.newValues,
+        metadata: { metric_key: values.metricKey, year: values.year, period: "annual", pam_user_id: null, territory_id: null },
+      });
+    }
+
+    return saved!;
+  });
 }
 
 export async function getAnnualTarget(metricKey: string, year: number): Promise<MetricTarget | null> {

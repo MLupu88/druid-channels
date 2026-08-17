@@ -58,6 +58,8 @@
     "test:discovery-engine": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/discoveryEngine.test.ts",
     "test:annual-cascade": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/annualCascade.test.ts",
     "test:annual-cascade-allocation": "tsx --test tests/annualCascadeAllocation.test.ts",
+    "test:channel-change-events-pure": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/channelChangeEventsPure.test.ts",
+    "test:channel-change-feed": "tsx --test tests/channelChangeFeed.test.ts",
     "test:partner-opportunities": "tsx --test tests/partnerOpportunities.test.ts",
     "test:opportunities-authz": "tsx --test tests/opportunitiesAuthz.test.ts",
     "test:opportunities-import-duplicate-detection": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/opportunitiesImportDuplicateDetection.test.ts",

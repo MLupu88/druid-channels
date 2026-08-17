@@ -112,3 +112,27 @@ test("routes/channel_chief.ts never imports a DeepSeek/AI provider module (no LL
   const source = readFileSync(path.join(SRC_DIR, "routes/channel_chief.ts"), "utf8");
   assert.ok(!AI_PROVIDER_PATTERN.test(source), "The Channel Chief route must never call an AI provider directly.");
 });
+
+// Phase 11.6.1: GET /channel-chief/changes (the material-change feed) must
+// use the exact same requireChannelChiefToken machine-to-machine auth as
+// the snapshot route -- never requireAuth/requireAdmin's human session
+// path. Structural, source-text check (same convention as the two AI
+// provider guards above) -- there is no HTTP test harness in this repo to
+// exercise the route end to end, so this proves the wiring directly.
+test("routes/channel_chief.ts: GET /channel-chief/changes is registered with requireChannelChiefToken, not human session auth", () => {
+  const source = readFileSync(path.join(SRC_DIR, "routes/channel_chief.ts"), "utf8");
+  const routeMatch = source.match(/router\.get\(\s*["']\/channel-chief\/changes["']\s*,\s*([^,]+),/);
+  assert.ok(routeMatch, "expected to find the GET /channel-chief/changes route registration");
+  assert.equal(routeMatch![1].trim(), "requireChannelChiefToken");
+  assert.ok(!/from ["']\.\.\/middleware\/auth["']/.test(source), "the Channel Chief route file must never import human session auth (middleware/auth.ts)");
+});
+
+// The feed's write side (channelChangeEventsService.ts, targetService.ts,
+// routes/opportunities.ts) also has no notion of a human session -- actors
+// are recorded as plain user ids, and the read side never re-derives
+// permissions from them. This guards against a future change accidentally
+// wiring requireAuth into the Channel Chief surface.
+test("services/channelChangeFeedService.ts is DB-read-only: it never imports db.insert/update/delete", () => {
+  const source = readFileSync(path.join(SRC_DIR, "services/channelChangeFeedService.ts"), "utf8");
+  assert.ok(!/db\.(insert|update|delete)/.test(source), "the Channel Chief change feed must be strictly read-only.");
+});

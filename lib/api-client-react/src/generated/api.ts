@@ -30,6 +30,7 @@ import type {
   Campaign,
   CampaignEditInput,
   CampaignInput,
+  ChannelChangeFeedItem,
   ChannelChiefSnapshot,
   ChannelRadarConfig,
   ChannelRadarSignal,
@@ -59,6 +60,7 @@ import type {
   GetAiChannelBriefParams,
   GetAnnualCascadeParams,
   GetAnnualTargetParams,
+  GetChannelChiefChangesParams,
   GetChannelChiefSnapshotParams,
   GetChannelRadarSummaryParams,
   GetHeadOfChannelsKpisParams,
@@ -4280,6 +4282,90 @@ export function useGetChannelChiefSnapshot<TData = Awaited<ReturnType<typeof get
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetChannelChiefSnapshotQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetChannelChiefChangesUrl = (params?: GetChannelChiefChangesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/channel-chief/changes?${stringifiedParams}` : `/api/channel-chief/changes`
+}
+
+/**
+ * @summary Read-only, bounded feed of material business changes (recruitment stage changes, partner relationship status/owner/lifecycle events, metric target create/update/delete, opportunity create/material-field updates), normalized into one stable shape for Aniri/Channel Chief to later turn into leadership notifications. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as GET /channel-chief/snapshot -- never normal UI session auth. Never every technical write -- only changes that clearly affect commercial/operational interpretation; a no-op save (identical values re-submitted) never appears here. This endpoint is evidence infrastructure only -- it does not send notifications, call an LLM, or trigger anything; Aniri reads it and decides what to do with it entirely outside this codebase.
+ */
+export const getChannelChiefChanges = async (params?: GetChannelChiefChangesParams, options?: Parameters<typeof customFetch>[1]): Promise<ChannelChangeFeedItem[]> => {
+
+  return customFetch<ChannelChangeFeedItem[]>(getGetChannelChiefChangesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChannelChiefChangesQueryKey = (params?: GetChannelChiefChangesParams,) => {
+    return [
+    `/api/channel-chief/changes`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetChannelChiefChangesQueryOptions = <TData = Awaited<ReturnType<typeof getChannelChiefChanges>>, TError = ErrorType<void>>(params?: GetChannelChiefChangesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelChiefChanges>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChannelChiefChangesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannelChiefChanges>>> = ({ signal }) => getChannelChiefChanges(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChannelChiefChanges>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChannelChiefChangesQueryResult = NonNullable<Awaited<ReturnType<typeof getChannelChiefChanges>>>
+export type GetChannelChiefChangesQueryError = ErrorType<void>
+
+
+/**
+ * @summary Read-only, bounded feed of material business changes (recruitment stage changes, partner relationship status/owner/lifecycle events, metric target create/update/delete, opportunity create/material-field updates), normalized into one stable shape for Aniri/Channel Chief to later turn into leadership notifications. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as GET /channel-chief/snapshot -- never normal UI session auth. Never every technical write -- only changes that clearly affect commercial/operational interpretation; a no-op save (identical values re-submitted) never appears here. This endpoint is evidence infrastructure only -- it does not send notifications, call an LLM, or trigger anything; Aniri reads it and decides what to do with it entirely outside this codebase.
+ */
+
+export function useGetChannelChiefChanges<TData = Awaited<ReturnType<typeof getChannelChiefChanges>>, TError = ErrorType<void>>(
+ params?: GetChannelChiefChangesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelChiefChanges>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChannelChiefChangesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

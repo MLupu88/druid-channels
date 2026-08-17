@@ -3,10 +3,11 @@ import { Router, type IRouter } from "express";
 // .agents/memory/orval-codegen-flow.md): the runtime zod schema is named
 // after the operationId (getChannelChiefSnapshot -> GetChannelChiefSnapshotResponse),
 // not the OpenAPI component schema name (ChannelChiefSnapshot).
-import { GetChannelChiefSnapshotResponse } from "@workspace/api-zod";
+import { GetChannelChiefSnapshotResponse, GetChannelChiefChangesQueryParams, GetChannelChiefChangesResponse } from "@workspace/api-zod";
 import { requireChannelChiefToken } from "../middleware/channelChiefAuth";
 import { splitPeriodKey, resolvePeriodKey } from "../services/kpiRegistry";
 import { getChannelChiefSnapshot } from "../services/channelChiefContextService";
+import { getChannelChangeFeed } from "../services/channelChangeFeedService";
 import { FxUnavailableError } from "../services/fx";
 
 const router: IRouter = Router();
@@ -40,6 +41,36 @@ router.get("/channel-chief/snapshot", requireChannelChiefToken, async (req, res)
   }
 
   res.json(GetChannelChiefSnapshotResponse.parse(snapshot));
+});
+
+// Phase 11.6.1: evidence infrastructure only -- read-only, normalized feed
+// of material business changes (see channelChangeFeedService.ts's own
+// header comment for the full source list and timestamp semantics). Same
+// requireChannelChiefToken machine-to-machine auth as the snapshot route
+// above; never normal UI session auth, never req.actingUser. Deliberately
+// does NOT send notifications, call an LLM, or touch Telegram/OpenClaw/
+// scheduling -- Aniri reads this feed and decides what to do with it
+// entirely outside this codebase, wired up in a separate change once this
+// contract is stable.
+router.get("/channel-chief/changes", requireChannelChiefToken, async (req, res): Promise<void> => {
+  const parsedQuery = GetChannelChiefChangesQueryParams.safeParse(req.query);
+  if (!parsedQuery.success) {
+    res.status(400).json({ error: parsedQuery.error.message });
+    return;
+  }
+
+  let since: Date | undefined;
+  if (parsedQuery.data.since) {
+    const parsedSince = new Date(parsedQuery.data.since);
+    if (Number.isNaN(parsedSince.getTime())) {
+      res.status(400).json({ error: `Invalid since timestamp: "${parsedQuery.data.since}". Expected an ISO 8601 timestamp.` });
+      return;
+    }
+    since = parsedSince;
+  }
+
+  const feed = await getChannelChangeFeed({ since, limit: parsedQuery.data.limit });
+  res.json(GetChannelChiefChangesResponse.parse(feed));
 });
 
 export default router;

@@ -2924,6 +2924,64 @@ export interface ChannelChiefSnapshot {
   data_quality_notes: string[];
 }
 
+export type ChannelChangeEntityType = typeof ChannelChangeEntityType[keyof typeof ChannelChangeEntityType];
+
+
+export const ChannelChangeEntityType = {
+  recruitment: 'recruitment',
+  partner_relationship: 'partner_relationship',
+  metric_target: 'metric_target',
+  opportunity: 'opportunity',
+} as const;
+
+/**
+ * Only the fields that actually changed (or, for recruitment/relationship, the prior stage/status/owner) -- never a full snapshot, and null on a creation event.
+ * @nullable
+ */
+export type ChannelChangeFeedItemOldValues = { [key: string]: unknown } | null;
+
+/**
+ * Only the fields that actually changed -- null on a deletion event.
+ * @nullable
+ */
+export type ChannelChangeFeedItemNewValues = { [key: string]: unknown } | null;
+
+/**
+ * Small, display-oriented names (e.g. company_name, territory_name, pam_name) -- enough to write a useful leadership notification without a second lookup.
+ * @nullable
+ */
+export type ChannelChangeFeedItemContext = { [key: string]: unknown } | null;
+
+export interface ChannelChangeFeedItem {
+  /** The underlying source row's own id (partner_recruitment_history/partner_relationship_history/channel_change_events) -- stable, never re-derived. */
+  id: string;
+  entity_type: ChannelChangeEntityType;
+  /** The recruitment/relationship/metric_target/opportunity id this event is about. */
+  entity_id: string;
+  event_type: string;
+  /** @nullable */
+  actor_user_id: string | null;
+  /** @nullable */
+  actor_name: string | null;
+  /** The genuine business-event time (never an audit-write timestamp that happens to differ from it) -- see this endpoint's own summary. */
+  occurred_at: string;
+  /**
+     * Only the fields that actually changed (or, for recruitment/relationship, the prior stage/status/owner) -- never a full snapshot, and null on a creation event.
+     * @nullable
+     */
+  old_values: ChannelChangeFeedItemOldValues;
+  /**
+     * Only the fields that actually changed -- null on a deletion event.
+     * @nullable
+     */
+  new_values: ChannelChangeFeedItemNewValues;
+  /**
+     * Small, display-oriented names (e.g. company_name, territory_name, pam_name) -- enough to write a useful leadership notification without a second lookup.
+     * @nullable
+     */
+  context: ChannelChangeFeedItemContext;
+}
+
 export interface WeeklySourcedInfluencedAmount {
   sourced: number;
   influenced: number;
@@ -3668,6 +3726,19 @@ export type GetChannelChiefSnapshotParams = {
  * @nullable
  */
 period?: string | null;
+};
+
+export type GetChannelChiefChangesParams = {
+/**
+ * ISO timestamp. Only changes that occurred strictly after this instant are returned. Omit to get the most recent changes overall (still bounded by limit -- never a full-table dump).
+ * @nullable
+ */
+since?: string | null;
+/**
+ * Max rows to return (default 50, max 200).
+ * @nullable
+ */
+limit?: number | null;
 };
 
 export type ListManualMetricValuesParams = {
