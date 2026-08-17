@@ -1790,6 +1790,7 @@ export const ListScanConfigsResponseItem = zod.object({
   "duplicates_removed": zod.number(),
   "candidates_sent_to_llm": zod.number().describe('Candidates genuinely sent for AI qualification so far -- updated before each call completes, so it reflects real progress even if the scan later fails.'),
   "candidates_qualified": zod.number().describe('Candidates that genuinely completed qualification and passed the 5-check bar so far.'),
+  "candidates_skipped_recent": zod.number().describe('Candidate entries excluded from this run\'s qualification slots because their canonical domain was already evaluated (qualified or rejected) recently -- distinct from candidates_sent_to_llm, which only counts actual qualification calls.'),
   "stopped_reason": zod.union([zod.enum(['budget_exhausted', 'saturation', 'completed', 'manual', 'error', 'ai_timeout', 'ai_network_error', 'ai_http_error', 'ai_oversized_response', 'ai_malformed_response', 'ai_empty_response', 'ai_truncated_response', 'ai_schema_invalid', 'search_timeout', 'search_network_error', 'search_http_error', 'search_oversized_response', 'search_malformed_response']).describe('Bounded, non-sensitive classification of why an adaptive Discovery run stopped -- never a raw provider error\/response. Present once a run has stopped for any reason (completed, budget-capped, saturated, or a provider failure); null while still running.'),zod.null()]).optional()
 }),zod.null()]).optional()
 })
@@ -1835,6 +1836,7 @@ export const CreateScanConfigResponse = zod.object({
   "duplicates_removed": zod.number(),
   "candidates_sent_to_llm": zod.number().describe('Candidates genuinely sent for AI qualification so far -- updated before each call completes, so it reflects real progress even if the scan later fails.'),
   "candidates_qualified": zod.number().describe('Candidates that genuinely completed qualification and passed the 5-check bar so far.'),
+  "candidates_skipped_recent": zod.number().describe('Candidate entries excluded from this run\'s qualification slots because their canonical domain was already evaluated (qualified or rejected) recently -- distinct from candidates_sent_to_llm, which only counts actual qualification calls.'),
   "stopped_reason": zod.union([zod.enum(['budget_exhausted', 'saturation', 'completed', 'manual', 'error', 'ai_timeout', 'ai_network_error', 'ai_http_error', 'ai_oversized_response', 'ai_malformed_response', 'ai_empty_response', 'ai_truncated_response', 'ai_schema_invalid', 'search_timeout', 'search_network_error', 'search_http_error', 'search_oversized_response', 'search_malformed_response']).describe('Bounded, non-sensitive classification of why an adaptive Discovery run stopped -- never a raw provider error\/response. Present once a run has stopped for any reason (completed, budget-capped, saturated, or a provider failure); null while still running.'),zod.null()]).optional()
 }),zod.null()]).optional()
 })
@@ -1879,6 +1881,7 @@ export const GetScanConfigResponse = zod.object({
   "duplicates_removed": zod.number(),
   "candidates_sent_to_llm": zod.number().describe('Candidates genuinely sent for AI qualification so far -- updated before each call completes, so it reflects real progress even if the scan later fails.'),
   "candidates_qualified": zod.number().describe('Candidates that genuinely completed qualification and passed the 5-check bar so far.'),
+  "candidates_skipped_recent": zod.number().describe('Candidate entries excluded from this run\'s qualification slots because their canonical domain was already evaluated (qualified or rejected) recently -- distinct from candidates_sent_to_llm, which only counts actual qualification calls.'),
   "stopped_reason": zod.union([zod.enum(['budget_exhausted', 'saturation', 'completed', 'manual', 'error', 'ai_timeout', 'ai_network_error', 'ai_http_error', 'ai_oversized_response', 'ai_malformed_response', 'ai_empty_response', 'ai_truncated_response', 'ai_schema_invalid', 'search_timeout', 'search_network_error', 'search_http_error', 'search_oversized_response', 'search_malformed_response']).describe('Bounded, non-sensitive classification of why an adaptive Discovery run stopped -- never a raw provider error\/response. Present once a run has stopped for any reason (completed, budget-capped, saturated, or a provider failure); null while still running.'),zod.null()]).optional()
 }),zod.null()]).optional()
 })
@@ -1942,6 +1945,7 @@ export const UpdateScanConfigResponse = zod.object({
   "duplicates_removed": zod.number(),
   "candidates_sent_to_llm": zod.number().describe('Candidates genuinely sent for AI qualification so far -- updated before each call completes, so it reflects real progress even if the scan later fails.'),
   "candidates_qualified": zod.number().describe('Candidates that genuinely completed qualification and passed the 5-check bar so far.'),
+  "candidates_skipped_recent": zod.number().describe('Candidate entries excluded from this run\'s qualification slots because their canonical domain was already evaluated (qualified or rejected) recently -- distinct from candidates_sent_to_llm, which only counts actual qualification calls.'),
   "stopped_reason": zod.union([zod.enum(['budget_exhausted', 'saturation', 'completed', 'manual', 'error', 'ai_timeout', 'ai_network_error', 'ai_http_error', 'ai_oversized_response', 'ai_malformed_response', 'ai_empty_response', 'ai_truncated_response', 'ai_schema_invalid', 'search_timeout', 'search_network_error', 'search_http_error', 'search_oversized_response', 'search_malformed_response']).describe('Bounded, non-sensitive classification of why an adaptive Discovery run stopped -- never a raw provider error\/response. Present once a run has stopped for any reason (completed, budget-capped, saturated, or a provider failure); null while still running.'),zod.null()]).optional()
 }),zod.null()]).optional()
 })
@@ -1989,6 +1993,7 @@ export const ListScanRunsResponseItem = zod.object({
   "duplicates_removed": zod.number(),
   "candidates_sent_to_llm": zod.number().describe('Candidates genuinely sent for AI qualification so far -- updated before each call completes, so it reflects real progress even if the scan later fails.'),
   "candidates_qualified": zod.number().describe('Candidates that genuinely completed qualification and passed the 5-check bar so far.'),
+  "candidates_skipped_recent": zod.number().describe('Candidate entries excluded from this run\'s qualification slots because their canonical domain was already evaluated (qualified or rejected) recently -- distinct from candidates_sent_to_llm, which only counts actual qualification calls.'),
   "stopped_reason": zod.union([zod.enum(['budget_exhausted', 'saturation', 'completed', 'manual', 'error', 'ai_timeout', 'ai_network_error', 'ai_http_error', 'ai_oversized_response', 'ai_malformed_response', 'ai_empty_response', 'ai_truncated_response', 'ai_schema_invalid', 'search_timeout', 'search_network_error', 'search_http_error', 'search_oversized_response', 'search_malformed_response']).describe('Bounded, non-sensitive classification of why an adaptive Discovery run stopped -- never a raw provider error\/response. Present once a run has stopped for any reason (completed, budget-capped, saturated, or a provider failure); null while still running.'),zod.null()]).optional()
 })
 export const ListScanRunsResponse = zod.array(ListScanRunsResponseItem)

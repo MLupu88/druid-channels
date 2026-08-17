@@ -20,6 +20,7 @@ import * as extractionProvider from "./discoveryProviders/extraction";
 import * as aiProvider from "./discoveryProviders/ai";
 import { toRegistrableDomain, isKnownNonCorporateDomain } from "./companyIdentity";
 import { loadActiveExclusionDomains, isDomainExcluded } from "./discoveryExclusions";
+import { recordDiscoveryEvaluation, loadRecentEvaluationRecords } from "./discoveryEvaluations";
 import {
   decideNextBatch,
   computeNewCandidateYield,
@@ -1075,6 +1076,45 @@ export function rankCandidateEntries(entries: readonly CandidateEntry[]): Candid
   });
 }
 
+export interface FreshnessFilterResult {
+  freshEntries: CandidateEntry[];
+  skippedRecentCount: number;
+}
+
+// Pure. Recall fix (novelty prioritization): filters RANKED candidate
+// entries down to ones not already evaluated recently (qualified OR
+// rejected -- see discoveryEvaluations.ts), preserving relative order --
+// this is a single forward filtering pass over `entries`, nothing is
+// re-sorted, so ranking order among the remaining entries is unchanged.
+// Meant to run AFTER rankCandidateEntries and BEFORE the
+// MAX_CANDIDATES_TO_LLM slice (see attemptLiveDiscovery's Stage 3) -- so the
+// qualification budget is spent on the best-ranked NOVEL candidates first,
+// never burned on re-litigating an already-known company ahead of a
+// genuinely unseen one.
+//
+// Only a GROUP entry (already has an established canonical domain -- see
+// groupAnnotatedResults) can be checked; a standalone entry has no domain
+// pre-qualification by construction, so checking it here would require an
+// extra identity-resolution call, defeating the cost-control purpose of
+// this filter -- it always passes through unfiltered, exactly as before
+// this fix existed.
+export function filterRecentlyEvaluatedEntries(
+  entries: readonly CandidateEntry[],
+  knownDomainRecords: ReadonlyMap<string, ExistingQualificationRecord | null>,
+  recencyWindowDays: number,
+): FreshnessFilterResult {
+  const freshEntries: CandidateEntry[] = [];
+  let skippedRecentCount = 0;
+  for (const entry of entries) {
+    if (entry.kind === "group" && shouldReuseExistingQualification(knownDomainRecords.get(entry.canonicalDomain) ?? null, recencyWindowDays)) {
+      skippedRecentCount++;
+      continue;
+    }
+    freshEntries.push(entry);
+  }
+  return { freshEntries, skippedRecentCount };
+}
+
 // Pure. Selects at most maxItems evidence items for one qualification call:
 // (1) the strongest first-party item if any, then (2)-(3) the strongest
 // items from DISTINCT source domains not already represented -- never
@@ -1124,6 +1164,12 @@ export interface LiveDiscoveryStats {
   duplicatesRemoved: number;
   candidatesSentToLlm: number;
   candidatesQualified: number;
+  // Recall fix (novelty prioritization): candidate ENTRIES excluded from
+  // this run's MAX_CANDIDATES_TO_LLM slots because their canonical domain
+  // was already evaluated recently -- see discovery_evaluations.ts.
+  // Distinct from candidatesSentToLlm, which only ever counts actual
+  // qualification calls (see the Important note in Stage 3 above).
+  candidatesSkippedRecent: number;
   // Product decision (hotfix): a candidate that fully clears qualification
   // AND identity resolution is persisted immediately, not batched until the
   // whole run succeeds -- so this is the true "how many new prospects did
@@ -1152,7 +1198,12 @@ export interface LiveDiscoveryResult {
 // itself ever returns normally.
 async function writeScanRunProgress(
   runId: string,
-  patch: Partial<Pick<LiveDiscoveryStats, "queriesRun" | "uniqueCompaniesSeen" | "newCompaniesCount" | "duplicatesRemoved" | "candidatesSentToLlm" | "candidatesQualified">>,
+  patch: Partial<
+    Pick<
+      LiveDiscoveryStats,
+      "queriesRun" | "uniqueCompaniesSeen" | "newCompaniesCount" | "duplicatesRemoved" | "candidatesSentToLlm" | "candidatesQualified" | "candidatesSkippedRecent"
+    >
+  >,
 ): Promise<void> {
   await db.update(scanRunsTable).set(patch).where(eq(scanRunsTable.id, runId));
 }
@@ -1304,10 +1355,31 @@ export async function attemptLiveDiscovery(
         knownDomainRecords.set(row.domain, record);
       }
     }
+    // Recall fix (novelty prioritization): also honor recorded evaluation
+    // outcomes (discovery_evaluations) -- the ONLY durable record of a
+    // REJECTED candidate. Before this, a company that failed qualifyChecks
+    // (or was archetype-ineligible) had no representation here at all, so a
+    // fresh scan re-spent a full AI qualification call on it every run,
+    // regardless of how recently it had already been evaluated. Merged into
+    // the SAME map/freshness rule as the companies/prospects join above --
+    // "most recent wins" per domain -- so both Stage 1's existing per-result
+    // check below and Stage 3's new per-candidate-entry check further down
+    // benefit from one consistent freshness source, not two competing ones.
+    // Every domain recorded into discovery_evaluations was already vetted as
+    // a genuine, non-third-party company domain before being recorded (see
+    // the Stage 4 loop below) -- so merging it here never reintroduces the
+    // evidence-domain-collision risk the 5B-R hotfix guards against.
+    for (const [domain, record] of await loadRecentEvaluationRecords()) {
+      const existing = knownDomainRecords.get(domain);
+      if (!existing || (record.lastResearchedAt ?? record.createdAt) > (existing.lastResearchedAt ?? existing.createdAt)) {
+        knownDomainRecords.set(domain, record);
+      }
+    }
 
     let queriesRun = 0;
     let candidatesSentToLlm = 0;
     let candidatesQualified = 0;
+    let candidatesSkippedRecent = 0;
     let duplicatesRemoved = 0;
     let uniqueCompaniesSeen = 0;
     let newCompaniesCount = 0;
@@ -1458,7 +1530,19 @@ export async function attemptLiveDiscovery(
     // each independently consume one of these 20 slots.
     const allEntries = groupAnnotatedResults(annotatedResults);
     const rankedEntries = rankCandidateEntries(allEntries);
-    const selectedEntries = rankedEntries.slice(0, MAX_CANDIDATES_TO_LLM);
+
+    // Recall fix (novelty prioritization): skip a GROUP entry whose
+    // canonical domain was already evaluated recently (qualified OR
+    // rejected -- see the knownDomainRecords merge above) BEFORE spending
+    // one of the MAX_CANDIDATES_TO_LLM slots on it -- see
+    // filterRecentlyEvaluatedEntries's own doc comment for the full
+    // rationale. Applied here, after ranking and before the slice, so the
+    // qualification cap is spent on actually-novel candidates first.
+    const { freshEntries, skippedRecentCount } = filterRecentlyEvaluatedEntries(rankedEntries, knownDomainRecords, config.recencyWindowDays);
+    candidatesSkippedRecent = skippedRecentCount;
+    if (candidatesSkippedRecent > 0) await writeScanRunProgress(runId, { candidatesSkippedRecent });
+
+    const selectedEntries = freshEntries.slice(0, MAX_CANDIDATES_TO_LLM);
     const groupCount = allEntries.filter((e) => e.kind === "group").length;
     const standaloneCount = allEntries.filter((e) => e.kind === "standalone").length;
     logger.info(
@@ -1467,10 +1551,11 @@ export async function attemptLiveDiscovery(
         candidateGroupsFormed: groupCount,
         standaloneCandidates: standaloneCount,
         totalCandidateEntries: rankedEntries.length,
+        candidatesSkippedRecent,
         selectedForQualification: selectedEntries.length,
-        excludedByTop20Cap: Math.max(0, rankedEntries.length - selectedEntries.length),
+        excludedByTop20Cap: Math.max(0, freshEntries.length - selectedEntries.length),
       },
-      "Discovery: candidate entries formed, ranked, and capped at MAX_CANDIDATES_TO_LLM",
+      "Discovery: candidate entries formed, ranked, filtered for recent evaluations, and capped at MAX_CANDIDATES_TO_LLM",
     );
 
     // ---- Stage 4: existing qualification, now over ranked candidate entries ----
@@ -1531,9 +1616,6 @@ export async function attemptLiveDiscovery(
       // P3A. Result is kept (not just null-checked) -- it's the exact
       // QualificationResult persistCandidate needs below, never recomputed.
       const qualificationResult = qualifyChecks(checks, config.minChecksRequired);
-      if (qualificationResult.priority === null) continue;
-      candidatesQualified++;
-      await writeScanRunProgress(runId, { candidatesQualified });
 
       // Phase 11.6.1 P3A (section 9): a candidate that already entered
       // qualification with an independently-established canonical domain
@@ -1545,22 +1627,58 @@ export async function attemptLiveDiscovery(
       // contextual-resolution branch in resolveCandidateIdentities above),
       // so this is not a weakening of the P0 non-corporate-domain
       // protection -- only avoiding a redundant, contradictory second
-      // check on evidence already safely identified. A standalone candidate
-      // (no canonical domain established pre-qualification) gets EXACTLY
-      // today's existing post-qualification resolveCandidateCompanyIdentity
-      // behavior, completely unchanged -- including its own independent
-      // non-corporate-domain guard on both its first-party and third-party
-      // branches.
+      // check on evidence already safely identified.
+      //
+      // Recall fix (novelty prioritization): a standalone candidate now
+      // attempts identity REGARDLESS of pass/fail, so its outcome can be
+      // recorded below -- but a REJECTED candidate must never pay for the
+      // costly third-party search+AI resolution (the exact same cost-control
+      // guarantee as before this fix). Passing `async () => null` as
+      // resolveIdentity makes resolveCandidateCompanyIdentity take ONLY its
+      // free first-party fast path (qualification.sourceIsFirstParty + a
+      // safe, non-corporate evidence domain) and return null otherwise --
+      // zero extra network/AI calls either way. A QUALIFIED standalone
+      // candidate still gets EXACTLY today's real resolution (free fast
+      // path, falling back to the real costly search when needed), computed
+      // ONCE here and reused for persistence below -- never resolved twice.
       let identity: { companyName: string; companyDomain: string } | null;
       if (entry.kind === "group") {
         identity = { companyName: qualification.subjectCompanyName, companyDomain: entry.canonicalDomain };
-      } else {
-        // Cost control: identity resolution (an extra search + AI call)
-        // only runs for evidence that already clears the qualification bar
-        // -- unqualified evidence is never persisted regardless of whose
+      } else if (qualificationResult.priority !== null) {
+        // Cost control: the real (potentially costly) identity resolution
+        // path only runs for evidence that already clears the qualification
+        // bar -- unqualified evidence is never persisted regardless of whose
         // identity it names, so resolving it would be wasted spend.
         identity = await resolveCandidateCompanyIdentity(qualification, primary.evidenceDomain);
+      } else {
+        identity = await resolveCandidateCompanyIdentity(qualification, primary.evidenceDomain, async () => null);
       }
+
+      // Recall fix (novelty prioritization): record a durable evaluation
+      // outcome once a real AI decision exists -- this point is only ever
+      // reached after qualify() already succeeded above; a candidate-level
+      // unusable response or a provider-wide failure already `continue`d/
+      // threw before ever reaching here, so a transient failure is
+      // structurally impossible to record as a rejection. Recorded
+      // regardless of pass/fail, but only when a safe identity was actually
+      // established -- a rejected standalone candidate whose only path to
+      // identity is the costly third-party search (never attempted for a
+      // rejection, see above) simply gets no durable memory this run; it may
+      // be re-evaluated again on a future run, which is no worse than
+      // today's behavior, never a correctness risk.
+      if (identity) {
+        await recordDiscoveryEvaluation({
+          domain: identity.companyDomain,
+          outcome: qualificationResult.priority !== null ? "qualified" : "rejected",
+          territoryId: territory.id,
+          scanRunId: runId,
+        });
+      }
+
+      if (qualificationResult.priority === null) continue;
+      candidatesQualified++;
+      await writeScanRunProgress(runId, { candidatesQualified });
+
       if (!identity) {
         logger.warn(
           { subjectCompanyName: qualification.subjectCompanyName, evidenceUrl: primary.url },
@@ -1624,7 +1742,17 @@ export async function attemptLiveDiscovery(
 
     return {
       candidates,
-      stats: { queriesRun, uniqueCompaniesSeen, newCompaniesCount, duplicatesRemoved, candidatesSentToLlm, candidatesQualified, prospectsCreated, stoppedReason },
+      stats: {
+        queriesRun,
+        uniqueCompaniesSeen,
+        newCompaniesCount,
+        duplicatesRemoved,
+        candidatesSentToLlm,
+        candidatesQualified,
+        candidatesSkippedRecent,
+        prospectsCreated,
+        stoppedReason,
+      },
     };
   } catch (err) {
     const notImplemented =
@@ -1995,6 +2123,7 @@ export async function runDiscoveryForConfig(scanConfigId: string): Promise<Disco
               duplicatesRemoved: liveResult.stats.duplicatesRemoved,
               candidatesSentToLlm: liveResult.stats.candidatesSentToLlm,
               candidatesQualified: liveResult.stats.candidatesQualified,
+              candidatesSkippedRecent: liveResult.stats.candidatesSkippedRecent,
               stoppedReason: liveResult.stats.stoppedReason,
             }
           : {}),

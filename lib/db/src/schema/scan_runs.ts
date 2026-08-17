@@ -63,6 +63,14 @@ export const scanRunsTable = pgTable("scan_runs", {
   // company-dedupe gate in persistCandidate -- resultsQualified above stays
   // the final persisted/accepted count, unchanged in meaning.
   candidatesQualified: integer("candidates_qualified").notNull().default(0),
+  // Partner Radar recall fix (novelty prioritization): candidate ENTRIES
+  // (post-grouping/ranking, see discoveryEngine.ts's Stage 3) that were
+  // excluded from this run's MAX_CANDIDATES_TO_LLM slots because their
+  // canonical domain was already evaluated recently (see
+  // discovery_evaluations.ts) -- distinct from candidatesSentToLlm, which
+  // only ever counts actual qualification calls. Only ever populated on the
+  // live path, same convention as the other Stage 6.5 counters above.
+  candidatesSkippedRecent: integer("candidates_skipped_recent").notNull().default(0),
   stoppedReason: text("stopped_reason", { enum: SCAN_RUN_STOPPED_REASONS }),
 });
 

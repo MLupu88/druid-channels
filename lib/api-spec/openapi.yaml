@@ -4708,6 +4708,7 @@ components:
         - duplicates_removed
         - candidates_sent_to_llm
         - candidates_qualified
+        - candidates_skipped_recent
       properties:
         id:
           type: string
@@ -4745,6 +4746,9 @@ components:
         candidates_qualified:
           type: number
           description: Candidates that genuinely completed qualification and passed the 5-check bar so far.
+        candidates_skipped_recent:
+          type: number
+          description: Candidate entries excluded from this run's qualification slots because their canonical domain was already evaluated (qualified or rejected) recently -- distinct from candidates_sent_to_llm, which only counts actual qualification calls.
         stopped_reason:
           oneOf:
             - $ref: "#/components/schemas/ScanStoppedReason"

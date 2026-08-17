@@ -176,6 +176,13 @@
       "when": 1786972850792,
       "tag": "0024_right_deadpool",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786992155760,
+      "tag": "0025_dizzy_doctor_doom",
+      "breakpoints": true
     }
   ]
 }

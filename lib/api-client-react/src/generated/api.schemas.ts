@@ -1244,6 +1244,8 @@ export interface ScanRun {
   candidates_sent_to_llm: number;
   /** Candidates that genuinely completed qualification and passed the 5-check bar so far. */
   candidates_qualified: number;
+  /** Candidate entries excluded from this run's qualification slots because their canonical domain was already evaluated (qualified or rejected) recently -- distinct from candidates_sent_to_llm, which only counts actual qualification calls. */
+  candidates_skipped_recent: number;
   stopped_reason?: ScanStoppedReason | null;
 }
 

@@ -116,6 +116,7 @@ router.get("/scan-runs", requireAuth, async (req, res): Promise<void> => {
     duplicates_removed: r.run.duplicatesRemoved,
     candidates_sent_to_llm: r.run.candidatesSentToLlm,
     candidates_qualified: r.run.candidatesQualified,
+    candidates_skipped_recent: r.run.candidatesSkippedRecent,
     stopped_reason: r.run.stoppedReason,
   }))));
 });
