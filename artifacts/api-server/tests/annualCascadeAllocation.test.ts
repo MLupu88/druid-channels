@@ -25,6 +25,8 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { db, pool, territoriesTable, usersTable, metricTargetsTable, type Territory, type User } from "@workspace/db";
 import { getAnnualCascade } from "../src/services/targetService";
+import { shapeAnnualCascade } from "../src/routes/metric_targets";
+import { GetAnnualCascadeResponse } from "@workspace/api-zod";
 
 const TEST_METRIC_KEY = "new_partner_prospects"; // a count metric -- keeps this file's fixtures away from closed_revenue's credit-date special case
 const TEST_YEAR = 2031; // far enough from any real annual target that a real one could never collide with these assertions
@@ -157,4 +159,53 @@ test("D: a territory with no owner never appears in allocations", async () => {
     !cascade.allocations.some((a) => a.territoryId === territory.id),
     "an unowned territory must never produce an allocation entry",
   );
+});
+
+// ---- Case E: the production regression (commit 8b764b5) -- API boundary --
+//
+// Confirmed root cause: getAnnualCascade/computeAnnualCascade return
+// allocations[] in the internal camelCase PamAllocation shape (pamUserId,
+// pamName, territoryId, territoryName), but GetAnnualCascadeResponse
+// requires the API's snake_case contract (pam_user_id, pam_name,
+// territory_id, territory_name). GET /metric-targets/annual-cascade used to
+// call GetAnnualCascadeResponse.parse(cascade) directly on the unshaped
+// service result -- Zod threw "Required" for every snake_case field on
+// every allocation entry, and the exact scenario that made this ALWAYS fire
+// in production is a PAM who owns a territory but has never saved a
+// quarter target (Case A's scenario): that seeded allocation entry exists
+// purely in-memory, built directly from PamAllocation, so it was never
+// going to happen to already carry snake_case keys by coincidence. The fix
+// is shapeAnnualCascade (routes/metric_targets.ts), applied before
+// GetAnnualCascadeResponse.parse() -- this test proves it against the
+// exact scenario that broke production, not just against the aggregation
+// math.
+test("E (regression, commit 8b764b5): a seeded owner/PAM allocation with no existing quarterly rows parses successfully against GetAnnualCascadeResponse, in the correct snake_case shape, with q1-q4 null", async () => {
+  const pam = await makePam("Cascade-Test-E-Pam");
+  const territory = await makeTerritory("Cascade-Test-E-Territory", pam.id);
+
+  const cascade = await getAnnualCascade(TEST_METRIC_KEY, TEST_YEAR);
+  const shaped = shapeAnnualCascade(cascade);
+
+  // This is the exact call that threw Zod "Required" errors in production
+  // -- must not throw.
+  const parsed = GetAnnualCascadeResponse.parse(shaped);
+
+  const entry = parsed.allocations.find((a) => a.pam_user_id === pam.id && a.territory_id === territory.id);
+  assert.ok(entry, "expected the seeded owner/PAM allocation to survive shaping + parsing");
+  assert.equal(entry!.pam_user_id, pam.id);
+  assert.equal(entry!.pam_name, pam.name);
+  assert.equal(entry!.territory_id, territory.id);
+  assert.equal(entry!.territory_name, territory.name);
+  assert.equal(entry!.q1, null, "unsaved quarters must stay null, never fabricated as 0");
+  assert.equal(entry!.q2, null);
+  assert.equal(entry!.q3, null);
+  assert.equal(entry!.q4, null);
+
+  // The specific leak that broke production: camelCase identity fields must
+  // never appear on the shaped/parsed allocation object.
+  const keys = Object.keys(entry!);
+  assert.ok(!keys.includes("pamUserId"), "camelCase pamUserId must not leak into the API response");
+  assert.ok(!keys.includes("pamName"), "camelCase pamName must not leak into the API response");
+  assert.ok(!keys.includes("territoryId"), "camelCase territoryId must not leak into the API response");
+  assert.ok(!keys.includes("territoryName"), "camelCase territoryName must not leak into the API response");
 });

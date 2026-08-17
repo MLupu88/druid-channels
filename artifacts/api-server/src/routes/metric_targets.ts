@@ -30,6 +30,7 @@ import {
   TargetTerritoryNotFoundError,
   TargetPamNotFoundError,
   TargetPamTerritoryMismatchError,
+  type AnnualCascade,
 } from "../services/targetService";
 
 const router: IRouter = Router();
@@ -227,6 +228,32 @@ router.put("/metric-targets/annual", requireAdmin, async (req, res): Promise<voi
   res.json(UpsertAnnualTargetResponse.parse(await shapeAnnualTarget(saved)));
 });
 
+// getAnnualCascade/computeAnnualCascade (targetService.ts) work entirely in
+// the internal camelCase PamAllocation shape (pamUserId, pamName,
+// territoryId, territoryName) -- deliberately never touched here, so the
+// service/aggregation-math layer stays free of API-contract concerns. Only
+// GetAnnualCascadeResponse's allocations[] is snake_case
+// (pam_user_id/pam_name/territory_id/territory_name); every OTHER field on
+// AnnualCascade (metric_key, year, annual_target, quarterly_totals, ...) is
+// already snake_case at the service layer and passes through unshaped. Pure
+// and DB-free -- exported so it's directly unit-testable without a live DB,
+// same convention as opportunities.ts's isSourceExternalUniqueViolation.
+export function shapeAnnualCascade(cascade: AnnualCascade) {
+  return {
+    ...cascade,
+    allocations: cascade.allocations.map((a) => ({
+      pam_user_id: a.pamUserId,
+      pam_name: a.pamName,
+      territory_id: a.territoryId,
+      territory_name: a.territoryName,
+      q1: a.q1,
+      q2: a.q2,
+      q3: a.q3,
+      q4: a.q4,
+    })),
+  };
+}
+
 // Head/Admin only -- exposes every PAM's individual quarterly allocations,
 // not just the caller's own, so this is a management view, not something a
 // PAM reads about themselves (a PAM's own allocation is already visible via
@@ -240,7 +267,7 @@ router.get("/metric-targets/annual-cascade", requireAdmin, async (req, res): Pro
 
   try {
     const cascade = await getAnnualCascade(parsedQuery.data.metric_key, parsedQuery.data.year);
-    res.json(GetAnnualCascadeResponse.parse(cascade));
+    res.json(GetAnnualCascadeResponse.parse(shapeAnnualCascade(cascade)));
   } catch (err) {
     if (err instanceof TargetNotTargetableError) {
       res.status(404).json({ error: err.message });
