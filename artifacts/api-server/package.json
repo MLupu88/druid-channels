@@ -22,6 +22,7 @@
     "test:company-identity": "tsx --test tests/companyIdentity.test.ts",
     "test:discovery-dedupe": "tsx --test tests/discoveryDedupe.test.ts",
     "test:discovery-eligibility": "tsx --test tests/discoveryEligibility.test.ts",
+    "test:qualify-checks-boundaries": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/qualifyChecksBoundaries.test.ts",
     "test:company-duplicate-audit": "tsx --test tests/companyDuplicateAudit.test.ts",
     "test:migration-invariants": "tsx --test tests/migrationInvariants.test.ts",
     "test:pam-action-queue": "tsx --test tests/pamActionQueue.test.ts",
