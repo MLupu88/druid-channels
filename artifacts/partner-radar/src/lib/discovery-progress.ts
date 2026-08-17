@@ -77,12 +77,95 @@ export function shouldPollDiscoveryProgress(
   return mutationPending || hasActivePersistedRun;
 }
 
-export function formatCompletionSummary(run: Pick<ScanRunLike, "queries_run" | "unique_companies_seen" | "results_qualified">): string {
-  return `Scan complete · ${run.queries_run} search${run.queries_run === 1 ? "" : "es"} · ${run.unique_companies_seen} compan${run.unique_companies_seen === 1 ? "y" : "ies"} reviewed · ${run.results_qualified} qualified prospect${run.results_qualified === 1 ? "" : "s"}`;
+// Phase 11.6.1 P2 (forensic-audit correction): unique_companies_seen counts
+// distinct-URL search results that survived URL dedupe, the excluded-domain
+// check, and the freshness-cache check -- it is NOT a count of companies,
+// and it is NOT a count of anything DeepSeek actually evaluated (that's
+// candidates_sent_to_llm, capped separately at MAX_CANDIDATES_TO_LLM and
+// counted after this stage). "results considered" is the honest label; the
+// old "N companies reviewed" wording implied both AI evaluation and a
+// company-level count that this counter was never able to guarantee.
+//
+// candidates_qualified (passed qualifyChecks) and results_qualified (=
+// prospectsCreated, genuinely new *persisted* prospect rows -- see
+// discoveryEngine.ts's persistCandidate/runDiscoveryForConfig) are two
+// different, real, independently-persisted counters and must never share a
+// label: a candidate can pass qualifyChecks and still never become a new
+// prospect (territory suppression, an existing active prospect, an
+// ineligible recruitment archetype) -- see the forensic audit's funnel
+// trace. Every number below maps to exactly one real scan_runs column;
+// nothing here is inferred, estimated, or attributed to a specific
+// rejection stage the backend doesn't actually track (see
+// FUNNEL_GAP_EXPLANATION below for what stays unknowable).
+export function formatCompletionSummary(
+  run: Pick<ScanRunLike, "queries_run" | "unique_companies_seen" | "candidates_sent_to_llm" | "candidates_qualified" | "results_qualified">,
+): string {
+  const parts = [
+    `${run.queries_run} search${run.queries_run === 1 ? "" : "es"}`,
+    `${run.unique_companies_seen} result${run.unique_companies_seen === 1 ? "" : "s"} considered`,
+    `${run.candidates_sent_to_llm} AI-evaluated`,
+    `${run.candidates_qualified} passed qualification`,
+    `${run.results_qualified} new prospect${run.results_qualified === 1 ? "" : "s"}`,
+  ];
+  return `Scan complete · ${parts.join(" · ")}`;
 }
 
-export function formatFailureProgressSummary(run: Pick<ScanRunLike, "queries_run" | "unique_companies_seen" | "candidates_sent_to_llm">): string {
-  return `${run.queries_run} search${run.queries_run === 1 ? "" : "es"} completed · ${run.unique_companies_seen} compan${run.unique_companies_seen === 1 ? "y" : "ies"} found · ${run.candidates_sent_to_llm} sent for qualification`;
+export function formatFailureProgressSummary(
+  run: Pick<ScanRunLike, "queries_run" | "unique_companies_seen" | "candidates_sent_to_llm" | "candidates_qualified">,
+): string {
+  const parts = [
+    `${run.queries_run} search${run.queries_run === 1 ? "" : "es"} completed`,
+    `${run.unique_companies_seen} result${run.unique_companies_seen === 1 ? "" : "s"} considered`,
+    `${run.candidates_sent_to_llm} AI-evaluated`,
+    `${run.candidates_qualified} passed qualification`,
+  ];
+  return parts.join(" · ");
+}
+
+// A static, deliberately non-numeric explanation for the gap between
+// candidates_qualified and results_qualified (and between
+// unique_companies_seen and candidates_sent_to_llm) -- several real
+// rejection stages (excluded-domain skip, freshness-cache skip, the
+// per-run AI-evaluation cap, a candidate-level AI failure, an ineligible
+// recruitment archetype, territory suppression) currently have no
+// individual counter at all (see the forensic audit). This note is
+// deliberately generic rather than attributing an exact number to any one
+// of those stages, which the backend cannot currently support. Worded as
+// "results" (not "candidates" or "companies") so it stays accurate at
+// every stage this spans: duplication and the freshness-cache/recency skip
+// happen to raw search results, before anything has been evaluated as a
+// "candidate" in the qualifyChecks sense at all -- "results" is the one
+// noun that's honest across the whole span, and matches the "results
+// considered" label already used above it.
+export const FUNNEL_GAP_EXPLANATION =
+  "Results can be excluded by recency, duplication, eligibility, or identity checks before becoming prospects.";
+
+// The prospect table below always shows the persisted dataset (GET
+// /prospects), never a live view of "everything the last scan touched" --
+// a scan can legitimately consider far more results than it ever creates
+// or updates a row for (see FUNNEL_GAP_EXPLANATION above).
+export const SCAN_VS_TABLE_EXPLANATION =
+  "This table shows prospects that passed Discovery and were saved, not every result considered during the scan.";
+
+// Phase 11.6.1 P2: "Last scan" is a scan-run-level timestamp only
+// (scan_runs.completed_at, falling back to started_at for the rare case a
+// terminal row somehow lacks one) -- it answers "when did the latest scan
+// run", never "when was this specific prospect checked" (see
+// components/../pages/prospects.tsx's FreshnessLabel/"Evidence age" column
+// for that separate, prospect-level concept, itself sourced from
+// last_researched_at / latest signal discovered_at, not from any scan_runs
+// row). A prospect skipped by the freshness cache during a scan receives no
+// write at all, so this timestamp must never be attributed to it.
+export function formatRelativeScanTime(isoTimestamp: string, now: Date = new Date()): string {
+  const thenMs = new Date(isoTimestamp).getTime();
+  const diffMs = Math.max(0, now.getTime() - thenMs);
+  const diffMinutes = Math.floor(diffMs / 60_000);
+  if (diffMinutes < 1) return "just now";
+  if (diffMinutes < 60) return `${diffMinutes} min${diffMinutes === 1 ? "" : "s"} ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hr${diffHours === 1 ? "" : "s"} ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
 }
 
 // "Scan stopped during {phase}" -- the phase the run was in when it failed,

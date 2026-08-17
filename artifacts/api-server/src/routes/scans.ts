@@ -44,10 +44,19 @@ router.post("/scans/run", requireAdmin, async (req, res): Promise<void> => {
       results_found: run.resultsFound,
       results_qualified: run.resultsQualified,
       data_status: run.dataStatus,
+      // Phase 11.6.1 P2: "qualified for review" previously described
+      // prospectsCreated (genuinely new, already-persisted prospect rows --
+      // see persistCandidate), which is a different thing from "passed
+      // qualifyChecks" (candidatesQualified). Wording here now matches what
+      // resultsFound/prospectsCreated actually are: resultsFound is
+      // candidates that cleared qualification AND identity resolution
+      // (before territory-suppression/persistence), prospectsCreated is the
+      // subset that actually became a new prospect row. Never implies these
+      // are pending review -- they already are, or aren't, real rows.
       message:
         run.dataStatus === "connected"
-          ? `Scan completed against live sources. Found ${run.resultsFound}, ${prospectsCreated} qualified for review.`
-          : `Scan completed using demo data (no live search/reader/AI connection configured). Found ${run.resultsFound}, ${prospectsCreated} qualified for review.`,
+          ? `Scan completed against live sources. ${run.resultsFound} candidate${run.resultsFound === 1 ? "" : "s"} identified, ${prospectsCreated} new prospect${prospectsCreated === 1 ? "" : "s"} created.`
+          : `Scan completed using demo data (no live search/reader/AI connection configured). ${run.resultsFound} candidate${run.resultsFound === 1 ? "" : "s"} identified, ${prospectsCreated} new prospect${prospectsCreated === 1 ? "" : "s"} created.`,
     }));
   } catch (err) {
     // runDiscoveryForConfig already classified/sanitized this error before

@@ -24,7 +24,8 @@
     "test:connection-provider-meta": "tsx --test tests/connectionProviderMeta.test.ts",
     "test:druid-context-fact-ux": "tsx --test tests/druidContextFactUx.test.ts",
     "test:evidence-interpretation-hierarchy": "tsx --test tests/evidenceInterpretationHierarchy.test.ts",
-    "test:reporting-navigation": "tsx --test tests/reportingNavigation.test.ts"
+    "test:reporting-navigation": "tsx --test tests/reportingNavigation.test.ts",
+    "test:discovery-summary-labels": "tsx --test tests/discoverySummaryLabels.test.ts"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

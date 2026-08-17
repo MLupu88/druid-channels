@@ -389,7 +389,7 @@ export default function MyProspects() {
               <TableHead>Type</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Freshness</TableHead>
+              <TableHead>Evidence age</TableHead>
               <TableHead>Next action</TableHead>
             </TableRow>
           </TableHeader>

@@ -91,6 +91,9 @@ import {
   formatCompletionSummary,
   formatFailureProgressSummary,
   formatFailureHeader,
+  formatRelativeScanTime,
+  FUNNEL_GAP_EXPLANATION,
+  SCAN_VS_TABLE_EXPLANATION,
   ACTIVE_PHASE_LABEL,
 } from '@/lib/discovery-progress';
 
@@ -213,14 +216,24 @@ function DiscoveryProgressPanel({ run, onRetry, retryDisabled }: { run: ScanRun;
           <div className="space-y-0.5">
             <p className="text-muted-foreground uppercase tracking-wider text-[10px] font-medium mb-1">Searching sources</p>
             <p className="text-muted-foreground">Queries completed: <span className="text-foreground font-medium">{run.queries_run}</span></p>
-            <p className="text-muted-foreground">Companies found: <span className="text-foreground font-medium">{run.unique_companies_seen}</span></p>
+            <p className="text-muted-foreground">Results considered: <span className="text-foreground font-medium">{run.unique_companies_seen}</span></p>
             <p className="text-muted-foreground">Duplicates removed: <span className="text-foreground font-medium">{run.duplicates_removed}</span></p>
-            <p className="text-muted-foreground">New candidates: <span className="text-foreground font-medium">{run.new_companies_count}</span></p>
+            {/* Phase 11.6.1 P2 correction: new_companies_count increments on
+                the raw evidence-URL hostname (discoveryEngine.ts's
+                evidenceDomain, before toRegistrableDomain/identity
+                resolution) not already present in companies.domain -- this
+                is evidence-domain novelty, not a count of canonical
+                candidate companies (a third-party publisher domain the app
+                has never seen counts here even if the actual subject
+                company is already well-known). "New domains seen" is the
+                honest label; "New candidates" implied a vetted, per-company
+                count this counter was never able to guarantee. */}
+            <p className="text-muted-foreground">New domains seen: <span className="text-foreground font-medium">{run.new_companies_count}</span></p>
           </div>
           <div className="space-y-0.5">
             <p className="text-muted-foreground uppercase tracking-wider text-[10px] font-medium mb-1">AI qualification</p>
-            <p className="text-muted-foreground">Sent for qualification: <span className="text-foreground font-medium">{run.candidates_sent_to_llm}</span></p>
-            <p className="text-muted-foreground">Qualified prospects: <span className="text-foreground font-medium">{run.candidates_qualified}</span></p>
+            <p className="text-muted-foreground">AI-evaluated: <span className="text-foreground font-medium">{run.candidates_sent_to_llm}</span></p>
+            <p className="text-muted-foreground">Passed qualification: <span className="text-foreground font-medium">{run.candidates_qualified}</span></p>
           </div>
         </div>
       </div>
@@ -302,7 +315,14 @@ export default function Prospects() {
         queryClient.invalidateQueries({ queryKey: getListScanConfigsQueryKey() });
         toast({
           title: data.data_status === 'connected' ? "Scan complete (live sources)" : "Scan complete (demo data)",
-          description: data.message ?? `Found ${data.results_found}, ${data.results_qualified} qualified for review.`,
+          // Phase 11.6.1 P2: the backend's own message (routes/scans.ts) is
+          // always present on a successful run -- this fallback exists only
+          // for defensiveness and must stay honest to the same fields:
+          // results_found is candidates identified (post-qualification,
+          // post-identity-resolution), results_qualified is prospectsCreated
+          // (genuinely new, already-persisted rows), never "qualified for
+          // review" (which would wrongly imply a pending state).
+          description: data.message ?? `${data.results_found} candidate${data.results_found === 1 ? '' : 's'} identified, ${data.results_qualified} new prospect${data.results_qualified === 1 ? '' : 's'} created.`,
         });
       },
       onError: (err: any) => {
@@ -534,13 +554,25 @@ export default function Prospects() {
     if (lastRun.status === 'running' || lastRun.status === 'queued') {
       return <span>{ACTIVE_PHASE_LABEL[inferActivePhase(lastRun)]}…</span>;
     }
+    // Phase 11.6.1 P2: "Last scan" is scan_runs.completed_at (falling back
+    // to started_at defensively) -- a scan-run-level timestamp only. It
+    // never claims any individual prospect was checked at that time (see
+    // formatRelativeScanTime's own comment) -- that's the separate,
+    // prospect-level "Evidence age" column below.
+    const lastScanTime = lastRun.completed_at ?? lastRun.started_at;
     if (lastRun.status === 'failed') {
-      return <span className="text-rose-700">Last scan failed</span>;
+      return (
+        <>
+          <span className="text-rose-700">Last scan failed</span>
+          <span data-testid="text-last-scan-time">Last scan: {formatRelativeScanTime(lastScanTime)}</span>
+        </>
+      );
     }
     return (
       <>
         <span>{formatCompletionSummary(lastRun)}</span>
         <DataStatusBadge dataStatus={lastRun.data_status} />
+        <span data-testid="text-last-scan-time">Last scan: {formatRelativeScanTime(lastScanTime)}</span>
       </>
     );
   }
@@ -609,6 +641,10 @@ export default function Prospects() {
             </>
           }
         />
+
+        {targetScanConfig?.last_run?.status === 'completed' && (
+          <p className="text-xs text-muted-foreground" data-testid="text-funnel-gap-explanation">{FUNNEL_GAP_EXPLANATION}</p>
+        )}
 
         {targetScanConfig?.last_run && (isScanActive(targetScanConfig.last_run.status) || targetScanConfig.last_run.status === 'failed') && (
           <DiscoveryProgressPanel
@@ -703,6 +739,7 @@ export default function Prospects() {
             </SelectContent>
           </Select>
         </div>
+        <p className="text-xs text-muted-foreground" data-testid="text-scan-vs-table-explanation">{SCAN_VS_TABLE_EXPLANATION}</p>
       </div>
 
       <div className="flex-1 overflow-auto relative bg-background">
@@ -717,7 +754,7 @@ export default function Prospects() {
               <TableHead>PAM</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Freshness</TableHead>
+              <TableHead>Evidence age</TableHead>
               <TableHead>Next action</TableHead>
             </TableRow>
           </TableHeader>
