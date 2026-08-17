@@ -23,13 +23,15 @@ export function getPartnersSubNavItems(isGlobalUser: boolean): WorkspaceSubNavIt
   ];
 }
 
-// Global-only: Team Targets and PAMs are both Head/Admin-scoped routes
-// already (see App.tsx's Guarded wrappers). Weekly Team, Team Targets, and
-// PAMs are one reporting/team-oversight workspace, not a lifecycle -- Weekly
-// Team lives inside Overview and is never duplicated here; this entry is a
-// link back to that existing view.
+// Global-only: Weekly Team, Team Targets, and PAMs are all Head/Admin-scoped
+// routes (see App.tsx's Guarded wrappers) and together form one reporting/
+// team-oversight workspace, not a lifecycle. Phase 11.6.1: Weekly Team has
+// its own real route (/weekly-team, see pages/weekly-team.tsx) -- it no
+// longer lives inside Overview behind a ?view= query param, so Reporting
+// and Overview stay cleanly separate top-level areas both visually and in
+// URL/navigation semantics.
 export const REPORTING_SUBNAV_ITEMS: WorkspaceSubNavItem[] = [
-  { value: 'weekly-team', label: 'Weekly Team', href: '/?view=weekly-team' },
+  { value: 'weekly-team', label: 'Weekly Team', href: '/weekly-team' },
   { value: 'team-targets', label: 'Team Targets', href: '/team-targets' },
   { value: 'pams', label: 'PAMs', href: '/pams' },
 ];

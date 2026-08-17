@@ -21,9 +21,8 @@ import {
   type AiBriefEvidenceItem,
   type User,
 } from '@workspace/api-client-react';
-import { useSearch, useLocation } from 'wouter';
+import { useLocation } from 'wouter';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { WeeklyTeamView } from '@/components/weekly-team-view';
 import {
   Table,
   TableBody,
@@ -414,16 +413,11 @@ export default function Overview() {
   // separate concern that shouldn't silently start tracking canEditTargets
   // if that check's definition ever changes.
   const canViewTeamData = activeUser?.role === 'head_of_channels' || activeUser?.role === 'admin';
-  // Phase 8: Overview is the Head/Admin management reporting hub -- an
-  // internal "Weekly Team" view alongside the existing "Performance" view,
-  // driven by a ?view= query param (never a separate route/nav item, and
-  // never available to a PAM: Team Weekly Report is Head/Admin-only, same
-  // as before this relocation).
-  const locationSearch = useSearch();
+  // Phase 11.6.1: Weekly Team moved to its own Reporting-scoped route
+  // (/weekly-team, see App.tsx and lib/navigation.ts's
+  // REPORTING_SUBNAV_ITEMS) -- Overview is the Performance view only now,
+  // no in-page view switcher.
   const [, setLocation] = useLocation();
-  const view: 'performance' | 'weekly-team' =
-    isGlobalUser && new URLSearchParams(locationSearch).get('view') === 'weekly-team' ? 'weekly-team' : 'performance';
-  const setView = (next: 'performance' | 'weekly-team') => setLocation(next === 'performance' ? '/' : '/?view=weekly-team');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: territories } = useListTerritories();
@@ -624,10 +618,8 @@ export default function Overview() {
   };
 
   // Phase 8: the management report deck -- built server-side from the exact
-  // same payload GET /reporting/management/summary returns, so it is never
-  // a Performance-view-only or Weekly-Team-view-only export; available from
-  // either view, per the "PPT export is an Overview action, not a
-  // navigation destination" instruction.
+  // same payload GET /reporting/management/summary returns, per the "PPT
+  // export is an Overview action, not a navigation destination" instruction.
   const handleExportManagement = async () => {
     setIsExportingManagement(true);
     try {
@@ -657,36 +649,23 @@ export default function Overview() {
     }
   };
 
-  // Shared chrome for both the Performance and Weekly Team views -- period/
-  // territory/currency selectors are Performance-specific (Weekly Team has
-  // its own week selector), but the view switcher and both PPT export
-  // actions apply regardless of which view is active.
   const headerRow = (
     <PageHeader
       title="Overview"
       description={
         isAniriOffice
           ? "Aniri's Office · Channel intelligence workspace"
-          : (view === 'weekly-team' ? 'Weekly PAM reporting, team-wide.' : 'Global partner development and channel performance.')
+          : 'Global partner development and channel performance.'
       }
       actions={
       <div className="flex items-center gap-3 flex-wrap">
-        {isGlobalUser && (
-          <Tabs value={view} onValueChange={(v) => setView(v as 'performance' | 'weekly-team')}>
-            <TabsList>
-              <TabsTrigger value="performance" data-testid="tab-performance">Performance</TabsTrigger>
-              <TabsTrigger value="weekly-team" data-testid="tab-weekly-team">Weekly Team</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        )}
-
         {/* Phase 11.2: My Weekly Report is PAM self-service, not
             management oversight (see audit) -- it stays its own route with
             its own submission flow, untouched. This is only a navigational
             affordance so it's reachable from the PAM's operational home
             instead of an isolated sidebar item: selecting the tab navigates
-            to the existing /my-weekly-report route, it never renders that
-            page's content inline the way Weekly Team does above. */}
+            to the existing /my-weekly-report route; it never renders that
+            page's content inline here. */}
         {!isGlobalUser && (
           <Tabs value="overview" onValueChange={(v) => v === 'my-weekly-report' && setLocation('/my-weekly-report')}>
             <TabsList>
@@ -696,42 +675,35 @@ export default function Overview() {
           </Tabs>
         )}
 
-        {view === 'performance' && (
-          <>
-            <PeriodSelector value={period} onChange={setPeriod} />
+        <PeriodSelector value={period} onChange={setPeriod} />
 
-            <Select value={territory} onValueChange={setTerritory}>
-              <SelectTrigger className="w-[200px] bg-card">
-                <SelectValue placeholder="Territory" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="global">Global (All)</SelectItem>
-                {territories?.map(t => (
-                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <Select value={territory} onValueChange={setTerritory}>
+          <SelectTrigger className="w-[200px] bg-card">
+            <SelectValue placeholder="Territory" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="global">Global (All)</SelectItem>
+            {territories?.map(t => (
+              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-            <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
-              <SelectTrigger className="w-[110px] bg-card" data-testid="select-currency">
-                <SelectValue placeholder="Currency" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="USD">USD ($)</SelectItem>
-                <SelectItem value="EUR">EUR (€)</SelectItem>
-                <SelectItem value="GBP">GBP (£)</SelectItem>
-              </SelectContent>
-            </Select>
+        <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
+          <SelectTrigger className="w-[110px] bg-card" data-testid="select-currency">
+            <SelectValue placeholder="Currency" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="USD">USD ($)</SelectItem>
+            <SelectItem value="EUR">EUR (€)</SelectItem>
+            <SelectItem value="GBP">GBP (£)</SelectItem>
+          </SelectContent>
+        </Select>
 
-          </>
-        )}
-
-        {/* Phase 11.3: the quarterly PPTX (Performance-view only) and the
-            Phase 8 management report export were two separate always-visible
-            buttons -- consolidated into one Export control. Same handlers,
-            same role gate (Head/Admin-only, see routes/exports.ts), same
-            availability (management report from either view; quarterly PPTX
-            only while Performance is the active view). */}
+        {/* Phase 11.3: the quarterly PPTX and the Phase 8 management report
+            export were two separate always-visible buttons -- consolidated
+            into one Export control. Same handlers, same role gate
+            (Head/Admin-only, see routes/exports.ts). */}
         {isGlobalUser && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -743,7 +715,7 @@ export default function Overview() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                disabled={view !== 'performance' || isExporting}
+                disabled={isExporting}
                 onClick={handleExport}
                 data-testid="button-export-pptx"
               >
@@ -763,17 +735,6 @@ export default function Overview() {
       }
     />
   );
-
-  if (view === 'weekly-team') {
-    return (
-      <div className="flex h-full w-full relative">
-        <div className="flex-1 p-6 space-y-6 overflow-auto">
-          {headerRow}
-          <WeeklyTeamView />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-full w-full relative">

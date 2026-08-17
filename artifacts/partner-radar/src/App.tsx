@@ -17,6 +17,7 @@ import PortfolioImport from '@/pages/portfolio-import';
 import Opportunities from '@/pages/opportunities';
 import OpportunitiesImport from '@/pages/opportunities-import';
 import TeamTargets from '@/pages/team-targets';
+import WeeklyTeam from '@/pages/weekly-team';
 import Pams from '@/pages/pams';
 import MyWorkspace from '@/pages/pam-workspace';
 import Campaigns from '@/pages/campaigns';
@@ -77,6 +78,13 @@ function AuthenticatedApp() {
         <Route path="/team-targets">
           <Guarded allow={isGlobalUser}><TeamTargets /></Guarded>
         </Route>
+        {/* Phase 11.6.1: Weekly Team's own real Reporting-scoped route --
+            same Head/Admin-only gate the old ?view=weekly-team query param
+            on Overview used to enforce (see overview.tsx's prior
+            isGlobalUser check). */}
+        <Route path="/weekly-team">
+          <Guarded allow={isGlobalUser}><WeeklyTeam /></Guarded>
+        </Route>
         <Route path="/my-workspace">
           <Guarded allow={!isGlobalUser}><MyWorkspace /></Guarded>
         </Route>
@@ -87,10 +95,12 @@ function AuthenticatedApp() {
           <Guarded allow={!isGlobalUser}><MyWeeklyReport /></Guarded>
         </Route>
         {/* Phase 8: Team Weekly Report is no longer a standalone nav
-            destination -- it lives inside Overview as the "Weekly Team"
-            view. This redirect preserves the old URL/bookmarks. */}
+            destination under this old URL. Phase 11.6.1: its replacement
+            moved again, off Overview's ?view= query param onto its own
+            Reporting-scoped route -- this redirect now points there,
+            preserving old bookmarks through both moves. */}
         <Route path="/weekly-team-report">
-          <Redirect to="/?view=weekly-team" />
+          <Redirect to="/weekly-team" />
         </Route>
         <Route path="/activities" component={Campaigns} />
         <Route path="/settings">

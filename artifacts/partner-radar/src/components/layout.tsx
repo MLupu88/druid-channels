@@ -63,10 +63,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // pages) -- collapsed here to a single sidebar entry, landing on
   // Portfolio, with the other three routes marked active via activePaths
   // rather than each keeping its own sidebar button. Same treatment for
-  // Reporting: Team Targets and PAMs (global-only) no longer need
-  // independent sidebar entries; Weekly Team stays exactly where Phase 8
-  // put it, inside Overview, and is reachable from Reporting's own subnav
-  // (see REPORTING_SUBNAV_ITEMS) rather than duplicated here.
+  // Reporting: Weekly Team, Team Targets, and PAMs (all global-only) don't
+  // need independent sidebar entries -- they're reachable from Reporting's
+  // own subnav (see REPORTING_SUBNAV_ITEMS) and all three routes are listed
+  // in activePaths below so the sidebar stays on "Reporting" for all of
+  // them (Phase 11.6.1: Weekly Team moved off Overview's ?view= query
+  // param onto its own real /weekly-team route for exactly this reason --
+  // a query param on Overview's own "/" could never be distinguished from
+  // Overview here).
   const partnersActivePaths = ['/new-partners', '/recruitment', '/portfolio', '/portfolio/import', '/activities'];
 
   const navItems: NavItem[] = isGlobalUser
@@ -75,7 +79,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: '/portfolio', label: 'Partners', icon: Building2, activePaths: partnersActivePaths },
         { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
         { href: '/channel-radar', label: 'Radar', icon: Satellite },
-        { href: '/team-targets', label: 'Reporting', icon: ClipboardList, activePaths: ['/team-targets', '/pams'] },
+        { href: '/team-targets', label: 'Reporting', icon: ClipboardList, activePaths: ['/weekly-team', '/team-targets', '/pams'] },
       ]
     : [
         // Role-separation hotfix: a PAM is an execution role, not a

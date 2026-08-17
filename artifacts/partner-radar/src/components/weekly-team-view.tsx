@@ -62,9 +62,12 @@ function HeadlineTile({ label, value, sub }: { label: string; value: React.React
  * computed figure -- so this component never needs (and never performs) its
  * own aggregation.
  *
- * Phase 8: relocated from the standalone /weekly-team-report page (now a
- * redirect) into an internal "Weekly Team" view inside Overview -- same
- * component, same behavior, same data source, just a different host page.
+ * Phase 8: relocated from the standalone /weekly-team-report page into an
+ * internal "Weekly Team" view inside Overview. Phase 11.6.1: relocated
+ * again, off Overview's ?view= query param onto its own real Reporting-
+ * scoped route (see pages/weekly-team.tsx) -- same component, same
+ * behavior, same data source, just a different host page each time.
+ * /weekly-team-report now redirects straight to that route.
  */
 export function WeeklyTeamView({ initialWeekStart }: { initialWeekStart?: string } = {}) {
   const [weekStart, setWeekStart] = useState(initialWeekStart ?? getDefaultWeekStart());
