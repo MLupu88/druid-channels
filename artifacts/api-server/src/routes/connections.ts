@@ -21,6 +21,7 @@ import {
 } from "../services/connections";
 import * as searchProvider from "../services/discoveryProviders/search";
 import * as aiProvider from "../services/discoveryProviders/ai";
+import * as hubspotProvider from "../services/hubspot";
 import { SearchProviderError } from "../services/discoveryProviders/search";
 import { AiProviderError } from "../services/discoveryProviders/ai";
 import { EncryptionKeyMissingError, EncryptionKeyMalformedError, SecretDecryptionError } from "../services/encryption";
@@ -100,7 +101,7 @@ router.post("/connections/:id/test", requireAdmin, async (req, res): Promise<voi
 
   let outcome: TestOutcome;
 
-  if (existing.providerType === "web_search" || existing.providerType === "ai") {
+  if (existing.providerType === "web_search" || existing.providerType === "ai" || existing.providerType === "hubspot") {
     // Real bounded provider verification -- resolves through the exact same
     // DB secret -> env fallback -> unavailable path production requests use
     // (resolveProviderSecret), then makes one minimal, bounded live call.
@@ -114,15 +115,18 @@ router.post("/connections/:id/test", requireAdmin, async (req, res): Promise<voi
       } else if (existing.providerType === "web_search") {
         await searchProvider.testConnection(apiKey);
         outcome = { status: "connected", error: null };
-      } else {
+      } else if (existing.providerType === "ai") {
         await aiProvider.testConnection(apiKey);
         outcome = { status: "connected", error: null };
+      } else {
+        const result = await hubspotProvider.testConnection(apiKey);
+        outcome = result.ok ? { status: "connected", error: null } : { status: "error", error: result.message };
       }
     } catch (err) {
       outcome = { status: "error", error: classifyTestError(err) };
     }
   } else {
-    // hubspot / web_reader: no live provider call is implemented yet (out
+    // web_reader: no live provider call is implemented yet (out
     // of scope for this slice -- see Phase 11.5B/11.5C) -- presence of a
     // usable credential is as far as this endpoint can honestly confirm.
     const credentialUsable = existing.enabled && hasCredential(existing.credentialEnvVar);
