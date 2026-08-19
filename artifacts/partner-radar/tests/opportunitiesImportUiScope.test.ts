@@ -89,9 +89,9 @@ test("a 409 conflict on confirm is treated as a duplicate outcome, not a generic
   assert.ok(confirmBlock.includes("err.status === 409"), "a 409 from POST /opportunities must be distinguished from other failures");
 });
 
-test("no HubSpot-specific behavior or generic column-mapping UI is introduced by this importer", () => {
-  assert.ok(!/hubspot/i.test(importPageSource), "the import page must not reference HubSpot");
-  assert.ok(!/hubspot/i.test(appSource.slice(appSource.indexOf("opportunities/import") - 50, appSource.indexOf("opportunities/import") + 400)));
+test("HubSpot reconciliation uses narrow backend helpers and no generic column-mapping UI", () => {
+  assert.ok(importPageSource.includes("reconcileOpportunityImport"));
+  assert.ok(importPageSource.includes("ensureOpportunityImportCompany"));
   assert.ok(!/column.?mapp/i.test(importPageSource), "no arbitrary/saved column-mapping UI");
 });
 

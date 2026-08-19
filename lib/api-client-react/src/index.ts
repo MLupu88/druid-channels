@@ -4,3 +4,5 @@ export { setBaseUrl, setAuthTokenGetter, ApiError, ResponseParseError } from "./
 export type { AuthTokenGetter } from "./custom-fetch";
 export { getCompanyByDomain } from "./companyByDomain";
 export type { CompanyByDomainResult } from "./companyByDomain";
+export { reconcileOpportunityImport, ensureOpportunityImportCompany } from "./opportunityImport";
+export type { OpportunityImportReconcileInput, OpportunityImportReconcileResult, OpportunityImportEnsureCompanyInput, OpportunityImportEnsuredCompany } from "./opportunityImport";

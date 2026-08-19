@@ -10,7 +10,8 @@ import {
   getGetKpiDetailsQueryKey,
   getListMetricTargetsQueryKey,
   getListTeamTargetsQueryKey,
-  getCompanyByDomain,
+  reconcileOpportunityImport,
+  ensureOpportunityImportCompany,
   createOpportunity,
   ApiError,
 } from '@workspace/api-client-react';
@@ -35,6 +36,7 @@ import {
   type ValidatedImportRow,
   type ImportRowOutcome,
   type ImportReferenceData,
+  type ImportReconciliation,
 } from '@/lib/opportunity-import';
 
 // Reads a .csv file into row objects keyed by header text -- same XLSX-based
@@ -71,11 +73,12 @@ function downloadTextFile(filename: string, content: string, mimeType: string) {
 
 const STATUS_STYLES: Record<string, string> = {
   ready: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  needs_review: 'bg-amber-50 text-amber-700 border-amber-200',
   duplicate: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   error: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
-const STATUS_LABELS: Record<string, string> = { ready: 'Ready', duplicate: 'Duplicate', error: 'Error' };
+const STATUS_LABELS: Record<string, string> = { ready: 'Ready', needs_review: 'Needs review', duplicate: 'Duplicate', error: 'Error' };
 
 export default function OpportunitiesImport() {
   const { toast } = useToast();
@@ -88,6 +91,7 @@ export default function OpportunitiesImport() {
   const [isResolving, setIsResolving] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [outcomes, setOutcomes] = useState<ImportRowOutcome[] | null>(null);
+  const [providerWarning, setProviderWarning] = useState<string | null>(null);
 
   const { data: users } = useListUsers();
   const { data: territories } = useListTerritories();
@@ -99,6 +103,7 @@ export default function OpportunitiesImport() {
 
   const readyRows = useMemo(() => rows?.filter((r) => r.status === 'ready') ?? [], [rows]);
   const duplicateRows = useMemo(() => rows?.filter((r) => r.status === 'duplicate') ?? [], [rows]);
+  const needsReviewRows = useMemo(() => rows?.filter((r) => r.status === 'needs_review') ?? [], [rows]);
   const errorRows = useMemo(() => rows?.filter((r) => r.status === 'error') ?? [], [rows]);
 
   const referenceReady = !!users && !!territories && !!existingOpportunities;
@@ -108,6 +113,7 @@ export default function OpportunitiesImport() {
     setFileName(null);
     setHeaderErrors([]);
     setOutcomes(null);
+    setProviderWarning(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -118,6 +124,7 @@ export default function OpportunitiesImport() {
     }
     setIsResolving(true);
     setOutcomes(null);
+    setProviderWarning(null);
     try {
       const rawRows = await parseCsvFile(file);
       if (rawRows.length === 0) {
@@ -145,24 +152,29 @@ export default function OpportunitiesImport() {
       // property access.
       const normalizedRows = normalizeImportRows(rawRows);
 
-      // Resolve each unique partner_domain via the exact canonical-domain
-      // lookup (Phase 5B-3 blocker A2) -- sequential, bounded to the
-      // file's unique domains, never fired in parallel en masse (same "no
-      // hundreds of simultaneous requests" constraint the confirm step
-      // below follows). Deliberately NOT GET /companies/search, which is
-      // fuzzy and capped at 20 results -- see routes/companies.ts's
-      // GET /companies/by-domain for why that endpoint can't be trusted
-      // for exact-match resolution at scale.
-      const uniqueDomains = [...new Set(normalizedRows.map((r) => normalizeDomainForLookup(r.partner_domain)).filter((d): d is string => !!d))];
+      const reconciliation = await reconcileOpportunityImport(normalizedRows.map((row, index) => ({
+        row_number: index + 1,
+        partner_domain: row.partner_domain,
+        opportunity_name: row.opportunity_name,
+      })));
+      setProviderWarning(reconciliation.provider_warning);
       const companiesByDomain = new Map<string, CompanyRef>();
       const ambiguousDomains = new Set<string>();
-      for (const domain of uniqueDomains) {
-        const result = await getCompanyByDomain(domain);
-        if (result.match) {
-          companiesByDomain.set(domain, result.match);
-        } else if (result.ambiguous) {
-          ambiguousDomains.add(domain);
-        }
+      const reconciliationByRow = new Map<number, ImportReconciliation>();
+      for (const result of reconciliation.rows) {
+        const normalizedDomain = normalizeDomainForLookup(normalizedRows[result.row_number - 1]?.partner_domain);
+        if (normalizedDomain && result.company_source === 'local' && result.company) companiesByDomain.set(normalizedDomain, result.company);
+        if (normalizedDomain && result.company_source === 'ambiguous') ambiguousDomains.add(normalizedDomain);
+        reconciliationByRow.set(result.row_number, {
+          company: result.company,
+          companySource: result.company_source,
+          hubspotCompanyId: result.hubspot_company_id,
+          hubspotCompanyName: result.hubspot_company_name,
+          hubspotCompanyCountry: result.hubspot_company_country,
+          deal: result.deal,
+          dealAmbiguous: result.deal_ambiguous,
+          notes: [],
+        });
       }
 
       const ref: ImportReferenceData = {
@@ -171,6 +183,7 @@ export default function OpportunitiesImport() {
         activePamsByEmail: buildActivePamsByEmail(users!),
         territoriesByOwnerUserId: buildTerritoriesByOwnerUserId(territories!),
         alreadyImportedExternalIds: buildAlreadyImportedExternalIds(existingOpportunities!),
+        reconciliationByRow,
       };
 
       setRows(validateImportRows(normalizedRows, ref));
@@ -201,7 +214,17 @@ export default function OpportunitiesImport() {
     for (const row of readyRows) {
       const externalId = row.input!.external_id!;
       try {
-        await createOpportunity(row.input!);
+        let input = row.input!;
+        if (row.pendingCompany) {
+          const company = await ensureOpportunityImportCompany({
+            domain: row.pendingCompany.domain,
+            name: row.pendingCompany.name,
+            country: row.pendingCompany.country,
+            hubspot_company_id: row.pendingCompany.hubspotCompanyId,
+          });
+          input = { ...input, company_id: company.id };
+        }
+        await createOpportunity(input);
         results.push({ rowNumber: row.rowNumber, externalId, outcome: 'imported' });
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) {
@@ -287,9 +310,12 @@ export default function OpportunitiesImport() {
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="font-normal">{rows.length} Total</Badge>
           <Badge variant="outline" className={`font-normal ${STATUS_STYLES.ready}`}>{readyRows.length} Ready</Badge>
+          <Badge variant="outline" className={`font-normal ${STATUS_STYLES.needs_review}`}>{needsReviewRows.length} Needs review</Badge>
           <Badge variant="outline" className={`font-normal ${STATUS_STYLES.duplicate}`}>{duplicateRows.length} Duplicate</Badge>
           <Badge variant="outline" className={`font-normal ${STATUS_STYLES.error}`}>{errorRows.length} Error</Badge>
         </div>
+
+        {providerWarning && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">{providerWarning}</p>}
 
         <Card className="shadow-none border-border/70">
           <CardContent className="p-0 overflow-x-auto">
@@ -314,8 +340,8 @@ export default function OpportunitiesImport() {
                 {rows.map((r) => (
                   <TableRow key={r.rowNumber}>
                     <TableCell className="text-muted-foreground">{r.rowNumber}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.raw.external_id || '—'}</TableCell>
-                    <TableCell>{r.resolved?.companyName ?? (r.raw.partner_domain || '—')}</TableCell>
+                    <TableCell className="font-mono text-xs">{r.input?.external_id || r.raw.external_id || '—'}</TableCell>
+                    <TableCell>{r.resolved?.companyName ?? (r.pendingCompany ? `${r.pendingCompany.name} (HubSpot)` : (r.raw.partner_domain || '—'))}</TableCell>
                     <TableCell>{r.resolved?.userName ?? (r.raw.pam_email || '—')}</TableCell>
                     <TableCell className="max-w-[180px] truncate">{r.raw.opportunity_name || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{r.raw.attribution_type || '—'}</TableCell>
@@ -329,6 +355,11 @@ export default function OpportunitiesImport() {
                       {r.errors.length > 0 && (
                         <div className="text-xs text-muted-foreground mt-1 space-y-0.5 max-w-[220px]">
                           {r.errors.map((e, i) => <div key={i}>{e}</div>)}
+                        </div>
+                      )}
+                      {r.notes.length > 0 && (
+                        <div className="text-xs text-muted-foreground mt-1 space-y-0.5 max-w-[260px]">
+                          {r.notes.map((note, i) => <div key={i}>{note}</div>)}
                         </div>
                       )}
                     </TableCell>
@@ -364,8 +395,7 @@ export default function OpportunitiesImport() {
               <Download className="h-3.5 w-3.5" /> Download CSV template
             </Button>
             <p className="text-xs text-muted-foreground mt-2">
-              Required columns: {IMPORT_CSV_COLUMNS.join(', ')}. Dates are ISO (YYYY-MM-DD). <code>partner_domain</code> must match an existing company's
-              canonical domain, and <code>pam_email</code> must match an active PAM — neither is fuzzy-matched.
+              Required columns: {IMPORT_CSV_COLUMNS.join(', ')}. Common status, currency, attribution, email-display, slash-date, and Excel-date formats are normalized. Company and PAM matching remain exact; HubSpot reconciliation is read-only and optional.
             </p>
           </div>
 

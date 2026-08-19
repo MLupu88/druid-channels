@@ -1,9 +1,7 @@
-// Phase 5B-3: pure parsing/validation for the historical opportunity CSV
-// cutover (Head/Admin-only, /opportunities/import). No React, no network
-// calls here -- all resolution inputs (matched companies, active PAMs,
-// their canonical territories, already-imported external ids) are fetched
-// by the page via the EXISTING GET /companies/search, /users, /territories,
-// /opportunities contracts and handed in. This intentionally reuses
+// Pure normalization/validation for the historical opportunity CSV cutover
+// (Head/Admin-only, /opportunities/import). Network reconciliation stays in
+// the authenticated API route; this module only consumes its typed results.
+// This intentionally reuses
 // POST /opportunities (source_system='import') rather than adding a new
 // bulk backend endpoint -- see routes/opportunities.ts's Phase 5B-3 comment
 // on the one supporting change that route needed (a clean 409 on a repeat
@@ -34,7 +32,24 @@ export type ImportCsvRow = Record<ImportCsvColumn, string>;
 const ATTRIBUTION_TYPES = new Set<string>(['partner_sourced', 'partner_influenced']);
 const STATUSES = new Set<string>(['open', 'won', 'lost']);
 const CURRENCIES = new Set<string>(['USD', 'EUR', 'GBP']);
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+
+export interface ImportReconciliation {
+  company: CompanyRef | null;
+  companySource: 'local' | 'hubspot' | 'none' | 'ambiguous';
+  hubspotCompanyId?: string | null;
+  hubspotCompanyName?: string | null;
+  hubspotCompanyCountry?: string | null;
+  deal: {
+    id: string;
+    dealName: string | null;
+    amount: string | null;
+    closeDate: string | null;
+    createDate: string | null;
+  } | null;
+  dealAmbiguous: boolean;
+  notes: string[];
+}
 
 // Same hostname-normalization primitives as the API server's
 // services/companyIdentity.ts's toHostname (scheme/path/port stripped via
@@ -59,11 +74,7 @@ export function normalizeDomainForLookup(input: string | null | undefined): stri
   return hostname.toLowerCase().replace(/\.$/, '').replace(/^www\./, '');
 }
 
-// No longer called by the live import page (Phase 5B-3 blocker A2 replaced
-// GET /companies/search-based resolution with the exact GET
-// /companies/by-domain lookup -- see opportunities-import.tsx), but kept
-// and still tested as a small, correct, exact-match utility over a search
-// -results array in case a future caller needs it.
+// Kept as a small exact-match utility for non-network callers/tests.
 export function findExactDomainMatch(searchResults: CompanyRef[], normalizedDomain: string): CompanyRef | undefined {
   return searchResults.find((c) => normalizeDomainForLookup(c.domain) === normalizedDomain);
 }
@@ -108,17 +119,89 @@ export interface ImportReferenceData {
   activePamsByEmail: Map<string, User>;
   territoriesByOwnerUserId: Map<string, Territory>;
   alreadyImportedExternalIds: Set<string>;
+  reconciliationByRow?: Map<number, ImportReconciliation>;
 }
 
-export type ImportRowStatus = 'ready' | 'duplicate' | 'error';
+export type ImportRowStatus = 'ready' | 'needs_review' | 'duplicate' | 'error';
 
 export interface ValidatedImportRow {
   rowNumber: number;
   raw: ImportCsvRow;
   status: ImportRowStatus;
   errors: string[];
+  notes: string[];
   resolved?: { companyId: string; companyName: string; userId: string; userName: string; territoryId: string; territoryName: string };
+  pendingCompany?: { domain: string; name: string; country: string; hubspotCompanyId: string | null };
   input?: OpportunityInput;
+}
+
+export function normalizeStatus(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return STATUSES.has(normalized) ? normalized : normalized;
+}
+
+export function normalizeCurrency(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+function normalizeDash(value: string): string {
+  return value.replace(/[‐‑‒–—―﹘﹣－]/g, '-').replace(/â(?:€”|€“)/g, '-').replace(/&(?:mdash|ndash);/gi, '-').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+export function normalizeAttribution(value: string): string {
+  const normalized = normalizeDash(value);
+  if (ATTRIBUTION_TYPES.has(normalized)) return normalized;
+  if (/^partner[ -]+originated(?:[ -]+the[ -]+deal)?$/.test(normalized)) return 'partner_sourced';
+  if (/^druid[ -]+originated[ -]+partner[ -]+influenced$/.test(normalized)) return 'partner_influenced';
+  return normalized;
+}
+
+export function extractSingleEmail(value: string): string | null {
+  const matches = value.match(EMAIL_RE) ?? [];
+  return matches.length === 1 ? matches[0]!.toLowerCase() : null;
+}
+
+function isCutoverPamDisplay(value: string): boolean {
+  const email = extractSingleEmail(value);
+  return !!email && value.replace(email, '').trim().length > 0;
+}
+
+function validDateParts(year: number, month: number, day: number): string | null {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+}
+
+function isValidIsoDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return !!match && !!validDateParts(Number(match[1]), Number(match[2]), Number(match[3]));
+}
+
+export function normalizeImportDate(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (iso) return validDateParts(Number(iso[1]), Number(iso[2]), Number(iso[3])) ?? trimmed;
+  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(trimmed);
+  if (slash) {
+    const rawYear = Number(slash[3]);
+    const year = slash[3]!.length === 2 ? (rawYear >= 50 ? 1900 + rawYear : 2000 + rawYear) : rawYear;
+    return validDateParts(year, Number(slash[1]), Number(slash[2])) ?? trimmed;
+  }
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    const serial = Number(trimmed);
+    const wholeSerial = Math.floor(serial);
+    if (Number.isFinite(serial) && serial >= 1 && serial <= 2958465 && wholeSerial !== 60) {
+      // Excel's 1900 system includes the fictitious 1900-02-29 at serial 60.
+      // Use the pre/post-cutover epochs so real dates map to their actual
+      // calendar day, while the impossible serial remains unresolved.
+      const epoch = wholeSerial < 60 ? Date.UTC(1899, 11, 31) : Date.UTC(1899, 11, 30);
+      const date = new Date(epoch + wholeSerial * 86400000);
+      return validDateParts(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()) ?? trimmed;
+    }
+  }
+  return trimmed;
 }
 
 function normalizeRawRow(raw: Record<string, string>): ImportCsvRow {
@@ -126,6 +209,21 @@ function normalizeRawRow(raw: Record<string, string>): ImportCsvRow {
   const result = {} as ImportCsvRow;
   for (const col of IMPORT_CSV_COLUMNS) {
     result[col] = lower.get(col) ?? '';
+  }
+  const cutoverEmail = isCutoverPamDisplay(result.customer_name) ? extractSingleEmail(result.customer_name) : null;
+  const cutoverAttribution = normalizeAttribution(result.pam_email);
+  if (cutoverEmail && !result.attribution_type && ATTRIBUTION_TYPES.has(cutoverAttribution)) {
+    result.pam_email = cutoverEmail;
+    result.attribution_type = cutoverAttribution;
+    result.customer_name = '';
+  } else {
+    result.pam_email = extractSingleEmail(result.pam_email) ?? result.pam_email;
+    result.attribution_type = normalizeAttribution(result.attribution_type);
+  }
+  result.status = normalizeStatus(result.status);
+  result.currency = normalizeCurrency(result.currency);
+  for (const column of ['opportunity_date', 'expected_close_date', 'closed_at', 'credit_date'] as const) {
+    result[column] = normalizeImportDate(result[column]);
   }
   return result;
 }
@@ -154,68 +252,125 @@ export function validateHeaders(headerKeys: string[]): string[] {
   return IMPORT_CSV_COLUMNS.filter((c) => !normalized.has(c)).map((c) => `Missing required column "${c}".`);
 }
 
+function normalizeDealName(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function buildCutoverExternalId(partnerDomain: string, opportunityName: string, pamEmail: string): string {
+  const identity = [normalizeDomainForLookup(partnerDomain) ?? partnerDomain.trim().toLowerCase(), normalizeDealName(opportunityName), pamEmail.trim().toLowerCase()].join('|');
+  let hash = 2166136261;
+  for (let i = 0; i < identity.length; i += 1) {
+    hash ^= identity.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `CUTOVER-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
 export function validateImportRow(rawInput: Record<string, string>, rowNumber: number, ref: ImportReferenceData, seenExternalIds: Set<string>): ValidatedImportRow {
+  const originalStatus = (rawInput.status ?? '').trim();
   const raw = normalizeRawRow(rawInput);
   const errors: string[] = [];
-
-  const externalId = raw.external_id;
-  if (!externalId) errors.push('external_id is required.');
+  const notes: string[] = [];
+  const reconciliation = ref.reconciliationByRow?.get(rowNumber);
 
   const opportunityName = raw.opportunity_name;
   if (!opportunityName) errors.push('opportunity_name is required.');
 
   let company: CompanyRef | undefined;
   if (!raw.partner_domain) {
-    errors.push('partner_domain is required.');
+    notes.push('Partner domain is missing.');
   } else {
     const normalized = normalizeDomainForLookup(raw.partner_domain);
     if (normalized && ref.ambiguousDomains.has(normalized)) {
-      errors.push(`Partner domain "${raw.partner_domain}" matches more than one existing company and cannot be resolved automatically.`);
+      notes.push(`Partner domain "${raw.partner_domain}" matches more than one existing company.`);
     } else {
       company = normalized ? ref.companiesByDomain.get(normalized) : undefined;
-      if (!company) errors.push(`Partner domain "${raw.partner_domain}" not found among existing companies.`);
+      if (!company && reconciliation?.companySource === 'local') company = reconciliation.company ?? undefined;
+      if (!company && reconciliation?.companySource === 'hubspot' && reconciliation.company) notes.push('Found company in HubSpot.');
+      if (!company && reconciliation?.companySource === 'hubspot' && !reconciliation.company) notes.push('HubSpot found a company without a usable name; manual review is required.');
+      if (!company && reconciliation?.companySource === 'ambiguous') notes.push('HubSpot returned multiple exact company matches.');
+      if (!company && reconciliation?.companySource === 'none') notes.push('Partner domain not found locally or in HubSpot.');
+      if (!company && !reconciliation) notes.push(`Partner domain "${raw.partner_domain}" not found among existing companies.`);
     }
   }
 
   let pam: User | undefined;
   if (!raw.pam_email) {
-    errors.push('pam_email is required.');
+    notes.push('PAM email is missing.');
   } else {
     pam = ref.activePamsByEmail.get(raw.pam_email.toLowerCase());
-    if (!pam) errors.push(`PAM email "${raw.pam_email}" does not match an active PAM.`);
+    if (!pam) notes.push(`PAM email "${raw.pam_email}" does not match an active PAM.`);
   }
 
   let territory: Territory | undefined;
   if (pam) {
     territory = ref.territoriesByOwnerUserId.get(pam.id);
-    if (!territory) errors.push(`PAM "${pam.email}" has no canonical territory assigned.`);
+    if (!territory) notes.push(`PAM "${pam.email}" has no canonical territory assigned.`);
   }
 
-  if (!ATTRIBUTION_TYPES.has(raw.attribution_type)) errors.push('attribution_type must be partner_sourced or partner_influenced.');
+  if (!ATTRIBUTION_TYPES.has(raw.attribution_type)) notes.push('Attribution remains unknown; use partner_sourced or partner_influenced.');
 
   const status = raw.status || 'open';
-  if (!STATUSES.has(status)) errors.push('status must be open, won, or lost.');
+  if (!STATUSES.has(status)) notes.push('Status must be open, won, or lost.');
 
   const currency = raw.currency || 'USD';
-  if (!CURRENCIES.has(currency)) errors.push('currency must be USD, EUR, or GBP.');
+  if (!CURRENCIES.has(currency)) notes.push('Currency must be USD, EUR, or GBP.');
 
-  const dealValue = Number(raw.deal_value);
-  if (!raw.deal_value || !Number.isFinite(dealValue) || dealValue <= 0) errors.push('deal_value must be a positive number.');
+  let dealValue = Number(raw.deal_value);
+  if (!raw.deal_value || !Number.isFinite(dealValue) || dealValue <= 0) {
+    const hubspotAmount = Number(reconciliation?.deal?.amount);
+    if (Number.isFinite(hubspotAmount) && hubspotAmount > 0) {
+      dealValue = hubspotAmount;
+      raw.deal_value = reconciliation!.deal!.amount!;
+      notes.push('Deal value filled from HubSpot.');
+    } else notes.push('Deal value is missing or invalid.');
+  }
 
-  if (!raw.opportunity_date || !ISO_DATE_RE.test(raw.opportunity_date)) errors.push('opportunity_date must be an ISO date (YYYY-MM-DD).');
+  if (!isValidIsoDate(raw.opportunity_date)) {
+    const created = reconciliation?.deal?.createDate ? normalizeImportDate(reconciliation.deal.createDate.slice(0, 10)) : '';
+    if (isValidIsoDate(created)) {
+      raw.opportunity_date = created;
+      notes.push('Opportunity date filled from HubSpot.');
+    } else notes.push('Opportunity date is missing or invalid.');
+  }
 
-  if (raw.expected_close_date && !ISO_DATE_RE.test(raw.expected_close_date)) errors.push('expected_close_date must be an ISO date (YYYY-MM-DD) when present.');
+  if (raw.expected_close_date && !isValidIsoDate(raw.expected_close_date)) notes.push('Expected close date is invalid.');
 
-  if (raw.closed_at && !ISO_DATE_RE.test(raw.closed_at)) errors.push('closed_at must be an ISO date (YYYY-MM-DD) when present.');
-  if (status === 'won' && !raw.closed_at) errors.push('Won opportunity requires closed_at.');
+  if (raw.closed_at && !isValidIsoDate(raw.closed_at)) notes.push('Closed date is invalid.');
+  if ((status === 'won' || status === 'lost') && !raw.closed_at && reconciliation?.deal?.closeDate) {
+    const closed = normalizeImportDate(reconciliation.deal.closeDate.slice(0, 10));
+    if (isValidIsoDate(closed)) {
+      raw.closed_at = closed;
+      notes.push('Closed date filled from HubSpot.');
+    }
+  }
+  if (status === 'won' && !raw.closed_at) notes.push('Won opportunity requires closed_at.');
+  if (status === 'open' && !raw.expected_close_date && reconciliation?.deal?.closeDate) {
+    const expected = normalizeImportDate(reconciliation.deal.closeDate.slice(0, 10));
+    if (isValidIsoDate(expected)) {
+      raw.expected_close_date = expected;
+      notes.push('Expected close date filled from HubSpot.');
+    }
+  }
 
   let creditValue: number | null = null;
   if (raw.credit_value) {
     creditValue = Number(raw.credit_value);
-    if (!Number.isFinite(creditValue) || creditValue <= 0) errors.push('credit_value must be a positive number when present.');
+    if (!Number.isFinite(creditValue) || creditValue <= 0) notes.push('Credit value is invalid.');
   }
 
-  if (raw.credit_date && !ISO_DATE_RE.test(raw.credit_date)) errors.push('credit_date must be an ISO date (YYYY-MM-DD) when present.');
+  if (raw.credit_date && !isValidIsoDate(raw.credit_date)) notes.push('Credit date is invalid.');
+
+  if (reconciliation?.dealAmbiguous) notes.push('Multiple exact HubSpot deals matched this opportunity name.');
+  if (reconciliation?.deal && !reconciliation.dealAmbiguous) notes.push(`Matched HubSpot deal: ${reconciliation.deal.id}.`);
+  if (reconciliation?.notes) notes.push(...reconciliation.notes.filter((note) => !notes.includes(note)));
+
+  const normalizedPamEmail = pam?.email ?? raw.pam_email;
+  const externalId = reconciliation?.deal && !reconciliation.dealAmbiguous
+    ? reconciliation.deal.id
+    : raw.external_id || buildCutoverExternalId(raw.partner_domain, opportunityName, normalizedPamEmail);
+  if (!raw.external_id && externalId.startsWith('CUTOVER-')) notes.push(`Generated deterministic external ID: ${externalId}.`);
+  if (originalStatus && originalStatus.toLowerCase() !== status) notes.push(`Normalized status: ${originalStatus} → ${status}.`);
 
   if (externalId) {
     if (seenExternalIds.has(externalId)) {
@@ -225,32 +380,33 @@ export function validateImportRow(rawInput: Record<string, string>, rowNumber: n
     }
   }
 
-  if (errors.length > 0) {
-    return { rowNumber, raw, status: 'error', errors };
-  }
+  const pendingCompany = !company && reconciliation?.companySource === 'hubspot' && reconciliation.hubspotCompanyId && reconciliation.hubspotCompanyName
+    ? { domain: normalizeDomainForLookup(raw.partner_domain) ?? raw.partner_domain, name: reconciliation.hubspotCompanyName, country: reconciliation.hubspotCompanyCountry || 'Unknown', hubspotCompanyId: reconciliation.hubspotCompanyId }
+    : undefined;
+  if (errors.length > 0) return { rowNumber, raw, status: 'error', errors, notes };
 
   // Only reachable once every required field validated cleanly, so
   // external_id/company/pam/territory are guaranteed non-null below.
   if (ref.alreadyImportedExternalIds.has(externalId)) {
-    return { rowNumber, raw, status: 'duplicate', errors: [`external_id "${externalId}" was already imported.`] };
+    return { rowNumber, raw, status: 'duplicate', errors: [`external_id "${externalId}" was already imported.`], notes };
   }
 
+  const invalidCreditValue = !!raw.credit_value && (creditValue === null || !Number.isFinite(creditValue) || creditValue <= 0);
+  const unresolved = !company && !pendingCompany || !pam || !territory || !ATTRIBUTION_TYPES.has(raw.attribution_type) || !STATUSES.has(status) || !CURRENCIES.has(currency) || !Number.isFinite(dealValue) || dealValue <= 0 || !isValidIsoDate(raw.opportunity_date) || (status === 'won' && !raw.closed_at) || (raw.expected_close_date && !isValidIsoDate(raw.expected_close_date)) || (raw.closed_at && !isValidIsoDate(raw.closed_at)) || (raw.credit_date && !isValidIsoDate(raw.credit_date)) || invalidCreditValue || reconciliation?.companySource === 'ambiguous' || reconciliation?.dealAmbiguous;
+  if (reconciliation?.companySource === 'ambiguous' || reconciliation?.dealAmbiguous) {
+    // These are genuine business-data ambiguities, never structural parse errors.
+  }
   const input: OpportunityInput = {
     name: opportunityName,
-    company_id: company!.id,
-    territory_id: territory!.id,
-    assigned_user_id: pam!.id,
+    company_id: company?.id ?? '',
+    territory_id: territory?.id ?? '',
+    assigned_user_id: pam?.id ?? '',
     attribution_type: raw.attribution_type as OpportunityAttributionType,
     status: status as OpportunityStatus,
     deal_value: dealValue,
     currency: currency as OpportunityCurrency,
     opportunity_date: raw.opportunity_date,
     expected_close_date: raw.expected_close_date || null,
-    // Sent as the bare YYYY-MM-DD string, same as the manual Add Opportunity
-    // form (see OpportunityFormDialog) -- the backend's `new Date(...)`
-    // parses it identically either way. Never defaulted to today; blank
-    // stays null so the backend's credit_date ?? closed_at fallback applies
-    // naturally (see partner_opportunities.creditDate).
     closed_at: raw.closed_at || null,
     credit_value: creditValue,
     credit_date: raw.credit_date || null,
@@ -260,12 +416,16 @@ export function validateImportRow(rawInput: Record<string, string>, rowNumber: n
     external_id: externalId,
   };
 
+  if (unresolved) return { rowNumber, raw, status: 'needs_review', errors: [], notes, pendingCompany, input };
+
   return {
     rowNumber,
     raw,
     status: 'ready',
     errors: [],
-    resolved: { companyId: company!.id, companyName: company!.name, userId: pam!.id, userName: pam!.name, territoryId: territory!.id, territoryName: territory!.name },
+    notes,
+    pendingCompany,
+    resolved: { companyId: company?.id ?? '', companyName: company?.name ?? pendingCompany!.name, userId: pam!.id, userName: pam!.name, territoryId: territory!.id, territoryName: territory!.name },
     input,
   };
 }

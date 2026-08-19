@@ -10,8 +10,9 @@ import {
   UpdateOpportunityBody,
   UpdateOpportunityResponse,
 } from "@workspace/api-zod";
-import { eq, inArray, and, type SQL } from "drizzle-orm";
-import { requireAuth } from "../middleware/auth";
+import { eq, inArray, and, sql, type SQL } from "drizzle-orm";
+import { requireAuth, requireAdmin } from "../middleware/auth";
+import { z } from "zod";
 import {
   isGlobalUser,
   getOwnTerritory,
@@ -22,6 +23,10 @@ import {
   type ActingUser,
 } from "../services/authz";
 import { recordChannelChangeEvent } from "../services/channelChangeEventsService";
+import { resolveProviderSecret } from "../services/connections";
+import { findCompanyByDomain, searchDeals, HubSpotAmbiguousCompanyError, HubSpotProviderError, type HubSpotDeal } from "../services/hubspot";
+import { toRegistrableDomain } from "../services/companyIdentity";
+import { normalizeCompanyName } from "../services/companyMatchingService";
 
 const router: IRouter = Router();
 
@@ -213,6 +218,189 @@ async function shapeRows(rows: (typeof partnerOpportunitiesTable.$inferSelect)[]
     updated_at: r.updatedAt.toISOString(),
   }));
 }
+
+const OpportunityImportReconcileBody = z.object({
+  rows: z.array(z.object({ row_number: z.number().int().positive(), partner_domain: z.string().max(500), opportunity_name: z.string().max(500) })).max(100),
+});
+
+const OpportunityImportEnsureCompanyBody = z.object({
+  domain: z.string().min(1).max(500),
+  name: z.string().min(1).max(500),
+  country: z.string().max(200).optional(),
+  hubspot_company_id: z.string().max(200).nullable().optional(),
+});
+
+function normalizeImportDealName(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function hubSpotImportWarning(error: unknown): string {
+  if (error instanceof HubSpotProviderError) {
+    switch (error.code) {
+      case "authentication_error": return "HubSpot authentication failed; continuing with local-only reconciliation.";
+      case "permission_error": return "HubSpot access was denied; continuing with local-only reconciliation.";
+      case "rate_limited": return "HubSpot rate limit reached; continuing with local-only reconciliation.";
+      case "timeout": return "HubSpot timed out; continuing with local-only reconciliation.";
+      case "network_error": return "HubSpot is unavailable; continuing with local-only reconciliation.";
+      default: return "HubSpot returned an invalid response; continuing with local-only reconciliation.";
+    }
+  }
+  return "HubSpot reconciliation is unavailable; continuing with local-only reconciliation.";
+}
+
+function isUniqueCompanyDomainViolation(error: unknown): boolean {
+  const candidate = error as { code?: string; cause?: { code?: string; constraint?: string } } | null;
+  return candidate?.code === "23505" || candidate?.cause?.code === "23505";
+}
+
+// Head/Admin-only, bounded, read-only reconciliation. The browser sends only
+// normalized identifying fields; the HubSpot token is resolved here and is
+// never returned or logged. Local exact-domain matches always win and avoid a
+// HubSpot company call.
+router.post("/opportunities/import/reconcile", requireAdmin, async (req, res): Promise<void> => {
+  const parsed = OpportunityImportReconcileBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  let accessToken: string | null = null;
+  let providerWarning: string | null = null;
+  try {
+    accessToken = await resolveProviderSecret("hubspot");
+  } catch (error) {
+    providerWarning = hubSpotImportWarning(error);
+  }
+
+  const companyCache = new Map<string, { source: "local" | "hubspot" | "none" | "ambiguous"; company: { id: string; name: string; domain: string | null; country: string } | null; hubspotCompanyId: string | null; hubspotCompanyName: string | null; hubspotCompanyCountry: string | null }>();
+  const dealCache = new Map<string, { deal: HubSpotDeal | null; ambiguous: boolean }>();
+  const output: Array<Record<string, unknown>> = [];
+
+  for (const row of parsed.data.rows) {
+    const canonicalDomain = toRegistrableDomain(row.partner_domain);
+    let companyResult = canonicalDomain ? companyCache.get(canonicalDomain) : undefined;
+    if (!companyResult && canonicalDomain) {
+      const matches = await db.select().from(companiesTable).where(sql`lower(${companiesTable.domain}) = ${canonicalDomain}`);
+      if (matches.length > 1) {
+        companyResult = { source: "ambiguous", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+      } else if (matches.length === 1) {
+        const company = matches[0]!;
+        companyResult = { source: "local", company: { id: company.id, name: company.name, domain: company.domain, country: company.country }, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+      } else if (!accessToken || providerWarning) {
+        companyResult = { source: "none", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+      } else {
+        try {
+          const match = await findCompanyByDomain(accessToken, canonicalDomain);
+          if (!match) companyResult = { source: "none", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+          else companyResult = {
+            source: "hubspot",
+            company: match.name ? { id: "", name: match.name, domain: match.domain, country: "Unknown" } : null,
+            hubspotCompanyId: match.objectId || match.id,
+            hubspotCompanyName: match.name,
+            hubspotCompanyCountry: "Unknown",
+          };
+        } catch (error) {
+          if (error instanceof HubSpotAmbiguousCompanyError) {
+            companyResult = { source: "ambiguous", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+            // Continue with deal reconciliation; the company ambiguity alone
+            // keeps this row out of Ready until a human resolves it.
+          } else {
+            providerWarning ??= hubSpotImportWarning(error);
+            companyResult = { source: "none", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+          }
+        }
+      }
+      companyCache.set(canonicalDomain, companyResult);
+    }
+
+    const dealKey = normalizeImportDealName(row.opportunity_name);
+    let dealResult = dealCache.get(dealKey);
+    if (!dealResult && accessToken && !providerWarning && dealKey) {
+      try {
+        const deals = await searchDeals(accessToken, { query: row.opportunity_name, limit: 20 });
+        const exact = deals.filter((deal) => normalizeImportDealName(deal.dealName ?? "") === dealKey);
+        dealResult = { deal: exact.length === 1 ? exact[0]! : null, ambiguous: exact.length > 1 };
+      } catch (error) {
+        providerWarning ??= hubSpotImportWarning(error);
+        dealResult = { deal: null, ambiguous: false };
+      }
+      dealCache.set(dealKey, dealResult);
+    }
+
+    output.push({
+      row_number: row.row_number,
+      company_source: companyResult?.source ?? "none",
+      company: companyResult?.company ?? null,
+      hubspot_company_id: companyResult?.hubspotCompanyId ?? null,
+      hubspot_company_name: companyResult?.hubspotCompanyName ?? null,
+      hubspot_company_country: companyResult?.hubspotCompanyCountry ?? null,
+      deal: dealResult?.deal ? {
+        id: dealResult.deal.id,
+        dealName: dealResult.deal.dealName,
+        amount: dealResult.deal.amount,
+        closeDate: dealResult.deal.closeDate,
+        createDate: dealResult.deal.createDate,
+      } : null,
+      deal_ambiguous: dealResult?.ambiguous ?? false,
+    });
+  }
+
+  res.json({ provider_warning: providerWarning, rows: output });
+});
+
+// Ensures only the local company identity needed by partner_opportunities.
+// This never creates a Portfolio/recruitment record and never writes to
+// HubSpot. The canonical domain unique index plus the retry lookup makes
+// concurrent/repeated cutover confirms idempotent.
+router.post("/opportunities/import/ensure-company", requireAdmin, async (req, res): Promise<void> => {
+  const parsed = OpportunityImportEnsureCompanyBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const canonicalDomain = toRegistrableDomain(parsed.data.domain);
+  if (!canonicalDomain) {
+    res.status(400).json({ error: "A valid company domain is required." });
+    return;
+  }
+
+  const selectMatches = () => db.select().from(companiesTable).where(sql`lower(${companiesTable.domain}) = ${canonicalDomain}`);
+  let matches = await selectMatches();
+  if (matches.length > 1) {
+    res.status(409).json({ error: "Multiple local companies share this domain." });
+    return;
+  }
+  if (matches.length === 1) {
+    const existing = matches[0]!;
+    if (parsed.data.hubspot_company_id && !existing.hubspotCompanyId) {
+      const [updated] = await db.update(companiesTable).set({ hubspotCompanyId: parsed.data.hubspot_company_id, updatedAt: new Date() }).where(eq(companiesTable.id, existing.id)).returning();
+      res.json({ id: updated!.id, name: updated!.name, domain: updated!.domain, country: updated!.country });
+      return;
+    }
+    res.json({ id: existing.id, name: existing.name, domain: existing.domain, country: existing.country });
+    return;
+  }
+
+  try {
+    const [created] = await db.insert(companiesTable).values({
+      name: parsed.data.name.trim(),
+      normalizedName: normalizeCompanyName(parsed.data.name),
+      domain: canonicalDomain,
+      country: parsed.data.country?.trim() || "Unknown",
+      hubspotCompanyId: parsed.data.hubspot_company_id ?? null,
+    }).returning();
+    res.status(201).json({ id: created!.id, name: created!.name, domain: created!.domain, country: created!.country });
+  } catch (error) {
+    if (!isUniqueCompanyDomainViolation(error)) throw error;
+    matches = await selectMatches();
+    if (matches.length === 1) {
+      const existing = matches[0]!;
+      res.json({ id: existing.id, name: existing.name, domain: existing.domain, country: existing.country });
+      return;
+    }
+    res.status(409).json({ error: "Multiple local companies share this domain." });
+  }
+});
 
 // status=won requires a real closed_at -- the one DB-unenforced invariant
 // the Phase 5A brief calls out explicitly (closed_at legitimately has no

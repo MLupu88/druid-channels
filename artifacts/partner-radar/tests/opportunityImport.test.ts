@@ -1,14 +1,18 @@
 // Phase 5B-3: unit tests for the historical opportunity CSV cutover's pure
 // parsing/validation module (src/lib/opportunity-import.ts). No React, no
 // network, no DOM -- every resolution input is a plain in-memory fixture
-// standing in for what the import page fetches via the EXISTING
-// GET /companies/search, /users, /territories, /opportunities contracts.
+// standing in for what the import page receives from its reference-data and
+// authenticated reconciliation endpoints.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   IMPORT_CSV_COLUMNS,
   normalizeDomainForLookup,
   normalizeImportRows,
+  normalizeAttribution,
+  normalizeImportDate,
+  extractSingleEmail,
+  buildCutoverExternalId,
   findExactDomainMatch,
   buildActivePamsByEmail,
   buildTerritoriesByOwnerUserId,
@@ -111,8 +115,8 @@ test("a domain flagged ambiguous by GET /companies/by-domain produces a row erro
   const ref = baseRef();
   ref.ambiguousDomains = new Set(["uipath.com"]);
   const result = validateImportRow(baseRow(), 1, ref, new Set());
-  assert.equal(result.status, "error");
-  assert.ok(result.errors.some((e) => e.includes("more than one existing company")));
+  assert.equal(result.status, "needs_review");
+  assert.ok(result.notes.some((e) => e.includes("more than one existing company")));
   assert.equal(result.resolved, undefined, "an ambiguous domain must never carry a resolved company");
 });
 
@@ -123,7 +127,7 @@ test("ambiguousDomains takes precedence even if the same normalized domain also 
   // ambiguous flag must still win, since it means the exact-domain lookup
   // itself refused to pick between multiple rows.
   const result = validateImportRow(baseRow(), 1, ref, new Set());
-  assert.equal(result.status, "error");
+  assert.equal(result.status, "needs_review");
 });
 
 // ---- header validation -------------------------------------------------------
@@ -148,10 +152,10 @@ test("a fully valid row resolves to ready, with source_system always 'import' an
   assert.equal(result.input?.external_id, "ext-1");
 });
 
-test("external_id is required -- a blank value is a row error, never silently substituted", () => {
+test("external_id is generated deterministically when blank", () => {
   const result = validateImportRow(baseRow({ external_id: "" }), 1, baseRef(), new Set());
-  assert.equal(result.status, "error");
-  assert.ok(result.errors.some((e) => e.includes("external_id")));
+  assert.equal(result.status, "ready");
+  assert.match(result.input?.external_id ?? "", /^CUTOVER-/);
 });
 
 test("duplicate external_id within the same file is detected on the second occurrence", () => {
@@ -178,15 +182,15 @@ test("canonical partner-domain resolution uses the exact companies.domain match 
 
 test("an unresolvable partner domain becomes a row error, never a silently-created company", () => {
   const result = validateImportRow(baseRow({ partner_domain: "unknown-partner.example" }), 1, baseRef(), new Set());
-  assert.equal(result.status, "error");
-  assert.ok(result.errors.some((e) => e.includes("Partner domain") && e.includes("not found")));
+  assert.equal(result.status, "needs_review");
+  assert.ok(result.notes.some((e) => e.includes("Partner domain") && e.includes("not found")));
 });
 
 test("PAM resolution is by exact active email, never by display name, and never matches an inactive or non-PAM user", () => {
   const ref = baseRef();
-  assert.equal(validateImportRow(baseRow({ pam_email: "Denny Morais" }), 1, ref, new Set()).status, "error");
-  assert.equal(validateImportRow(baseRow({ pam_email: "inactive@druidai.com" }), 1, ref, new Set()).status, "error");
-  assert.equal(validateImportRow(baseRow({ pam_email: "irina@druidai.com" }), 1, ref, new Set()).status, "error", "a head_of_channels email must not resolve as a PAM assignee");
+  assert.equal(validateImportRow(baseRow({ pam_email: "Denny Morais" }), 1, ref, new Set()).status, "needs_review");
+  assert.equal(validateImportRow(baseRow({ pam_email: "inactive@druidai.com" }), 1, ref, new Set()).status, "needs_review");
+  assert.equal(validateImportRow(baseRow({ pam_email: "irina@druidai.com" }), 1, ref, new Set()).status, "needs_review", "a head_of_channels email must not resolve as a PAM assignee");
   const ok = validateImportRow(baseRow({ pam_email: "DENNY.MORAIS@druidai.com" }), 1, ref, new Set());
   assert.equal(ok.status, "ready", "email matching is case-insensitive but still exact");
 });
@@ -201,21 +205,21 @@ test("a PAM with no canonical territory produces a row error", () => {
   const ref = baseRef();
   ref.territoriesByOwnerUserId = new Map();
   const result = validateImportRow(baseRow(), 1, ref, new Set());
-  assert.equal(result.status, "error");
-  assert.ok(result.errors.some((e) => e.includes("no canonical territory")));
+  assert.equal(result.status, "needs_review");
+  assert.ok(result.notes.some((e) => e.includes("no canonical territory")));
 });
 
 test("attribution_type only accepts partner_sourced/partner_influenced", () => {
   assert.equal(validateImportRow(baseRow({ attribution_type: "partner_sourced" }), 1, baseRef(), new Set()).status, "ready");
   assert.equal(validateImportRow(baseRow({ attribution_type: "partner_influenced" }), 1, baseRef(), new Set()).status, "ready");
-  assert.equal(validateImportRow(baseRow({ attribution_type: "referral" }), 1, baseRef(), new Set()).status, "error");
+  assert.equal(validateImportRow(baseRow({ attribution_type: "referral" }), 1, baseRef(), new Set()).status, "needs_review");
 });
 
 test("currency only accepts USD/EUR/GBP", () => {
   for (const currency of ["USD", "EUR", "GBP"]) {
     assert.equal(validateImportRow(baseRow({ currency }), 1, baseRef(), new Set()).status, "ready");
   }
-  assert.equal(validateImportRow(baseRow({ currency: "CHF" }), 1, baseRef(), new Set()).status, "error");
+  assert.equal(validateImportRow(baseRow({ currency: "CHF" }), 1, baseRef(), new Set()).status, "needs_review");
 });
 
 test("native deal currency and value are preserved verbatim, never converted", () => {
@@ -226,8 +230,8 @@ test("native deal currency and value are preserved verbatim, never converted", (
 
 test("status=won requires closed_at", () => {
   const withoutClosedAt = validateImportRow(baseRow({ status: "won" }), 1, baseRef(), new Set());
-  assert.equal(withoutClosedAt.status, "error");
-  assert.ok(withoutClosedAt.errors.some((e) => e.includes("closed_at")));
+  assert.equal(withoutClosedAt.status, "needs_review");
+  assert.ok(withoutClosedAt.notes.some((e) => e.includes("closed_at")));
 
   const withClosedAt = validateImportRow(baseRow({ status: "won", closed_at: "2025-12-01" }), 1, baseRef(), new Set());
   assert.equal(withClosedAt.status, "ready");
@@ -262,18 +266,18 @@ test("blank credit fields stay null -- never defaulted to deal_value/closed_at b
 
 test("a non-positive credit_value is a row error", () => {
   const result = validateImportRow(baseRow({ credit_value: "0" }), 1, baseRef(), new Set());
-  assert.equal(result.status, "error");
+  assert.equal(result.status, "needs_review");
 });
 
 test("deal_value must be a positive number", () => {
-  assert.equal(validateImportRow(baseRow({ deal_value: "0" }), 1, baseRef(), new Set()).status, "error");
-  assert.equal(validateImportRow(baseRow({ deal_value: "-5" }), 1, baseRef(), new Set()).status, "error");
-  assert.equal(validateImportRow(baseRow({ deal_value: "abc" }), 1, baseRef(), new Set()).status, "error");
+  assert.equal(validateImportRow(baseRow({ deal_value: "0" }), 1, baseRef(), new Set()).status, "needs_review");
+  assert.equal(validateImportRow(baseRow({ deal_value: "-5" }), 1, baseRef(), new Set()).status, "needs_review");
+  assert.equal(validateImportRow(baseRow({ deal_value: "abc" }), 1, baseRef(), new Set()).status, "needs_review");
 });
 
 test("opportunity_date must be an ISO YYYY-MM-DD date", () => {
-  assert.equal(validateImportRow(baseRow({ opportunity_date: "11/01/2025" }), 1, baseRef(), new Set()).status, "error");
-  assert.equal(validateImportRow(baseRow({ opportunity_date: "" }), 1, baseRef(), new Set()).status, "error");
+  assert.equal(validateImportRow(baseRow({ opportunity_date: "11/01/2025" }), 1, baseRef(), new Set()).status, "ready");
+  assert.equal(validateImportRow(baseRow({ opportunity_date: "" }), 1, baseRef(), new Set()).status, "needs_review");
 });
 
 test("validateImportRows processes a whole file and dedupes external_id across the batch", () => {
@@ -288,4 +292,97 @@ test("validateImportRows processes a whole file and dedupes external_id across t
 test("buildCsvTemplate's header row contains exactly the documented CSV contract columns", () => {
   const [header] = buildCsvTemplate().split("\n");
   assert.deepEqual(header!.split(","), [...IMPORT_CSV_COLUMNS]);
+});
+
+test("human-friendly status, currency, attribution, and PAM email normalization", () => {
+  const normalized = normalizeImportRows([baseRow({
+    status: " Won ",
+    currency: "eur",
+    attribution_type: "DRUID originated — partner influenced",
+    pam_email: "Denny Morais — DENNY.MORAIS@DRUIDAI.COM",
+  })])[0]!;
+  assert.equal(normalized.status, "won");
+  assert.equal(normalized.currency, "EUR");
+  assert.equal(normalized.attribution_type, "partner_influenced");
+  assert.equal(normalized.pam_email, "denny.morais@druidai.com");
+  assert.equal(normalizeAttribution("Partner originated the deal"), "partner_sourced");
+  assert.equal(normalizeAttribution("DRUID originated - partner influenced"), "partner_influenced");
+  assert.equal(extractSingleEmail("Denny Morais — denny.morais@druidai.com"), "denny.morais@druidai.com");
+  assert.equal(extractSingleEmail("two a@example.com and b@example.com"), null);
+});
+
+test("the precise historical cutover column shift repairs PAM metadata and clears customer_name", () => {
+  const [row] = normalizeImportRows([baseRow({
+    customer_name: "Denny Morais — denny.morais@druidai.com",
+    pam_email: "Partner originated the deal",
+    attribution_type: "",
+  })]);
+  assert.equal(row!.customer_name, "");
+  assert.equal(row!.pam_email, "denny.morais@druidai.com");
+  assert.equal(row!.attribution_type, "partner_sourced");
+});
+
+test("dates normalize ISO, slash dates, Excel serials including fractions, and preserve invalid dates unresolved", () => {
+  assert.equal(normalizeImportDate("2025-11-03"), "2025-11-03");
+  assert.equal(normalizeImportDate("11/3/25"), "2025-11-03");
+  assert.equal(normalizeImportDate("11/03/2025"), "2025-11-03");
+  assert.equal(normalizeImportDate("46175"), "2026-06-02");
+  assert.equal(normalizeImportDate("46175.00027777778"), "2026-06-02");
+  assert.equal(normalizeImportDate("2025-02-31"), "2025-02-31");
+  assert.equal(validateImportRow(baseRow({ opportunity_date: "2025-02-31" }), 1, baseRef(), new Set()).status, "needs_review");
+});
+
+test("CUTOVER identity is stable and excludes volatile fields", () => {
+  const a = buildCutoverExternalId("https://www.UiPath.com/path", " UiPath   renewal ", "DENNY.MORAIS@DRUIDAI.COM");
+  const b = buildCutoverExternalId("uipath.com", "uipath renewal", "denny.morais@druidai.com");
+  assert.equal(a, b);
+  assert.match(a, /^CUTOVER-[0-9a-f]+$/);
+});
+
+test("HubSpot exact deal match enriches only missing fields and wins external identity", () => {
+  const ref = baseRef();
+  ref.reconciliationByRow = new Map([[1, {
+    company: COMPANY,
+    companySource: "local",
+    deal: { id: "hs-123", dealName: "UiPath renewal", amount: "9000", closeDate: "2025-12-20", createDate: "2025-10-01" },
+    dealAmbiguous: false,
+    notes: [],
+  }]]);
+  const result = validateImportRow(baseRow({ deal_value: "1000", opportunity_date: "2025-11-01" }), 1, ref, new Set());
+  assert.equal(result.status, "ready");
+  assert.equal(result.input?.deal_value, 1000);
+  assert.equal(result.input?.opportunity_date, "2025-11-01");
+  assert.equal(result.input?.external_id, "hs-123");
+});
+
+test("HubSpot company fallback can make a row ready pending local identity ensure", () => {
+  const ref = baseRef();
+  ref.companiesByDomain.clear();
+  ref.reconciliationByRow = new Map([[1, {
+    company: { id: "", name: "HubSpot Co", domain: "unknown.example", country: "Unknown" },
+    companySource: "hubspot",
+    hubspotCompanyId: "hs-company-1",
+    hubspotCompanyName: "HubSpot Co",
+    hubspotCompanyCountry: "Unknown",
+    deal: null,
+    dealAmbiguous: false,
+    notes: [],
+  }]]);
+  const result = validateImportRow(baseRow({ partner_domain: "unknown.example", external_id: "" }), 1, ref, new Set());
+  assert.equal(result.status, "ready");
+  assert.equal(result.pendingCompany?.hubspotCompanyId, "hs-company-1");
+});
+
+test("ambiguous exact HubSpot deal matches remain Needs review and fuzzy-only results do not match", () => {
+  const ref = baseRef();
+  ref.reconciliationByRow = new Map([[1, {
+    company: COMPANY,
+    companySource: "local",
+    deal: null,
+    dealAmbiguous: true,
+    notes: [],
+  }]]);
+  assert.equal(validateImportRow(baseRow(), 1, ref, new Set()).status, "needs_review");
+  ref.reconciliationByRow.set(1, { ...ref.reconciliationByRow.get(1)!, dealAmbiguous: false });
+  assert.equal(validateImportRow(baseRow(), 1, ref, new Set()).status, "ready");
 });

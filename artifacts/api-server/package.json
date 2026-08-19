@@ -45,6 +45,7 @@
     "test:encryption": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/encryption.test.ts",
     "test:connection-secret-handling": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/connectionSecretHandling.test.ts",
     "test:hubspot": "tsx --test tests/hubspot.test.ts",
+    "test:opportunity-import-scope": "tsx --test tests/opportunityImportScope.test.ts",
     "test:connections-credential-resolution": "tsx --test tests/connectionsCredentialResolution.test.ts",
     "test:channel-radar-qualification": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/channelRadarQualification.test.ts",
     "test:channel-radar-engine": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/channelRadarEngine.test.ts",
