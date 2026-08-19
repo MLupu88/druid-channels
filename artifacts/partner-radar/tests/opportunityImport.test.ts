@@ -307,6 +307,7 @@ test("human-friendly status, currency, attribution, and PAM email normalization"
   assert.equal(normalized.pam_email, "denny.morais@druidai.com");
   assert.equal(normalizeAttribution("Partner originated the deal"), "partner_sourced");
   assert.equal(normalizeAttribution("DRUID originated - partner influenced"), "partner_influenced");
+  assert.equal(normalizeAttribution("DRUID originated \u0097 partner influenced"), "partner_influenced");
   assert.equal(extractSingleEmail("Denny Morais — denny.morais@druidai.com"), "denny.morais@druidai.com");
   assert.equal(extractSingleEmail("two a@example.com and b@example.com"), null);
 });
@@ -359,18 +360,20 @@ test("HubSpot company fallback can make a row ready pending local identity ensur
   const ref = baseRef();
   ref.companiesByDomain.clear();
   ref.reconciliationByRow = new Map([[1, {
-    company: { id: "", name: "HubSpot Co", domain: "unknown.example", country: "Unknown" },
+    company: { id: "", name: "HubSpot Co", domain: "real-hubspot.example", country: "Unknown" },
     companySource: "hubspot",
     hubspotCompanyId: "hs-company-1",
     hubspotCompanyName: "HubSpot Co",
+    hubspotCompanyDomain: "real-hubspot.example",
     hubspotCompanyCountry: "Unknown",
     deal: null,
     dealAmbiguous: false,
     notes: [],
   }]]);
-  const result = validateImportRow(baseRow({ partner_domain: "unknown.example", external_id: "" }), 1, ref, new Set());
+  const result = validateImportRow(baseRow({ partner_domain: "wrong-csv-domain.example", external_id: "" }), 1, ref, new Set());
   assert.equal(result.status, "ready");
   assert.equal(result.pendingCompany?.hubspotCompanyId, "hs-company-1");
+  assert.equal(result.pendingCompany?.domain, "real-hubspot.example");
 });
 
 test("ambiguous exact HubSpot deal matches remain Needs review and fuzzy-only results do not match", () => {

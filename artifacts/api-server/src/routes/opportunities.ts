@@ -24,7 +24,7 @@ import {
 } from "../services/authz";
 import { recordChannelChangeEvent } from "../services/channelChangeEventsService";
 import { resolveProviderSecret } from "../services/connections";
-import { findCompanyByDomain, searchDeals, HubSpotAmbiguousCompanyError, HubSpotProviderError, type HubSpotDeal } from "../services/hubspot";
+import { findCompanyByDomain, findPrimaryCompanyForDeal, searchDeals, HubSpotAmbiguousCompanyError, HubSpotProviderError, type HubSpotDeal } from "../services/hubspot";
 import { toRegistrableDomain } from "../services/companyIdentity";
 import { normalizeCompanyName } from "../services/companyMatchingService";
 
@@ -272,7 +272,7 @@ router.post("/opportunities/import/reconcile", requireAdmin, async (req, res): P
     providerWarning = hubSpotImportWarning(error);
   }
 
-  const companyCache = new Map<string, { source: "local" | "hubspot" | "none" | "ambiguous"; company: { id: string; name: string; domain: string | null; country: string } | null; hubspotCompanyId: string | null; hubspotCompanyName: string | null; hubspotCompanyCountry: string | null }>();
+  const companyCache = new Map<string, { source: "local" | "hubspot" | "none" | "ambiguous"; company: { id: string; name: string; domain: string | null; country: string } | null; hubspotCompanyId: string | null; hubspotCompanyName: string | null; hubspotCompanyDomain: string | null; hubspotCompanyCountry: string | null }>();
   const dealCache = new Map<string, { deal: HubSpotDeal | null; ambiguous: boolean }>();
   const output: Array<Record<string, unknown>> = [];
 
@@ -282,31 +282,32 @@ router.post("/opportunities/import/reconcile", requireAdmin, async (req, res): P
     if (!companyResult && canonicalDomain) {
       const matches = await db.select().from(companiesTable).where(sql`lower(${companiesTable.domain}) = ${canonicalDomain}`);
       if (matches.length > 1) {
-        companyResult = { source: "ambiguous", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+        companyResult = { source: "ambiguous", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyDomain: null, hubspotCompanyCountry: null };
       } else if (matches.length === 1) {
         const company = matches[0]!;
-        companyResult = { source: "local", company: { id: company.id, name: company.name, domain: company.domain, country: company.country }, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+        companyResult = { source: "local", company: { id: company.id, name: company.name, domain: company.domain, country: company.country }, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyDomain: null, hubspotCompanyCountry: null };
       } else if (!accessToken || providerWarning) {
-        companyResult = { source: "none", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+        companyResult = { source: "none", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyDomain: null, hubspotCompanyCountry: null };
       } else {
         try {
           const match = await findCompanyByDomain(accessToken, canonicalDomain);
-          if (!match) companyResult = { source: "none", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+          if (!match) companyResult = { source: "none", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyDomain: null, hubspotCompanyCountry: null };
           else companyResult = {
             source: "hubspot",
             company: match.name ? { id: "", name: match.name, domain: match.domain, country: "Unknown" } : null,
             hubspotCompanyId: match.objectId || match.id,
             hubspotCompanyName: match.name,
+            hubspotCompanyDomain: match.domain ?? canonicalDomain,
             hubspotCompanyCountry: "Unknown",
           };
         } catch (error) {
           if (error instanceof HubSpotAmbiguousCompanyError) {
-            companyResult = { source: "ambiguous", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+            companyResult = { source: "ambiguous", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyDomain: null, hubspotCompanyCountry: null };
             // Continue with deal reconciliation; the company ambiguity alone
             // keeps this row out of Ready until a human resolves it.
           } else {
             providerWarning ??= hubSpotImportWarning(error);
-            companyResult = { source: "none", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyCountry: null };
+            companyResult = { source: "none", company: null, hubspotCompanyId: null, hubspotCompanyName: null, hubspotCompanyDomain: null, hubspotCompanyCountry: null };
           }
         }
       }
@@ -327,12 +328,46 @@ router.post("/opportunities/import/reconcile", requireAdmin, async (req, res): P
       dealCache.set(dealKey, dealResult);
     }
 
+    if (
+      companyResult?.source === "none" &&
+      dealResult?.deal &&
+      !dealResult.ambiguous &&
+      accessToken &&
+      !providerWarning
+    ) {
+      try {
+        const associatedCompany = await findPrimaryCompanyForDeal(accessToken, dealResult.deal.id);
+        const associatedDomain = associatedCompany?.domain
+          ? toRegistrableDomain(associatedCompany.domain)
+          : null;
+
+        if (associatedCompany?.name && associatedDomain) {
+          companyResult = {
+            source: "hubspot",
+            company: {
+              id: "",
+              name: associatedCompany.name,
+              domain: associatedDomain,
+              country: "Unknown",
+            },
+            hubspotCompanyId: associatedCompany.objectId || associatedCompany.id,
+            hubspotCompanyName: associatedCompany.name,
+            hubspotCompanyDomain: associatedDomain,
+            hubspotCompanyCountry: "Unknown",
+          };
+        }
+      } catch (error) {
+        providerWarning ??= hubSpotImportWarning(error);
+      }
+    }
+
     output.push({
       row_number: row.row_number,
       company_source: companyResult?.source ?? "none",
       company: companyResult?.company ?? null,
       hubspot_company_id: companyResult?.hubspotCompanyId ?? null,
       hubspot_company_name: companyResult?.hubspotCompanyName ?? null,
+      hubspot_company_domain: companyResult?.hubspotCompanyDomain ?? null,
       hubspot_company_country: companyResult?.hubspotCompanyCountry ?? null,
       deal: dealResult?.deal ? {
         id: dealResult.deal.id,

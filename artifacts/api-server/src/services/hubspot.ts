@@ -241,6 +241,59 @@ export async function searchDeals(accessToken: string, query: HubSpotDealSearchQ
   });
 }
 
+
+export async function findPrimaryCompanyForDeal(accessToken: string, dealId: string): Promise<HubSpotCompany | null> {
+  const normalizedDealId = dealId.trim();
+  if (!normalizedDealId) throw new HubSpotInputError("A deal ID is required.");
+
+  const associationBody = await hubSpotRequest(
+    accessToken,
+    "/crm/v3/associations/deals/companies/batch/read",
+    {
+      method: "POST",
+      body: { inputs: [{ id: normalizedDealId }] },
+    },
+  );
+
+  const associationResults = requireResults(associationBody);
+  if (associationResults.length === 0) return null;
+
+  const result = associationResults.find((candidate) => {
+    const from = candidate.from;
+    return isRecord(from) && from.id === normalizedDealId;
+  });
+
+  if (!result) return null;
+  if (!Array.isArray(result.to)) throw new HubSpotProviderError("malformed_response");
+  if (result.to.length === 0) return null;
+  if (result.to.length > 1) throw new HubSpotProviderError("malformed_response");
+
+  const association = result.to[0];
+  if (!isRecord(association) || typeof association.id !== "string") {
+    throw new HubSpotProviderError("malformed_response");
+  }
+
+  const companyBody = await hubSpotRequest(
+    accessToken,
+    `/crm/v3/objects/companies/${encodeURIComponent(association.id)}?properties=name,domain,hs_object_id`,
+  );
+
+  if (
+    !isRecord(companyBody) ||
+    typeof companyBody.id !== "string" ||
+    !isRecord(companyBody.properties)
+  ) {
+    throw new HubSpotProviderError("malformed_response");
+  }
+
+  return {
+    id: companyBody.id,
+    name: optionalString(companyBody.properties.name),
+    domain: optionalString(companyBody.properties.domain),
+    objectId: optionalString(companyBody.properties.hs_object_id) ?? companyBody.id,
+  };
+}
+
 export async function getPartners(_accessToken: string): Promise<unknown[]> {
   throw new HubSpotNotImplementedError("getPartners");
 }

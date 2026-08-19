@@ -170,6 +170,7 @@ export default function OpportunitiesImport() {
           companySource: result.company_source,
           hubspotCompanyId: result.hubspot_company_id,
           hubspotCompanyName: result.hubspot_company_name,
+          hubspotCompanyDomain: result.hubspot_company_domain,
           hubspotCompanyCountry: result.hubspot_company_country,
           deal: result.deal,
           dealAmbiguous: result.deal_ambiguous,

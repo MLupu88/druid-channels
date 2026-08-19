@@ -39,6 +39,7 @@ export interface ImportReconciliation {
   companySource: 'local' | 'hubspot' | 'none' | 'ambiguous';
   hubspotCompanyId?: string | null;
   hubspotCompanyName?: string | null;
+  hubspotCompanyDomain?: string | null;
   hubspotCompanyCountry?: string | null;
   deal: {
     id: string;
@@ -145,7 +146,7 @@ export function normalizeCurrency(value: string): string {
 }
 
 function normalizeDash(value: string): string {
-  return value.replace(/[‐‑‒–—―﹘﹣－]/g, '-').replace(/â(?:€”|€“)/g, '-').replace(/&(?:mdash|ndash);/gi, '-').replace(/\s+/g, ' ').trim().toLowerCase();
+  return value.replace(/[‐‑‒–—―﹘﹣－\u0097]/g, '-').replace(/â(?:€”|€“)/g, '-').replace(/&(?:mdash|ndash);/gi, '-').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 export function normalizeAttribution(value: string): string {
@@ -381,7 +382,7 @@ export function validateImportRow(rawInput: Record<string, string>, rowNumber: n
   }
 
   const pendingCompany = !company && reconciliation?.companySource === 'hubspot' && reconciliation.hubspotCompanyId && reconciliation.hubspotCompanyName
-    ? { domain: normalizeDomainForLookup(raw.partner_domain) ?? raw.partner_domain, name: reconciliation.hubspotCompanyName, country: reconciliation.hubspotCompanyCountry || 'Unknown', hubspotCompanyId: reconciliation.hubspotCompanyId }
+    ? { domain: normalizeDomainForLookup(reconciliation.hubspotCompanyDomain) ?? normalizeDomainForLookup(raw.partner_domain) ?? raw.partner_domain, name: reconciliation.hubspotCompanyName, country: reconciliation.hubspotCompanyCountry || 'Unknown', hubspotCompanyId: reconciliation.hubspotCompanyId }
     : undefined;
   if (errors.length > 0) return { rowNumber, raw, status: 'error', errors, notes };
 

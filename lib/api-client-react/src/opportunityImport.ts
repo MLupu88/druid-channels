@@ -14,6 +14,7 @@ export interface OpportunityImportReconcileResult {
     company: { id: string; name: string; domain: string | null; country: string } | null;
     hubspot_company_id: string | null;
     hubspot_company_name: string | null;
+    hubspot_company_domain: string | null;
     hubspot_company_country: string | null;
     deal: {
       id: string;
