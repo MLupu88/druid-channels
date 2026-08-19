@@ -21,12 +21,6 @@ export interface ConnectionProviderMeta {
   // extraction.ts with no second "reader" call). The DB row and backend
   // identity are untouched -- this is a display-only omission.
   hiddenFromList?: boolean;
-  // hubspot: there is no real credential/test mechanism to manage yet
-  // (OAuth is the intended future connection model, not an API key) -- the
-  // card shows `purpose` in place of the usual credential-source line and
-  // never shows a "Powers" list, rather than implying a capability that
-  // isn't actually wired.
-  notYetAvailable?: boolean;
 }
 
 export const CONNECTION_PROVIDER_META: Record<string, ConnectionProviderMeta> = {
@@ -54,8 +48,7 @@ export const CONNECTION_PROVIDER_META: Record<string, ConnectionProviderMeta> = 
   },
   hubspot: {
     displayName: 'HubSpot',
-    purpose: 'CRM synchronization is not yet enabled. This connection will use OAuth when available.',
-    powers: [],
-    notYetAvailable: true,
+    purpose: 'Read-only CRM access for company and deal lookup and opportunity reconciliation.',
+    powers: ['Company lookup', 'Deal lookup and reconciliation'],
   },
 };

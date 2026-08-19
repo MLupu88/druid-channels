@@ -62,19 +62,15 @@ test("settings.tsx actually filters connections using hiddenFromList before rend
   );
 });
 
-// ---- HubSpot: honest, OAuth-oriented, no internal roadmap language --------
+// ---- HubSpot: read-only credential-backed access --------------------------
 
-test("hubspot is marked not-yet-available (no fake credential/API-key management)", () => {
-  assert.equal(CONNECTION_PROVIDER_META.hubspot!.notYetAvailable, true);
-  assert.equal(CONNECTION_PROVIDER_META.hubspot!.powers.length, 0);
-});
-
-test("HubSpot's product-facing copy mentions OAuth and contains no internal roadmap wording", () => {
+test("HubSpot metadata describes read-only company/deal lookup and reconciliation", () => {
   const purpose = CONNECTION_PROVIDER_META.hubspot!.purpose;
-  assert.ok(/oauth/i.test(purpose), "expected HubSpot's copy to mention OAuth as the intended connection model");
-  for (const forbidden of ["Phase 12", "phase 12", "deferred"]) {
-    assert.ok(!purpose.includes(forbidden), `HubSpot's user-facing copy must never mention "${forbidden}"`);
-  }
+  assert.match(purpose, /read-only/i);
+  assert.match(purpose, /company/i);
+  assert.match(purpose, /deal/i);
+  assert.match(purpose, /reconciliation/i);
+  assert.ok(!/oauth/i.test(purpose));
 });
 
 test("settings.tsx contains no user-facing 'Phase 12' or 'deferred to Phase' wording anywhere in the Connections surface", () => {
@@ -87,35 +83,22 @@ test("settings.tsx contains no user-facing 'Phase 12' or 'deferred to Phase' wor
   assert.ok(!settingsSource.includes("deferred to Phase"));
 });
 
-// ---- ConnectionCard source, split into its two rendered branches ----------
-// (11.6D amendment: HubSpot/notYetAvailable now returns an early, distinct,
-// deliberately minimal JSX block -- these two slices let each of the tests
-// below assert presence/absence against the RIGHT branch, not the whole
-// function, since "Test connection" legitimately appears in one branch and
-// must legitimately be absent from the other.)
+// ---- ConnectionCard generic credential-backed controls --------------------
 
 const cardFnStart = settingsSource.indexOf("function ConnectionCard(");
 const cardFnEnd = settingsSource.indexOf("\nfunction ", cardFnStart + 1);
 const cardFnSource = settingsSource.slice(cardFnStart, cardFnEnd === -1 ? undefined : cardFnEnd);
 
-const notYetAvailableBranchStart = cardFnSource.indexOf("if (meta?.notYetAvailable) {");
-const notYetAvailableBranchEnd = cardFnSource.indexOf("const credentialLine = secretManageable");
-assert.ok(notYetAvailableBranchStart !== -1 && notYetAvailableBranchEnd !== -1, "expected to find ConnectionCard's notYetAvailable branch boundaries");
-const notYetAvailableBranchSource = cardFnSource.slice(notYetAvailableBranchStart, notYetAvailableBranchEnd);
-const generalBranchSource = cardFnSource.slice(notYetAvailableBranchEnd);
-
-test("DeepSeek/Tavily's rendered branch still offers Replace, Test connection, and Enable/Disable", () => {
-  assert.ok(generalBranchSource.includes("testMutation.mutate({ id: connection.id })"), "expected Test connection to still work");
-  assert.ok(generalBranchSource.includes("Test connection"));
-  assert.ok(generalBranchSource.includes("Replace"));
-  assert.ok(generalBranchSource.includes("enabledMutation.mutate"), "expected Enable/Disable to still work");
+test("HubSpot uses the generic credential-backed ConnectionCard controls", () => {
+  assert.ok(settingsSource.includes("const SECRET_MANAGEABLE_PROVIDER_TYPES = new Set(['web_search', 'ai', 'hubspot']);"));
+  assert.ok(cardFnSource.includes("testMutation.mutate({ id: connection.id })"));
+  assert.ok(cardFnSource.includes("Test connection"));
+  assert.ok(cardFnSource.includes("Replace"));
+  assert.ok(cardFnSource.includes("enabledMutation.mutate"));
+  assert.ok(!cardFnSource.includes("meta?.notYetAvailable"));
 });
 
-test("Replace credential remains gated to only the secret-manageable providers (ai, web_search) -- unchanged", () => {
-  assert.ok(settingsSource.includes("const SECRET_MANAGEABLE_PROVIDER_TYPES = new Set(['web_search', 'ai']);"));
-});
-
-// ---- 11.6D amendment 1: no internal provider_type caption in the normal UI
+// ---- no internal provider_type caption in the normal UI
 
 test("ConnectionCard no longer renders the raw provider_type as a visible caption", () => {
   assert.ok(
@@ -134,44 +117,6 @@ test("CONNECTION_PROVIDER_META remains keyed by the stable provider_type values 
   // provider_type from the UI must not tempt a future edit into keying
   // this map by something else (like displayName) instead.
   assert.deepEqual(Object.keys(CONNECTION_PROVIDER_META).sort(), ["ai", "hubspot", "web_reader", "web_search"]);
-});
-
-// ---- 11.6D amendment 2: HubSpot is clearly unavailable, not "testable" ----
-
-test("HubSpot's branch shows a static, product-facing 'Not connected' badge, never the backend-derived ConnectionStatusBadge", () => {
-  assert.ok(
-    notYetAvailableBranchSource.includes('<Badge variant="outline" className="text-muted-foreground font-normal shrink-0">Not connected</Badge>'),
-    "expected a static 'Not connected' badge",
-  );
-  assert.ok(
-    !notYetAvailableBranchSource.includes("<ConnectionStatusBadge"),
-    "must never render the backend status/last_error-derived badge for a connection that isn't really connectable yet",
-  );
-});
-
-test("HubSpot's branch never offers Test connection", () => {
-  assert.ok(!notYetAvailableBranchSource.includes("Test connection"));
-  assert.ok(!notYetAvailableBranchSource.includes("testMutation.mutate"));
-});
-
-test("HubSpot's branch never offers Replace credential", () => {
-  assert.ok(!notYetAvailableBranchSource.includes("Replace"));
-  assert.ok(!notYetAvailableBranchSource.includes("setReplaceDialogOpen(true)"));
-});
-
-test("HubSpot's branch never offers an Enable/Disable switch", () => {
-  assert.ok(!notYetAvailableBranchSource.includes("<Switch"));
-  assert.ok(!notYetAvailableBranchSource.includes("enabledMutation.mutate"));
-});
-
-test("HubSpot's branch never shows credential_env_var / last_tested_at / last_error details", () => {
-  assert.ok(!notYetAvailableBranchSource.includes("credential_env_var"));
-  assert.ok(!notYetAvailableBranchSource.includes("last_tested_at"));
-  assert.ok(!notYetAvailableBranchSource.includes("last_error"));
-});
-
-test("HubSpot's branch only ever renders meta.purpose (the OAuth-oriented copy) as its content", () => {
-  assert.ok(notYetAvailableBranchSource.includes("{meta.purpose}"));
 });
 
 // ---- Connections vs Metric Setup separation --------------------------------

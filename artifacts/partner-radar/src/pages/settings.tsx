@@ -1038,12 +1038,10 @@ function ConnectionStatusBadge({ status, hasCredential, enabled }: { status: str
   return <Badge variant="outline" className="text-muted-foreground font-normal shrink-0">Not configured</Badge>;
 }
 
-// Phase 11.5B: only these two provider types get DB-stored-secret UI in this
-// slice (Tavily/web_search, DeepSeek/ai) -- HubSpot stays untouched for
-// Phase 12, and Web Reader is currently unwired (Phase 11.5C reuses the
-// Tavily credential rather than introducing a separate one). Both still get
-// the env-var-only display/test behavior they already had.
-const SECRET_MANAGEABLE_PROVIDER_TYPES = new Set(['web_search', 'ai']);
+// Web Reader is currently unwired (Phase 11.5C reuses the Tavily credential
+// rather than introducing a separate one). Credential-backed providers use
+// the shared encrypted-secret controls below.
+const SECRET_MANAGEABLE_PROVIDER_TYPES = new Set(['web_search', 'ai', 'hubspot']);
 
 function ReplaceConnectionSecretDialog({ connection, onClose }: { connection: Connection; onClose: () => void }) {
   const { toast } = useToast();
@@ -1185,30 +1183,6 @@ function ConnectionCard({ connection }: { connection: Connection }) {
       {displayName}
     </span>
   );
-
-  // Phase 11.6D amendment: HubSpot has no real connection today (OAuth is
-  // the future model, not implemented) -- its card must not imply the
-  // integration is testable/configurable. This renders a deliberately
-  // minimal, distinct layout: no ConnectionStatusBadge (that reflects
-  // backend `status`/`last_error`, which would misleadingly imply an
-  // active integration exists), no credential/env-var details, no Enable/
-  // Disable, no Replace, no Test connection -- only the product-facing
-  // "Not connected" state and the OAuth-oriented copy. The backend
-  // connections row itself (status, last_error, credential_env_var, etc.)
-  // is completely untouched; this is a presentation-only branch.
-  if (meta?.notYetAvailable) {
-    return (
-      <SectionCard>
-        <SectionCardHeader
-          title={nameHeader}
-          actions={<Badge variant="outline" className="text-muted-foreground font-normal shrink-0">Not connected</Badge>}
-        />
-        <SectionCardContent>
-          <p className="text-xs text-muted-foreground">{meta.purpose}</p>
-        </SectionCardContent>
-      </SectionCard>
-    );
-  }
 
   const credentialLine = secretManageable
     ? connection.has_db_secret
