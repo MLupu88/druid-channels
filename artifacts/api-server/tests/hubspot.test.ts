@@ -2,7 +2,6 @@ import { after, afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   findCompanyByDomain,
-  findPrimaryCompanyForDeal,
   HubSpotAmbiguousCompanyError,
   HubSpotProviderError,
   normalizeHubSpotDomain,
@@ -191,56 +190,6 @@ test("searchDeals bounds the limit, requests narrow properties, and maps typed f
       objectId: "501",
     },
   ]);
-});
-
-test("findPrimaryCompanyForDeal resolves the primary associated company", async () => {
-  const calls: Array<{ url: string; init?: RequestInit }> = [];
-
-  globalThis.fetch = (async (url, init) => {
-    calls.push({ url: String(url), init });
-
-    if (calls.length === 1) {
-      return jsonResponse(200, {
-        results: [
-          {
-            from: { id: "501" },
-            to: [{ id: "101", type: "deal_to_company" }],
-          },
-        ],
-      });
-    }
-
-    return jsonResponse(200, {
-      id: "101",
-      properties: {
-        name: "Example Partner",
-        domain: "example.com",
-        hs_object_id: "101",
-      },
-    });
-  }) as typeof fetch;
-
-  const result = await findPrimaryCompanyForDeal("private-token", "501");
-
-  assert.equal(calls.length, 2);
-  assert.equal(
-    calls[0]!.url,
-    "https://api.hubapi.com/crm/v3/associations/deals/companies/batch/read",
-  );
-  assert.equal(calls[0]!.init?.method, "POST");
-  assert.deepEqual(JSON.parse(String(calls[0]!.init?.body)), {
-    inputs: [{ id: "501" }],
-  });
-  assert.equal(
-    calls[1]!.url,
-    "https://api.hubapi.com/crm/v3/objects/companies/101?properties=name,domain,hs_object_id",
-  );
-  assert.deepEqual(result, {
-    id: "101",
-    name: "Example Partner",
-    domain: "example.com",
-    objectId: "101",
-  });
 });
 
 test("malformed HubSpot JSON is handled safely", async () => {

@@ -24,7 +24,7 @@ import {
 } from "../services/authz";
 import { recordChannelChangeEvent } from "../services/channelChangeEventsService";
 import { resolveProviderSecret } from "../services/connections";
-import { findCompanyByDomain, findPrimaryCompanyForDeal, searchDeals, HubSpotAmbiguousCompanyError, HubSpotProviderError, type HubSpotDeal } from "../services/hubspot";
+import { findCompanyByDomain, searchDeals, HubSpotAmbiguousCompanyError, HubSpotProviderError, type HubSpotDeal } from "../services/hubspot";
 import { toRegistrableDomain } from "../services/companyIdentity";
 import { normalizeCompanyName } from "../services/companyMatchingService";
 
@@ -326,39 +326,6 @@ router.post("/opportunities/import/reconcile", requireAdmin, async (req, res): P
         dealResult = { deal: null, ambiguous: false };
       }
       dealCache.set(dealKey, dealResult);
-    }
-
-    if (
-      companyResult?.source === "none" &&
-      dealResult?.deal &&
-      !dealResult.ambiguous &&
-      accessToken &&
-      !providerWarning
-    ) {
-      try {
-        const associatedCompany = await findPrimaryCompanyForDeal(accessToken, dealResult.deal.id);
-        const associatedDomain = associatedCompany?.domain
-          ? toRegistrableDomain(associatedCompany.domain)
-          : null;
-
-        if (associatedCompany?.name && associatedDomain) {
-          companyResult = {
-            source: "hubspot",
-            company: {
-              id: "",
-              name: associatedCompany.name,
-              domain: associatedDomain,
-              country: "Unknown",
-            },
-            hubspotCompanyId: associatedCompany.objectId || associatedCompany.id,
-            hubspotCompanyName: associatedCompany.name,
-            hubspotCompanyDomain: associatedDomain,
-            hubspotCompanyCountry: "Unknown",
-          };
-        }
-      } catch (error) {
-        providerWarning ??= hubSpotImportWarning(error);
-      }
     }
 
     output.push({
