@@ -1,5 +1,5 @@
 <!--
-  DRUID Channels — public-safe portfolio README
+  ChannelOS — public-safe portfolio README
   Built for Mihail Lupu.
 
   IMPORTANT:
@@ -12,7 +12,7 @@
   <source media="(prefers-color-scheme: dark)" srcset="./assets/readme/hero-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./assets/readme/hero-light.svg">
   <img
-    alt="DRUID Channels — partner intelligence, channel operations, and an AI Chief of Staff"
+    alt="ChannelOS — partner intelligence, channel operations, and an AI Chief of Staff"
     src="./assets/readme/hero-light.svg"
     width="100%"
   >
@@ -20,9 +20,13 @@
 
 <div align="center">
 
-### **One system to run the channel. One AI Chief of Staff to tell you what matters.**
+**ChannelOS creates the commercial truth. Aniri turns it into attention.**
 
-DRUID Channels creates the commercial truth across partners, news, opportunities, targets, PAM activity, and history. **Aniri is a standalone OpenClaw bot delivered through Telegram.** She calls narrow, approved tools and turns that truth into briefs, explanations, comparisons, and recommendations—without becoming the source of truth herself.
+*ChannelOS is the public portfolio name for the system I built for DRUID’s partner organization.*
+
+**ChannelOS is the product. Aniri is one intelligent interface across it.**
+
+The operating model spans multiple surfaces: a role-aware **web application** for operators, **canonical APIs and services** for trusted facts, **OpenClaw** for the bounded agent runtime, and **Telegram** as Aniri's current conversational interface. Different surfaces do different jobs; they share the same truth model.
 
 <br>
 
@@ -53,11 +57,11 @@ DRUID Channels creates the commercial truth across partners, news, opportunities
 
 ---
 
-## Meet Aniri
+## Meet Aniri — the channel Chief of Staff
 
 A channel leader does not need another place to inspect records. They need to know **what changed, whether performance is sufficient, where evidence is incomplete, and which decision deserves attention now**.
 
-Aniri is the management experience DRUID Channels makes possible: a **standalone OpenClaw bot, delivered through Telegram**, that consumes approved read-only facts from the same canonical services used by the application.
+Aniri is the named AI operator ChannelOS makes possible: a **standalone OpenClaw bot, delivered through Telegram**, with her own identity and a deliberately narrow job — arrive with the channel context already assembled, explain what changed, and point leadership toward the decision that deserves attention.
 
 <p align="center">
   <img src="./assets/readme/00-aniri-openclaw-telegram.png" alt="Sanitized Telegram conversation with Aniri, a standalone OpenClaw bot, producing a grounded channel brief" width="100%">
@@ -77,9 +81,13 @@ Aniri is the management experience DRUID Channels makes possible: a **standalone
 | **PAM activity and history** | What the team has done, what changed, and where movement has stalled. |
 | **Evidence and unknowns** | Which claims are grounded, which are unresolved, and when the honest answer is “not available.” |
 
-> **DRUID Channels owns the facts. Aniri owns the interpretation. Humans own consequential decisions.**
+> **ChannelOS owns the facts. Aniri owns the interpretation. Humans own consequential decisions.**
 
 ---
+
+
+> **Partner Radar finds who might matter. ChannelOS knows what is happening. Aniri tells leadership what deserves attention.**
+
 
 ## 01 — The idea
 
@@ -91,7 +99,11 @@ A company appears in a spreadsheet. A contact sits in the CRM. Opportunity attri
 
 That reconstruction is slow, inconsistent, and usually too late.
 
-**I started this as a much smaller experiment: Partner Radar.**
+**It started as Partner Radar. It became ChannelOS.**
+
+Partner Radar was the original experiment: *can I find the companies that might matter before the CRM tells me they do?*
+
+The answer exposed a bigger problem. Discovery without relationship context, targets, attribution, market intelligence, ownership, and operating history is only a list. So the experiment expanded into **ChannelOS** — a real channel operating system built inside DRUID’s partner organization.
 
 The original question was simple:
 
@@ -113,7 +125,7 @@ The system also needed to know:
 - what was known, inferred, missing, or contradictory;
 - and what a human should do next.
 
-That experiment kept exposing a larger product problem. Partner Radar grew into **DRUID Channels**: a channel operating system built around one canonical commercial picture.
+That experiment kept exposing a larger product problem. Partner Radar grew into **ChannelOS**: a channel operating system built around one canonical commercial picture.
 
 > **One company. One relationship context. Every relevant motion around it.**
 
@@ -123,7 +135,7 @@ That experiment kept exposing a larger product problem. Partner Radar grew into 
 
 The product is easiest to understand by looking at the operating model it replaces.
 
-| | **Before** | **With DRUID Channels** |
+| | **Before** | **With ChannelOS** |
 |---|---|---|
 | **Partner discovery** | Companies arrive through ad hoc searches, introductions, spreadsheets, and memory. | Discovery becomes a reviewable workflow with evidence, status, ownership, and assignment. |
 | **Partner identity** | The same company can exist under multiple names, domains, or systems. | A canonical company record becomes the anchor for research, relationships, activity, and opportunities. |
@@ -159,12 +171,12 @@ The product is easiest to understand by looking at the operating model it replac
 
 ## 03 — The product
 
-DRUID Channels is not one dashboard.
+ChannelOS is not one dashboard.
 
 It is a connected set of workflows that follow the lifecycle of a partner relationship.
 
 <p align="center">
-  <img src="./assets/readme/02-partner-discovery.png" alt="Sanitized DRUID Channels partner discovery workflow" width="100%">
+  <img src="./assets/readme/02-partner-discovery.png" alt="Sanitized ChannelOS partner discovery workflow" width="100%">
 </p>
 
 <p align="center"><sub><strong>Discovery becomes an operating workflow.</strong> Evidence, priority, territory, ownership, status, and “why now” remain visible instead of disappearing into a spreadsheet.</sub></p>
@@ -224,7 +236,7 @@ Then uncomment:
 <p align="center">
   <img
     src="./assets/readme/product-overview.png"
-    alt="DRUID Channels overview"
+    alt="ChannelOS overview"
     width="100%"
   >
 </p>
@@ -288,7 +300,7 @@ Then remove the surrounding HTML comment.
 
 <p align="center">
   <img src="./assets/readme/partner-detail.png"
-       alt="DRUID Channels partner detail — relationship, evidence, activity, and commercial context"
+       alt="ChannelOS partner detail — relationship, evidence, activity, and commercial context"
        width="100%">
 </p>
 
@@ -368,7 +380,7 @@ That separation prevents a common shortcut:
 
 > “There is an opportunity connected to this company, therefore it must already be an active partner.”
 
-DRUID Channels does not make that leap automatically.
+ChannelOS does not make that leap automatically.
 
 ### Step 5 — Commercial movement
 
@@ -409,7 +421,7 @@ Actuals are not self-explanatory. A pipeline number only becomes meaningful when
   <img src="./assets/readme/05-targets-performance.png" alt="Sanitized target setting and performance tracking view" width="100%">
 </p>
 
-| **Without explicit targets** | **With DRUID Channels** |
+| **Without explicit targets** | **With ChannelOS** |
 |---|---|
 | “Pipeline looks healthy.” | Actual pipeline is compared with an explicit annual or quarterly expectation. |
 | Activity and performance blur together. | Prospect creation, partner signing, pipeline, revenue, and activity remain distinct metrics. |
@@ -430,8 +442,8 @@ It is the system’s relationship with uncertainty.
 | **Layer** | **Question** | **Example** | **Owner** |
 |---|---|---|---|
 | **Source fact** | What did an approved source actually provide? | A company domain, opportunity value, activity date, or target. | Source system / operator input |
-| **Canonical fact** | How does the application represent that information consistently? | A normalized company, relationship, opportunity, event, or reporting period. | DRUID Channels domain services |
-| **Derived metric** | What follows deterministically from the canonical facts? | Pipeline total, target progress, recruitment count, or activity coverage. | DRUID Channels business rules |
+| **Canonical fact** | How does the application represent that information consistently? | A normalized company, relationship, opportunity, event, or reporting period. | ChannelOS domain services |
+| **Derived metric** | What follows deterministically from the canonical facts? | Pipeline total, target progress, recruitment count, or activity coverage. | ChannelOS business rules |
 | **Interpretation** | What may deserve attention? | A stalled relationship, a slow-moving deal, or a territory with weak coverage. | Aniri or UI presentation |
 | **Human decision** | What should actually happen? | Review, contact, correct, wait, escalate, or do nothing. | Authorized user |
 
@@ -464,7 +476,7 @@ Opportunity data is commercially useful and structurally dangerous.
 
 A deal usually contains multiple companies, contacts, owners, labels, and historical edits. A naïve import can connect revenue to the wrong partner while still looking perfectly plausible in a dashboard.
 
-DRUID Channels uses a deliberately conservative reconciliation model.
+ChannelOS uses a deliberately conservative reconciliation model.
 
 | **Input condition** | **Accepted behavior** | **Why** |
 |---|---|---|
@@ -487,7 +499,7 @@ Many internal tools optimize for a clean-looking success screen.
 
 That often means coercing incomplete data into a shape the system can accept.
 
-DRUID Channels takes the opposite position.
+ChannelOS takes the opposite position.
 
 A record that cannot be trusted should remain visible, specific, and actionable:
 
@@ -515,7 +527,7 @@ The system eventually produced a second question:
 
 
 <p align="center">
-  <img src="./assets/readme/01-aniri-channel-brief.png" alt="Sanitized in-app AI Channel Brief built from canonical DRUID Channels facts" width="100%">
+  <img src="./assets/readme/01-aniri-channel-brief.png" alt="Sanitized in-app AI Channel Brief built from canonical ChannelOS facts" width="100%">
 </p>
 
 That became **Aniri**.
@@ -542,7 +554,7 @@ flowchart LR
     T --> O["Aniri on OpenClaw"]
     O --> TOOL["Narrow read-only tool"]
     TOOL --> API["Channel Chief API"]
-    API --> SERVICES["Canonical DRUID Channels services"]
+    API --> SERVICES["Canonical ChannelOS services"]
     SERVICES --> DB[("PostgreSQL")]
     SERVICES --> FACTS["Bounded factual response"]
     FACTS --> O
@@ -555,7 +567,7 @@ flowchart LR
 
 ### Who owns what
 
-| **Concern** | **DRUID Channels** | **Aniri** |
+| **Concern** | **ChannelOS** | **Aniri** |
 |---|---|---|
 | Canonical business facts | **Owns** | Consumes |
 | Metric definitions | **Owns** | Does not redefine |
@@ -580,7 +592,7 @@ flowchart LR
 | Speaks like a management report. | Speaks like a smart, commercially sharp colleague. |
 | Treats every question as a reason to produce content. | Can conclude that something is probably noise. |
 
-> **The critical rule:** DRUID Channels owns the facts. Aniri owns the interpretation. Humans own consequential decisions.
+> **The critical rule:** ChannelOS owns the facts. Aniri owns the interpretation. Humans own consequential decisions.
 
 That boundary is the difference between adding AI to an operating system and allowing a model to become an operating system.
 
@@ -588,7 +600,7 @@ That boundary is the difference between adding AI to an operating system and all
 
 ## 09 — Architecture
 
-DRUID Channels is a TypeScript monorepo with a browser application, API server, canonical data model, generated clients, and controlled integration boundaries.
+ChannelOS is a TypeScript monorepo with a browser application, API server, canonical data model, generated clients, and controlled integration boundaries.
 
 ```mermaid
 flowchart TB
@@ -754,7 +766,7 @@ This project became interesting when the easy implementation choices stopped bei
 
 ## 12 — Integrations and authority boundaries
 
-| **System / capability** | **Role in DRUID Channels** | **Authority** |
+| **System / capability** | **Role in ChannelOS** | **Authority** |
 |---|---|---|
 | **PostgreSQL** | Canonical application state. | Read/write through the application and controlled scripts. |
 | **Web search** | Discovery and research input. | Read-only external input; results require application interpretation. |
@@ -768,6 +780,11 @@ This project became interesting when the easy implementation choices stopped bei
 ---
 
 ## 13 — Repository anatomy
+
+> [!NOTE]
+> **Naming:** `ChannelOS` is the public portfolio name. The underlying project/codebase was built for DRUID’s partner organization and may still contain internal `druid-channels` naming in repository paths, deployment configuration, or historical references.
+
+
 
 
 > [!NOTE]
@@ -898,15 +915,15 @@ Then uncomment this block:
 <table>
   <tr>
     <td width="50%">
-      <img src="./assets/readme/overview.png" alt="DRUID Channels overview">
+      <img src="./assets/readme/overview.png" alt="ChannelOS overview">
     </td>
     <td width="50%">
-      <img src="./assets/readme/discovery.png" alt="DRUID Channels discovery">
+      <img src="./assets/readme/discovery.png" alt="ChannelOS discovery">
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="./assets/readme/portfolio.png" alt="DRUID Channels portfolio">
+      <img src="./assets/readme/portfolio.png" alt="ChannelOS portfolio">
     </td>
     <td width="50%">
       <img src="./assets/readme/aniri.png" alt="Aniri channel chief experience">
@@ -919,7 +936,11 @@ Then uncomment this block:
 
 ## 16 — Why this is in my portfolio
 
-I work in product marketing, but I built DRUID Channels because I wanted to experience the product decisions rather than describe them from a distance.
+ChannelOS is not an invented SaaS concept detached from reality. I built it inside **DRUID’s partner organization**, against real operating problems: partner discovery, ownership, targets, opportunity attribution, external intelligence, reporting, and management attention.
+
+That context matters. The public name is mine; the operating problem was real.
+
+I work in product marketing, but I built ChannelOS because I wanted to experience the product decisions rather than describe them from a distance.
 
 The interesting part was never whether I could make another dashboard. It was whether product, data, UX, AI, authorization, commercial logic, and uncertainty could coexist without the system quietly lying to its operator.
 
@@ -928,7 +949,7 @@ I work in product marketing.
 
 That usually means I am expected to understand the customer, the market, the product, the competitive landscape, the buying problem, and the story.
 
-I built DRUID Channels because I wanted to take that responsibility one step further.
+I built ChannelOS because I wanted to take that responsibility one step further.
 
 Instead of describing an ideal product from the outside, I wanted to experience what happens when the uncomfortable decisions become real:
 
@@ -957,7 +978,7 @@ Instead of describing an ideal product from the outside, I wanted to experience 
 
 ### The portfolio point
 
-This project is not here because a product marketer wrote some code.
+ChannelOS is not here because a product marketer wrote some code.
 
 It is here because building the code forced product, data, UX, AI, and commercial decisions to coexist in the same system.
 
@@ -967,11 +988,11 @@ That is the work I am most interested in:
 
 ---
 
-## 17 — What DRUID Channels is not
+## 17 — What ChannelOS is not
 
 | **It is not** | **Because** |
 |---|---|
-| A replacement CRM | CRM remains useful for customer and deal operations; DRUID Channels focuses on the partner operating model around it. |
+| A replacement CRM | CRM remains useful for customer and deal operations; ChannelOS focuses on the partner operating model around it. |
 | A generic company scraper | Discovery is only valuable when it connects to ownership, evidence, relationship state, and action. |
 | A BI dashboard | The product includes operational workflows, corrections, assignments, imports, and decisions—not just reporting. |
 | An autonomous outbound agent | Partner strategy and external action remain human-controlled. |
@@ -1013,7 +1034,7 @@ The product itself is now much larger.
 
 ## 20 — Related projects
 
-DRUID Channels is part of a broader set of systems I am building around AI agents, operating layers, GTM infrastructure, and the boundary between model reasoning and real-world action.
+ChannelOS is part of a broader set of systems I am building around AI agents, operating layers, GTM infrastructure, and the boundary between model reasoning and real-world action.
 
 ### [AI Agent Sudo](https://github.com/MLupu88/ai-agent-sudo)
 
