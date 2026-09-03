@@ -4,7 +4,7 @@
 
   IMPORTANT:
   - The hero images referenced below are included in /assets/readme/.
-  - Screenshot blocks are commented out until real screenshots are uploaded.
+  - The included screenshots use synthetic, sanitized demo data.
   - Keep credentials, customer/partner records, production hostnames, and private endpoints out of a public repository.
 -->
 
@@ -20,11 +20,9 @@
 
 <div align="center">
 
-# DRUID Channels
+### **One system to run the channel. One AI Chief of Staff to tell you what matters.**
 
-### **Partner intelligence, channel operations, and an AI Chief of Staff — in one coherent system.**
-
-A full-stack operating system for discovering partners, managing the commercial relationship, connecting opportunities to the right company, measuring channel performance, and helping leadership decide what deserves attention.
+DRUID Channels creates the commercial truth across partners, news, opportunities, targets, PAM activity, and history. **Aniri is a standalone OpenClaw bot delivered through Telegram.** She calls narrow, approved tools and turns that truth into briefs, explanations, comparisons, and recommendations—without becoming the source of truth herself.
 
 <br>
 
@@ -55,9 +53,31 @@ A full-stack operating system for discovering partners, managing the commercial 
 
 ---
 
-> [!NOTE]
-> **This README is written as a public-safe product and engineering case study.**
-> It intentionally excludes customer records, partner records, credentials, production hostnames, and sensitive internal endpoints. Screenshots should use synthetic or fully sanitized data.
+## Meet Aniri
+
+A channel leader does not need another place to inspect records. They need to know **what changed, whether performance is sufficient, where evidence is incomplete, and which decision deserves attention now**.
+
+Aniri is the management experience DRUID Channels makes possible: a **standalone OpenClaw bot, delivered through Telegram**, that consumes approved read-only facts from the same canonical services used by the application.
+
+<p align="center">
+  <img src="./assets/readme/00-aniri-openclaw-telegram.png" alt="Sanitized Telegram conversation with Aniri, a standalone OpenClaw bot, producing a grounded channel brief" width="100%">
+</p>
+
+<p align="center">
+  <sub><strong>The actual agent surface.</strong> Aniri is a standalone Telegram bot hosted through OpenClaw. She receives approved facts through narrow read-only tools; she does not query the database or invent the underlying metrics.</sub>
+</p>
+
+| **What Aniri understands** | **What it lets her explain** |
+|---|---|
+| **News and Channel Radar** | What changed outside the business and why it may matter. |
+| **Discovery and prospects** | Which new companies may deserve investigation or ownership. |
+| **Partners and relationships** | Who each partner is, who owns it, and where the relationship stands. |
+| **Opportunities and attribution** | Where commercial movement exists and whether it is connected to the right partner. |
+| **Targets and performance** | What success was supposed to look like and whether actuals are sufficient. |
+| **PAM activity and history** | What the team has done, what changed, and where movement has stalled. |
+| **Evidence and unknowns** | Which claims are grounded, which are unresolved, and when the honest answer is “not available.” |
+
+> **DRUID Channels owns the facts. Aniri owns the interpretation. Humans own consequential decisions.**
 
 ---
 
@@ -71,7 +91,7 @@ A company appears in a spreadsheet. A contact sits in the CRM. Opportunity attri
 
 That reconstruction is slow, inconsistent, and usually too late.
 
-**DRUID Channels started as a much smaller experiment: Partner Radar.**
+**I started this as a much smaller experiment: Partner Radar.**
 
 The original question was simple:
 
@@ -93,7 +113,7 @@ The system also needed to know:
 - what was known, inferred, missing, or contradictory;
 - and what a human should do next.
 
-So Partner Radar grew into **DRUID Channels**: a channel operating system built around one canonical commercial picture.
+That experiment kept exposing a larger product problem. Partner Radar grew into **DRUID Channels**: a channel operating system built around one canonical commercial picture.
 
 > **One company. One relationship context. Every relevant motion around it.**
 
@@ -142,6 +162,13 @@ The product is easiest to understand by looking at the operating model it replac
 DRUID Channels is not one dashboard.
 
 It is a connected set of workflows that follow the lifecycle of a partner relationship.
+
+<p align="center">
+  <img src="./assets/readme/02-partner-discovery.png" alt="Sanitized DRUID Channels partner discovery workflow" width="100%">
+</p>
+
+<p align="center"><sub><strong>Discovery becomes an operating workflow.</strong> Evidence, priority, territory, ownership, status, and “why now” remain visible instead of disappearing into a spreadsheet.</sub></p>
+
 
 ```text
 A company is discovered
@@ -250,6 +277,32 @@ It is also less useful.
 
 ---
 
+
+<!--
+REAL PRODUCT VISUAL 02 — PARTNER DETAIL
+
+When you have a sanitized screenshot, save it as:
+  assets/readme/partner-detail.png
+
+Then remove the surrounding HTML comment.
+
+<p align="center">
+  <img src="./assets/readme/partner-detail.png"
+       alt="DRUID Channels partner detail — relationship, evidence, activity, and commercial context"
+       width="100%">
+</p>
+
+<p align="center">
+  <sub><strong>The company becomes the anchor.</strong> Research, relationship state, people, activity, opportunities, evidence, and the next decision converge around one canonical commercial context.</sub>
+</p>
+-->
+
+<p align="center">
+  <img src="./assets/readme/03-opportunity-attribution.png" alt="Sanitized partner opportunity and attribution view" width="100%">
+</p>
+
+<p align="center"><sub><strong>Commercial movement stays attributable.</strong> The partner, customer, attribution type, status, value, and timing remain separate and reviewable.</sub></p>
+
 ## 05 — A practical example
 
 Imagine the system discovers a potentially relevant company.
@@ -330,6 +383,39 @@ The system can now answer a more useful question than “What data do we have?�
 It can answer:
 
 > **What changed, why does it matter, and who should look at it?**
+
+---
+
+## News becomes signal
+
+A normal news feed optimizes for recency. Channel Radar asks a harder question: **does this external change alter the commercial picture?**
+
+<p align="center">
+  <img src="./assets/readme/04-channel-radar.png" alt="Sanitized Channel Radar showing structured external intelligence" width="100%">
+</p>
+
+| **A normal news feed** | **Channel Radar** |
+|---|---|
+| Shows articles. | Connects a development to an entity, territory, signal type, and implication. |
+| Treats reading as the outcome. | Routes important signals into validation and possible action. |
+| Every story competes for attention. | Impact, implication, evidence, and existing relationship context determine importance. |
+| Disappears down a timeline. | Persists relevant intelligence as part of the operating context. |
+
+## Targets define what “good” means
+
+Actuals are not self-explanatory. A pipeline number only becomes meaningful when the product knows the target, owner, territory, metric, and reporting period it should be compared with.
+
+<p align="center">
+  <img src="./assets/readme/05-targets-performance.png" alt="Sanitized target setting and performance tracking view" width="100%">
+</p>
+
+| **Without explicit targets** | **With DRUID Channels** |
+|---|---|
+| “Pipeline looks healthy.” | Actual pipeline is compared with an explicit annual or quarterly expectation. |
+| Activity and performance blur together. | Prospect creation, partner signing, pipeline, revenue, and activity remain distinct metrics. |
+| Different owners and periods get mixed. | Attainment is calculated for the correct PAM, territory, scope, and reporting period. |
+| A missing target can look like failure. | **Not configured** remains different from **0% attained**. |
+| Leadership reconstructs the context manually. | Aniri can explain variance using the same canonical target and actual data. |
 
 ---
 
@@ -427,9 +513,16 @@ The system eventually produced a second question:
 
 > Once the facts are trustworthy, could an AI help leadership decide what deserves attention?
 
+
+<p align="center">
+  <img src="./assets/readme/01-aniri-channel-brief.png" alt="Sanitized in-app AI Channel Brief built from canonical DRUID Channels facts" width="100%">
+</p>
+
 That became **Aniri**.
 
-Aniri is a standalone AI Chief of Staff for channel leadership. She is deliberately **not** embedded as a general-purpose chatbot with direct access to the database.
+The distinction matters: **Aniri is the bot.** The web application also has an AI Channel Brief, but the conversational agent shown above is a standalone Telegram bot running through OpenClaw.
+
+Aniri is a standalone **OpenClaw bot and AI Chief of Staff** for channel leadership. Telegram is the current conversational interface; OpenClaw hosts the bot and its approved tool wrappers. She is deliberately **not** embedded as a general-purpose chatbot with direct access to the database.
 
 Her job is to:
 
@@ -487,7 +580,7 @@ flowchart LR
 | Speaks like a management report. | Speaks like a smart, commercially sharp colleague. |
 | Treats every question as a reason to produce content. | Can conclude that something is probably noise. |
 
-> **The critical rule:** DRUID Channels owns the facts. Aniri owns the interpretation.
+> **The critical rule:** DRUID Channels owns the facts. Aniri owns the interpretation. Humans own consequential decisions.
 
 That boundary is the difference between adding AI to an operating system and allowing a model to become an operating system.
 
@@ -669,12 +762,18 @@ This project became interesting when the easy implementation choices stopped bei
 | **AI provider** | Classification, synthesis, or narrative where explicitly designed. | No ownership of canonical identity or business rules. |
 | **HubSpot** | Reconciliation and reference for companies and opportunities. | Read-only; no silent partner substitution and no uncontrolled writes. |
 | **CSV / operator import** | Controlled business input for portfolio and opportunities. | Previewed, validated, and routed through canonical application rules. |
-| **OpenClaw / Aniri** | Leadership interpretation and Chief-of-Staff experience. | Narrow, read-only tools; no direct database or general shell access. |
+| **OpenClaw / Aniri** | Hosts the standalone Telegram bot and its approved leadership-interpretation tools. | Narrow, read-only tools; no direct database or general shell access. |
 | **PPTX / reports** | Leadership-ready output generated from canonical reporting services. | Output only; does not create a second data model. |
 
 ---
 
 ## 13 — Repository anatomy
+
+
+> [!NOTE]
+> **Public-repository boundary.**
+> This README is written as a public-safe product and engineering case study. It intentionally excludes customer records, partner records, credentials, production hostnames, and sensitive internal endpoints. Screenshots in this README use synthetic, fully sanitized demo data; real people, company names, logos, domains, and confidential commercial values have been removed or replaced.
+
 
 ```text
 druid-channels/
@@ -819,6 +918,11 @@ Then uncomment this block:
 ---
 
 ## 16 — Why this is in my portfolio
+
+I work in product marketing, but I built DRUID Channels because I wanted to experience the product decisions rather than describe them from a distance.
+
+The interesting part was never whether I could make another dashboard. It was whether product, data, UX, AI, authorization, commercial logic, and uncertainty could coexist without the system quietly lying to its operator.
+
 
 I work in product marketing.
 
