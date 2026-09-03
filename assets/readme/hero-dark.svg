@@ -1,111 +1,75 @@
-<svg width="1600" height="820" viewBox="0 0 1600 820" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="bg" x1="100" y1="20" x2="1460" y2="820" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#07080C"/>
-      <stop offset="0.55" stop-color="#11131A"/>
-      <stop offset="1" stop-color="#090A0F"/>
-    </linearGradient>
-    <radialGradient id="glow1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1260 190) rotate(139) scale(590 430)">
-      <stop stop-color="#7C3AED" stop-opacity="0.44"/>
-      <stop offset="1" stop-color="#7C3AED" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="glow2" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1170 560) rotate(-155) scale(520 370)">
-      <stop stop-color="#2563EB" stop-opacity="0.32"/>
-      <stop offset="1" stop-color="#2563EB" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="card" x1="950" y1="180" x2="1450" y2="710" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1B1E28"/>
-      <stop offset="1" stop-color="#11131A"/>
-    </linearGradient>
-    <filter id="shadow" x="830" y="80" width="760" height="720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="30" stdDeviation="34" flood-color="#000000" flood-opacity="0.55"/>
-    </filter>
-    <filter id="dotGlow" x="-100%" y="-100%" width="300%" height="300%">
-      <feGaussianBlur stdDeviation="8" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+<title id="title">DRUID Channels with Aniri</title>
+<desc id="desc">A channel operating system with Aniri, a standalone OpenClaw bot delivered through Telegram, at the center of news, discovery, partners, opportunities, targets, and PAM activity.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B1220"/><stop offset="1" stop-color="#17142F"/></linearGradient>
+  <radialGradient id="glow" cx="70%" cy="36%" r="55%"><stop offset="0" stop-color="#8B5CF6" stop-opacity=".22"/><stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/></radialGradient>
+  <filter id="shadow"><feDropShadow dx="0" dy="18" stdDeviation="24" flood-opacity=".18"/></filter>
+</defs>
+<rect x="1" y="1" width="1598" height="898" rx="42" fill="url(#bg)" stroke="#303A52"/>
+<rect width="1600" height="900" rx="42" fill="url(#glow)"/>
 
-  <rect width="1600" height="820" rx="42" fill="url(#bg)"/>
-  <rect width="1600" height="820" rx="42" fill="url(#glow1)"/>
-  <rect width="1600" height="820" rx="42" fill="url(#glow2)"/>
+<g font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <g transform="translate(82 78)">
+    <rect x="0" y="0" width="248" height="38" rx="19" fill="#151E33" stroke="#303A52"/>
+    <circle cx="21" cy="19" r="5" fill="#24D17E"/>
+    <text x="39" y="25" fill="#B7C0D0" font-size="14" font-weight="700" letter-spacing="2">PRODUCT · AI · OPERATIONS</text>
 
-  <g opacity="0.25">
-    <circle cx="1280" cy="410" r="260" stroke="#A78BFA"/>
-    <circle cx="1280" cy="410" r="192" stroke="#818CF8"/>
-    <circle cx="1280" cy="410" r="126" stroke="#60A5FA"/>
-    <path d="M1020 410H1540" stroke="#475569"/>
-    <path d="M1280 150V670" stroke="#475569"/>
+    <text x="0" y="140" fill="#F8FAFC" font-size="74" font-weight="800" letter-spacing="-3">DRUID</text>
+    <text x="0" y="218" fill="#F8FAFC" font-size="74" font-weight="800" letter-spacing="-3">CHANNELS</text>
+    <text x="4" y="263" fill="#8B5CF6" font-size="30" font-weight="700">with Aniri</text>
+
+    <text x="0" y="342" fill="#F8FAFC" font-size="31" font-weight="650">One system to run the channel.</text>
+    <text x="0" y="386" fill="#F8FAFC" font-size="31" font-weight="650">One AI Chief of Staff to tell you</text>
+    <text x="0" y="430" fill="#F8FAFC" font-size="31" font-weight="650">what matters.</text>
+
+    <text x="0" y="500" fill="#B7C0D0" font-size="19">Partners · News · Opportunities · Targets · PAMs · History</text>
   </g>
 
-  <g>
-    <rect x="90" y="84" width="330" height="44" rx="22" fill="#171923" stroke="#303444"/>
-    <circle cx="118" cy="106" r="6" fill="#8B5CF6"/>
-    <text x="138" y="113" fill="#CBD5E1" font-size="18" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="600" letter-spacing="2">PRODUCT • AI • OPERATIONS</text>
+  <g opacity=".9">
+    <polygon points="1185,128 1380,238 1380,462 1185,575 992,462 988,238" fill="none" stroke="#556078" stroke-width="1.5"/>
+    <polygon points="1185,190 1325,270 1325,430 1185,510 1045,430 1045,270" fill="none" stroke="#556078" stroke-width="1" opacity=".65"/>
+    <polygon points="1185,252 1270,300 1270,400 1185,448 1100,400 1100,300" fill="none" stroke="#556078" stroke-width="1" opacity=".45"/>
+
+<line x1="1185" y1="350" x2="1185" y2="128" stroke="#556078" stroke-width="1.5" opacity=".85"/>
+<circle cx="1185" cy="128" r="38" fill="#151E33" stroke="#303A52" stroke-width="2"/>
+<circle cx="1185" cy="128" r="7" fill="#24D17E"/>
+<text x="1185" y="186" fill="#B7C0D0" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="1.3">NEWS</text>
+<line x1="1185" y1="350" x2="988" y2="238" stroke="#556078" stroke-width="1.5" opacity=".85"/>
+<circle cx="988" cy="238" r="38" fill="#151E33" stroke="#303A52" stroke-width="2"/>
+<circle cx="988" cy="238" r="7" fill="#8B5CF6"/>
+<text x="988" y="296" fill="#B7C0D0" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="1.3">DISCOVERY</text>
+<line x1="1185" y1="350" x2="992" y2="462" stroke="#556078" stroke-width="1.5" opacity=".85"/>
+<circle cx="992" cy="462" r="38" fill="#151E33" stroke="#303A52" stroke-width="2"/>
+<circle cx="992" cy="462" r="7" fill="#8B5CF6"/>
+<text x="992" y="412" fill="#B7C0D0" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="1.3">PARTNERS</text>
+<line x1="1185" y1="350" x2="1185" y2="575" stroke="#556078" stroke-width="1.5" opacity=".85"/>
+<circle cx="1185" cy="575" r="38" fill="#151E33" stroke="#303A52" stroke-width="2"/>
+<circle cx="1185" cy="575" r="7" fill="#8B5CF6"/>
+<text x="1185" y="525" fill="#B7C0D0" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="1.3">OPPORTUNITIES</text>
+<line x1="1185" y1="350" x2="1380" y2="462" stroke="#556078" stroke-width="1.5" opacity=".85"/>
+<circle cx="1380" cy="462" r="38" fill="#151E33" stroke="#303A52" stroke-width="2"/>
+<circle cx="1380" cy="462" r="7" fill="#24D17E"/>
+<text x="1380" y="412" fill="#B7C0D0" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="1.3">TARGETS</text>
+<line x1="1185" y1="350" x2="1380" y2="238" stroke="#556078" stroke-width="1.5" opacity=".85"/>
+<circle cx="1380" cy="238" r="38" fill="#151E33" stroke="#303A52" stroke-width="2"/>
+<circle cx="1380" cy="238" r="7" fill="#8B5CF6"/>
+<text x="1380" y="296" fill="#B7C0D0" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="1.3">PAM ACTIVITY</text>
+    <circle cx="1185" cy="350" r="92" fill="#151E33" stroke="#8B5CF6" stroke-width="3" filter="url(#shadow)"/>
+    <circle cx="1185" cy="326" r="11" fill="#24D17E"/>
+    <text x="1185" y="364" fill="#F8FAFC" font-size="34" font-weight="800" text-anchor="middle">ANIRI</text>
+    <text x="1185" y="394" fill="#8B5CF6" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="1.8">OPENCLAW BOT · TELEGRAM</text>
+    <text x="1185" y="640" fill="#B7C0D0" font-size="15" text-anchor="middle" letter-spacing="1.5">EVIDENCE · HISTORY · SCOPE · KNOWN / UNKNOWN</text>
   </g>
 
-  <text x="90" y="250" fill="#FFFFFF" font-size="104" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="800" letter-spacing="-5">DRUID</text>
-  <text x="90" y="352" fill="#FFFFFF" font-size="104" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="800" letter-spacing="-5">CHANNELS</text>
-
-  <text x="96" y="428" fill="#B8C0D0" font-size="30" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="500">
-    Partner intelligence. Channel operations.
-  </text>
-  <text x="96" y="470" fill="#B8C0D0" font-size="30" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="500">
-    One coherent commercial system.
-  </text>
-
-  <g transform="translate(96 548)">
-    <text x="0" y="0" fill="#FFFFFF" font-size="18" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700" letter-spacing="1.8">DISCOVER</text>
-    <path d="M108 -6H154" stroke="#6366F1" stroke-width="2"/>
-    <path d="M147 -12L156 -6L147 0" stroke="#6366F1" stroke-width="2" fill="none"/>
-    <text x="174" y="0" fill="#FFFFFF" font-size="18" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700" letter-spacing="1.8">GROW</text>
-    <path d="M245 -6H291" stroke="#6366F1" stroke-width="2"/>
-    <path d="M284 -12L293 -6L284 0" stroke="#6366F1" stroke-width="2" fill="none"/>
-    <text x="311" y="0" fill="#FFFFFF" font-size="18" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700" letter-spacing="1.8">MEASURE</text>
-    <path d="M420 -6H466" stroke="#6366F1" stroke-width="2"/>
-    <path d="M459 -12L468 -6L459 0" stroke="#6366F1" stroke-width="2" fill="none"/>
-    <text x="486" y="0" fill="#FFFFFF" font-size="18" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700" letter-spacing="1.8">DECIDE</text>
+  <g transform="translate(82 645)">
+    <rect x="0" y="10" width="1436" height="175" rx="24" fill="#000000" opacity=".28"/>
+    <rect x="0" y="0" width="1436" height="175" rx="24" fill="#121B2E" stroke="#303A52"/>
+    <text x="34" y="42" fill="#B7C0D0" font-size="14" font-weight="700" letter-spacing="2">WHAT NEEDS ATTENTION</text>
+    <circle cx="42" cy="83" r="5" fill="#8B5CF6"/><text x="62" y="90" fill="#F8FAFC" font-size="20">One priority territory is behind its recruitment target.</text>
+    <circle cx="42" cy="123" r="5" fill="#24D17E"/><text x="62" y="130" fill="#F8FAFC" font-size="20">A high-fit prospect announced expansion where coverage is thin.</text>
+    <circle cx="790" cy="83" r="5" fill="#F59E0B"/><text x="810" y="90" fill="#F8FAFC" font-size="20">Two material opportunities still need attribution review.</text>
+    <circle cx="790" cy="123" r="5" fill="#EF476F"/><text x="810" y="130" fill="#F8FAFC" font-size="20">Three active relationships show low recent movement.</text>
   </g>
-
-  <text x="96" y="692" fill="#7E8799" font-size="19" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="500">
-    From Partner Radar to a full channel operating system.
-  </text>
-
-  <g filter="url(#shadow)">
-    <rect x="905" y="155" width="560" height="520" rx="32" fill="url(#card)" stroke="#353A4C"/>
-    <rect x="939" y="190" width="492" height="58" rx="16" fill="#222633"/>
-    <circle cx="972" cy="219" r="10" fill="#8B5CF6"/>
-    <rect x="996" y="207" width="146" height="10" rx="5" fill="#E2E8F0"/>
-    <rect x="996" y="225" width="92" height="8" rx="4" fill="#667085"/>
-
-    <rect x="939" y="274" width="152" height="108" rx="18" fill="#171A23" stroke="#2B3040"/>
-    <rect x="1109" y="274" width="152" height="108" rx="18" fill="#171A23" stroke="#2B3040"/>
-    <rect x="1279" y="274" width="152" height="108" rx="18" fill="#171A23" stroke="#2B3040"/>
-    <text x="960" y="304" fill="#858FA3" font-size="14" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">PORTFOLIO</text>
-    <text x="1130" y="304" fill="#858FA3" font-size="14" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">PIPELINE</text>
-    <text x="1300" y="304" fill="#858FA3" font-size="14" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">ATTENTION</text>
-    <text x="960" y="352" fill="#FFFFFF" font-size="34" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700">128</text>
-    <text x="1130" y="352" fill="#FFFFFF" font-size="34" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700">€2.4M</text>
-    <text x="1300" y="352" fill="#FFFFFF" font-size="34" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700">12</text>
-
-    <rect x="939" y="405" width="492" height="222" rx="20" fill="#171A23" stroke="#2B3040"/>
-    <text x="965" y="440" fill="#E2E8F0" font-size="16" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700">CHANNEL MOVEMENT</text>
-    <path d="M970 568C1020 560 1038 504 1085 516C1126 526 1155 574 1200 538C1242 504 1268 453 1310 470C1350 486 1378 456 1403 442" stroke="#8B5CF6" stroke-width="5" stroke-linecap="round"/>
-    <path d="M970 586H1404" stroke="#2F3545"/>
-    <path d="M970 540H1404" stroke="#2F3545"/>
-    <path d="M970 494H1404" stroke="#2F3545"/>
-
-    <g filter="url(#dotGlow)">
-      <circle cx="1403" cy="442" r="8" fill="#60A5FA"/>
-    </g>
-
-    <rect x="1240" y="600" width="162" height="44" rx="22" fill="#6D28D9"/>
-    <circle cx="1268" cy="622" r="8" fill="#FFFFFF"/>
-    <text x="1287" y="628" fill="#FFFFFF" font-size="15" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700">ASK ANIRI</text>
-  </g>
-
-  <rect x="1" y="1" width="1598" height="818" rx="41" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="2"/>
+</g>
 </svg>
