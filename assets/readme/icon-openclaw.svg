@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="OpenClaw lobster">
+<circle cx="32" cy="32" r="30" fill="#FFF4F3"/>
+<g fill="#E23B32" stroke="#B92B24" stroke-width="1.4" stroke-linejoin="round">
+  <!-- claws -->
+  <path d="M17 13c-7 1-11 7-10 13 1 6 6 9 12 8l5-6-6-1 5-5-2-8-4-1Z"/>
+  <path d="M47 13c7 1 11 7 10 13-1 6-6 9-12 8l-5-6 6-1-5-5 2-8 4-1Z"/>
+  <!-- arms -->
+  <path d="M22 28 15 35l6 4 6-7Z"/>
+  <path d="M42 28 49 35l-6 4-6-7Z"/>
+  <!-- body -->
+  <path d="M25 23c0-6 3-10 7-10s7 4 7 10v18c0 8-3 14-7 14s-7-6-7-14V23Z"/>
+  <!-- tail -->
+  <path d="M25 48c-5 2-8 5-8 8 5 0 9-1 15-5-5 6-4 10 0 12 4-2 5-6 0-12 6 4 10 5 15 5 0-3-3-6-8-8Z"/>
+</g>
+<g fill="none" stroke="#B92B24" stroke-width="2.1" stroke-linecap="round">
+  <path d="M28 14C24 7 20 5 16 5"/>
+  <path d="M36 14C40 7 44 5 48 5"/>
+  <path d="M25 34H15M39 34h10M25 40H14M39 40h11"/>
+</g>
+<circle cx="29.5" cy="24" r="1.6" fill="#FFF"/>
+<circle cx="34.5" cy="24" r="1.6" fill="#FFF"/>
+<path d="M27 30c3 2 7 2 10 0" fill="none" stroke="#FFF" stroke-width="1.8" stroke-linecap="round"/>
+</svg>
