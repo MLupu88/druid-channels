@@ -1,0 +1,111 @@
+<svg width="1600" height="820" viewBox="0 0 1600 820" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="100" y1="20" x2="1460" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.58" stop-color="#F5F7FB"/>
+      <stop offset="1" stop-color="#EEF2F8"/>
+    </linearGradient>
+    <radialGradient id="glow1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1260 190) rotate(139) scale(590 430)">
+      <stop stop-color="#8B5CF6" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1170 560) rotate(-155) scale(520 370)">
+      <stop stop-color="#2563EB" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#2563EB" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="card" x1="950" y1="180" x2="1450" y2="710" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F8FAFC"/>
+    </linearGradient>
+    <filter id="shadow" x="830" y="80" width="760" height="720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="35" flood-color="#64748B" flood-opacity="0.22"/>
+    </filter>
+    <filter id="dotGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="820" rx="42" fill="url(#bg)"/>
+  <rect width="1600" height="820" rx="42" fill="url(#glow1)"/>
+  <rect width="1600" height="820" rx="42" fill="url(#glow2)"/>
+
+  <g opacity="0.20">
+    <circle cx="1280" cy="410" r="260" stroke="#7C3AED"/>
+    <circle cx="1280" cy="410" r="192" stroke="#6366F1"/>
+    <circle cx="1280" cy="410" r="126" stroke="#3B82F6"/>
+    <path d="M1020 410H1540" stroke="#94A3B8"/>
+    <path d="M1280 150V670" stroke="#94A3B8"/>
+  </g>
+
+  <g>
+    <rect x="90" y="84" width="330" height="44" rx="22" fill="#FFFFFF" stroke="#D8DEE9"/>
+    <circle cx="118" cy="106" r="6" fill="#7C3AED"/>
+    <text x="138" y="113" fill="#475569" font-size="18" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="600" letter-spacing="2">PRODUCT • AI • OPERATIONS</text>
+  </g>
+
+  <text x="90" y="250" fill="#0F172A" font-size="104" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="800" letter-spacing="-5">DRUID</text>
+  <text x="90" y="352" fill="#0F172A" font-size="104" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="800" letter-spacing="-5">CHANNELS</text>
+
+  <text x="96" y="428" fill="#475569" font-size="30" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="500">
+    Partner intelligence. Channel operations.
+  </text>
+  <text x="96" y="470" fill="#475569" font-size="30" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="500">
+    One coherent commercial system.
+  </text>
+
+  <g transform="translate(96 548)">
+    <text x="0" y="0" fill="#0F172A" font-size="18" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700" letter-spacing="1.8">DISCOVER</text>
+    <path d="M108 -6H154" stroke="#6366F1" stroke-width="2"/>
+    <path d="M147 -12L156 -6L147 0" stroke="#6366F1" stroke-width="2" fill="none"/>
+    <text x="174" y="0" fill="#0F172A" font-size="18" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700" letter-spacing="1.8">GROW</text>
+    <path d="M245 -6H291" stroke="#6366F1" stroke-width="2"/>
+    <path d="M284 -12L293 -6L284 0" stroke="#6366F1" stroke-width="2" fill="none"/>
+    <text x="311" y="0" fill="#0F172A" font-size="18" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700" letter-spacing="1.8">MEASURE</text>
+    <path d="M420 -6H466" stroke="#6366F1" stroke-width="2"/>
+    <path d="M459 -12L468 -6L459 0" stroke="#6366F1" stroke-width="2" fill="none"/>
+    <text x="486" y="0" fill="#0F172A" font-size="18" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700" letter-spacing="1.8">DECIDE</text>
+  </g>
+
+  <text x="96" y="692" fill="#64748B" font-size="19" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="500">
+    From Partner Radar to a full channel operating system.
+  </text>
+
+  <g filter="url(#shadow)">
+    <rect x="905" y="155" width="560" height="520" rx="32" fill="url(#card)" stroke="#D8DEE9"/>
+    <rect x="939" y="190" width="492" height="58" rx="16" fill="#F1F5F9"/>
+    <circle cx="972" cy="219" r="10" fill="#7C3AED"/>
+    <rect x="996" y="207" width="146" height="10" rx="5" fill="#334155"/>
+    <rect x="996" y="225" width="92" height="8" rx="4" fill="#94A3B8"/>
+
+    <rect x="939" y="274" width="152" height="108" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="1109" y="274" width="152" height="108" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="1279" y="274" width="152" height="108" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <text x="960" y="304" fill="#64748B" font-size="14" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">PORTFOLIO</text>
+    <text x="1130" y="304" fill="#64748B" font-size="14" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">PIPELINE</text>
+    <text x="1300" y="304" fill="#64748B" font-size="14" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">ATTENTION</text>
+    <text x="960" y="352" fill="#0F172A" font-size="34" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700">128</text>
+    <text x="1130" y="352" fill="#0F172A" font-size="34" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700">€2.4M</text>
+    <text x="1300" y="352" fill="#0F172A" font-size="34" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700">12</text>
+
+    <rect x="939" y="405" width="492" height="222" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <text x="965" y="440" fill="#334155" font-size="16" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700">CHANNEL MOVEMENT</text>
+    <path d="M970 568C1020 560 1038 504 1085 516C1126 526 1155 574 1200 538C1242 504 1268 453 1310 470C1350 486 1378 456 1403 442" stroke="#7C3AED" stroke-width="5" stroke-linecap="round"/>
+    <path d="M970 586H1404" stroke="#E2E8F0"/>
+    <path d="M970 540H1404" stroke="#E2E8F0"/>
+    <path d="M970 494H1404" stroke="#E2E8F0"/>
+
+    <g filter="url(#dotGlow)">
+      <circle cx="1403" cy="442" r="8" fill="#2563EB"/>
+    </g>
+
+    <rect x="1240" y="600" width="162" height="44" rx="22" fill="#6D28D9"/>
+    <circle cx="1268" cy="622" r="8" fill="#FFFFFF"/>
+    <text x="1287" y="628" fill="#FFFFFF" font-size="15" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700">ASK ANIRI</text>
+  </g>
+
+  <rect x="1" y="1" width="1598" height="818" rx="41" stroke="#0F172A" stroke-opacity="0.08" stroke-width="2"/>
+</svg>
