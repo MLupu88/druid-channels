@@ -3,15 +3,18 @@ import {
   partnerRelationshipsTable,
   partnerRelationshipHistoryTable,
   partnerActivitiesTable,
+  partnerRecruitmentsTable,
+  channelRadarSignalsTable,
   territoriesTable,
   usersTable,
   type PartnerRelationship,
   type PartnerActivity,
+  type PartnerRecruitment,
   PARTNER_RELATIONSHIP_STATUSES,
   STARTED_AT_PRECISIONS,
   PARTNER_ACTIVITY_TYPES,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 
 // Stage 6 Partner Portfolio: the canonical relationship record. Canonical
 // per (company, territory) -- see partner_relationships.ts's header comment
@@ -35,22 +38,32 @@ type Executor = Db | Tx;
 // active <-> dormant <-> closed, with reactivation allowed directly from
 // closed (matches the "one row per company+territory, ever" design --
 // re-engaging a closed relationship is a status transition, not a new row).
+// needs_review is entry-only: a human resolves it into any of the three real
+// lifecycle states, but nothing ever transitions back into it -- it is not a
+// fourth lifecycle state, just an unclassified starting point (see
+// PARTNER_RELATIONSHIP_STATUSES in schema/partner_relationships.ts).
 export function isValidRelationshipTransition(from: RelationshipStatus, to: RelationshipStatus): boolean {
   if (from === to) return false;
   if (from === "active") return to === "dormant" || to === "closed";
   if (from === "dormant") return to === "active" || to === "closed";
   if (from === "closed") return to === "active";
+  if (from === "needs_review") return to === "active" || to === "dormant" || to === "closed";
   return false;
 }
 
-// Shared "needs attention" rule: an active relationship with no next action
-// set, and no interaction in the last 30 days (or never). Exported so
-// routes/portfolio.ts's summary count and the Copilot's
-// getPartnersNeedingAttention (copilotContextService.ts) apply the exact
-// same threshold rather than two independently-maintained copies.
+// Shared "needs attention" rule: either an active relationship with no next
+// action set and no interaction in the last 30 days (or never), OR any
+// needs_review relationship unconditionally (an unclassified relationship
+// always needs a human look, regardless of next_action/last_interaction_at
+// -- those fields are rarely even populated yet for one). Exported so
+// routes/portfolio.ts's summary count, the Copilot's
+// getPartnersNeedingAttention (copilotContextService.ts), and
+// channelChiefContextService's getPortfolioSnapshot apply the exact same
+// rule rather than three independently-maintained copies.
 const ATTENTION_STALE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function isNeedingAttention(r: Pick<PartnerRelationship, "status" | "nextAction" | "lastInteractionAt">, now: Date = new Date()): boolean {
+  if (r.status === "needs_review") return true;
   if (r.status !== "active") return false;
   if (r.nextAction) return false;
   const lastInteractionMs = r.lastInteractionAt ? r.lastInteractionAt.getTime() : null;
@@ -88,7 +101,7 @@ export interface CreateRelationshipInput {
   startedAtProvenance?: "explicit" | "inferred" | "user_confirmed" | "system_generated" | null;
   nextAction?: string | null;
   nextActionDueAt?: string | null;
-  originType: "recruitment" | "pam_import" | "manual";
+  originType: "recruitment" | "pam_import" | "manual" | "opportunity_import";
   originRecruitmentId?: string | null;
   sourceAsOfDate?: string | null;
   importedAt?: Date | null;
@@ -151,6 +164,83 @@ export async function createRelationshipIfMissing(
   return db.transaction(body);
 }
 
+// Phase 12 Portfolio Reconciliation: an opportunity's own assigned_user_id
+// is always a real user FK (partner_opportunities.assigned_user_id is
+// NOT NULL), but that alone does not mean it's safe to copy onto the
+// auto-created relationship as its owning PAM -- the referenced user could
+// have been deactivated since, or (for historical/cutover rows) may not
+// actually hold the "pam" role at all, or may own a different territory
+// than the opportunity's. Only ever returns the assignee when they are
+// currently an active PAM who canonically owns the opportunity's own
+// territory (territories.owner_user_id -- the same one-PAM-one-territory
+// rule resolveRelationshipAssigneeForRecruitment and
+// reassignRelationshipOwner enforce); otherwise null, so the relationship
+// is created unassigned and surfaces as unresolved_pam. Never substitutes
+// the territory's owner for a differently-named assignee -- that would
+// invent an owner the opportunity didn't name. Exported for direct unit
+// testing.
+export async function resolveRelationshipAssigneeForOpportunity(
+  opportunityAssignedUserId: string,
+  territoryId: string,
+  executor: Executor = db,
+): Promise<string | null> {
+  const [user] = await executor.select().from(usersTable).where(eq(usersTable.id, opportunityAssignedUserId));
+  if (!user || !user.active || user.role !== "pam") return null;
+  const [territory] = await executor.select().from(territoriesTable).where(eq(territoriesTable.id, territoryId));
+  return territory?.ownerUserId === user.id ? user.id : null;
+}
+
+export interface ReconcilePortfolioForOpportunityInput {
+  companyId: string;
+  territoryId: string;
+  // The opportunity's own assigned_user_id -- NOT trusted verbatim as the
+  // relationship's PAM, see resolveRelationshipAssigneeForOpportunity above.
+  opportunityAssignedUserId: string;
+}
+
+export interface ReconcilePortfolioForOpportunityResult {
+  relationship: PartnerRelationship;
+  created: boolean;
+  resolvedAssignedUserId: string | null;
+}
+
+// Phase 12 Portfolio Reconciliation: called whenever an opportunity is
+// created (manual or imported -- see applyOpportunityCreate in
+// routes/opportunities.ts) so that every company an opportunity references
+// has SOME Portfolio relationship, without ever fabricating an Active
+// status the app doesn't actually know to be true. Idempotent via
+// createRelationshipIfMissing's own (company_id, territory_id)
+// onConflictDoNothing -- re-importing the same opportunity, or creating a
+// second opportunity for an already-portfolio'd company, never creates a
+// duplicate relationship and never overwrites/touches an existing one's
+// fields (status, PAM, next_action, etc. all stay exactly as a human left
+// them). Only ever creates with status "needs_review" and origin_type
+// "opportunity_import" -- never "active", never any other origin.
+// relationship_started_at/started_at_precision are deliberately left at
+// their "unknown" defaults -- an opportunity's own date is a deal date, not
+// a partnership start date, and must never be repurposed as one.
+export async function reconcilePortfolioRelationshipForOpportunity(
+  input: ReconcilePortfolioForOpportunityInput,
+  actingUserId: string | null,
+  executor: Executor = db,
+): Promise<ReconcilePortfolioForOpportunityResult> {
+  const resolvedAssignedUserId = await resolveRelationshipAssigneeForOpportunity(input.opportunityAssignedUserId, input.territoryId, executor);
+
+  const { relationship, created } = await createRelationshipIfMissing(
+    {
+      companyId: input.companyId,
+      territoryId: input.territoryId,
+      assignedUserId: resolvedAssignedUserId,
+      status: "needs_review",
+      originType: "opportunity_import",
+    },
+    actingUserId,
+    executor,
+  );
+
+  return { relationship, created, resolvedAssignedUserId };
+}
+
 // Appends a recruitment_signed event to an already-existing relationship
 // without touching its status/origin -- origin_type is set once at
 // creation and is never rewritten (see partner_relationships.ts header).
@@ -168,6 +258,200 @@ export async function recordRecruitmentSignedEvent(
     occurredAt: signedAt,
     changedByUserId: actingUserId,
   });
+}
+
+// ---- Canonical Portfolio Truth: signed recruitment -> Portfolio -----------
+//
+// Recruitment stage semantics: accepted = accepted INTO recruitment;
+// contacting/engaged/agreement = recruitment pipeline; signed = confirmed
+// partner. Only a recruitment whose CURRENT stage is "signed" is ever
+// allowed to establish or confirm a Portfolio relationship -- earlier
+// stages are pipeline, not partnership, and legacy prospects.status
+// (accepted/pushed_to_hubspot) is never consulted at all. This is the one
+// shared path used by both the live Signed transition
+// (partnerRecruitmentService.transitionRecruitmentStage) and the historical
+// backfill (scripts/backfillPortfolioFromSignedRecruitments.ts).
+
+export class RecruitmentNotSignedError extends Error {}
+
+export type SignedRecruitmentEvidence = Pick<PartnerRecruitment, "id" | "companyId" | "territoryId" | "assignedUserId" | "stage" | "signedAt">;
+
+// Safe PAM for a relationship created from a signed recruitment, under the
+// current one-PAM-one-territory model (see reassignRelationshipOwner below,
+// which enforces the same rule on manual reassignment): the assignee must
+// be an active PAM who owns the recruitment's own territory. If the
+// recruitment carries an assignee, it must satisfy that rule or nothing is
+// assigned (never silently swapped for someone else); if it carries none,
+// the territory's canonical owner is used when that owner is an active PAM.
+// Otherwise null -- the relationship is created unassigned rather than
+// inventing an owner.
+export async function resolveRelationshipAssigneeForRecruitment(
+  recruitment: Pick<PartnerRecruitment, "territoryId" | "assignedUserId">,
+  executor: Executor = db,
+): Promise<string | null> {
+  const [territory] = await executor.select().from(territoriesTable).where(eq(territoriesTable.id, recruitment.territoryId));
+  const ownerUserId = territory?.ownerUserId ?? null;
+  if (!ownerUserId) return null;
+  if (recruitment.assignedUserId && recruitment.assignedUserId !== ownerUserId) return null;
+  const [owner] = await executor.select().from(usersTable).where(eq(usersTable.id, ownerUserId));
+  return owner && owner.active && owner.role === "pam" ? owner.id : null;
+}
+
+export type SignedRecruitmentPlanAction = "create" | "promote" | "reuse";
+
+export interface SignedRecruitmentPlan {
+  // create: no relationship exists for (company, territory) yet.
+  // promote: one exists as needs_review (e.g. inferred from opportunity
+  //   evidence) -- the signed recruitment confirms it as active.
+  // reuse: one exists as active/dormant/closed -- a human (or an earlier
+  //   confirmation) already classified it; its status is left untouched.
+  action: SignedRecruitmentPlanAction;
+  existing: PartnerRelationship | null;
+  // Only meaningful for "create" -- an existing relationship's
+  // assigned_user_id is manually managed and never rewritten here.
+  resolvedAssignedUserId: string | null;
+  // True when the existing relationship doesn't already record this
+  // recruitment as its origin or via a recruitment_signed event.
+  needsSignedEvent: boolean;
+}
+
+// Read-only: what reconcilePortfolioRelationshipForSignedRecruitment would
+// do for this recruitment. Used directly by the backfill's dry run, so a
+// dry run and an apply can never disagree about the plan.
+export async function planSignedRecruitmentReconciliation(
+  recruitment: SignedRecruitmentEvidence,
+  executor: Executor = db,
+): Promise<SignedRecruitmentPlan> {
+  if (recruitment.stage !== "signed") {
+    throw new RecruitmentNotSignedError(`Recruitment ${recruitment.id} is "${recruitment.stage}", not "signed" -- only a signed recruitment confirms a Portfolio relationship.`);
+  }
+
+  const [existing] = await executor
+    .select()
+    .from(partnerRelationshipsTable)
+    .where(and(eq(partnerRelationshipsTable.companyId, recruitment.companyId), eq(partnerRelationshipsTable.territoryId, recruitment.territoryId)));
+
+  if (!existing) {
+    return { action: "create", existing: null, resolvedAssignedUserId: await resolveRelationshipAssigneeForRecruitment(recruitment, executor), needsSignedEvent: false };
+  }
+
+  let needsSignedEvent = existing.originRecruitmentId !== recruitment.id;
+  if (needsSignedEvent) {
+    const [priorEvent] = await executor
+      .select({ id: partnerRelationshipHistoryTable.id })
+      .from(partnerRelationshipHistoryTable)
+      .where(
+        and(
+          eq(partnerRelationshipHistoryTable.relationshipId, existing.id),
+          eq(partnerRelationshipHistoryTable.eventType, "recruitment_signed"),
+          eq(partnerRelationshipHistoryTable.sourceRecruitmentId, recruitment.id),
+        ),
+      );
+    needsSignedEvent = !priorEvent;
+  }
+
+  return { action: existing.status === "needs_review" ? "promote" : "reuse", existing, resolvedAssignedUserId: null, needsSignedEvent };
+}
+
+export interface ReconcileSignedRecruitmentResult {
+  relationship: PartnerRelationship;
+  action: "created" | "promoted" | "reused";
+  resolvedAssignedUserId: string | null;
+  signedEventRecorded: boolean;
+}
+
+// Idempotent. Never creates a duplicate (createRelationshipIfMissing's
+// (company_id, territory_id) onConflictDoNothing), never rewrites
+// origin_type/origin_recruitment_id of an existing relationship (an
+// opportunity_import relationship stays opportunity_import -- the
+// confirmation is recorded as history, not as rewritten provenance), and
+// never touches manually managed fields (PAM, next_action, summary,
+// importance, partner_type) of an existing one.
+//
+//   - none exists: create active, origin_type=recruitment,
+//     origin_recruitment_id=this recruitment, started_at=signed date.
+//   - needs_review: promote to active (status_changed event carrying
+//     source_recruitment_id) + a recruitment_signed event. If the start
+//     date is still unknown, it is filled from the signed date -- that is
+//     the confirmed start of the partnership, not a fabrication.
+//   - active/dormant/closed: status untouched; only a recruitment_signed
+//     event is appended (once).
+export async function reconcilePortfolioRelationshipForSignedRecruitment(
+  recruitment: SignedRecruitmentEvidence,
+  actingUserId: string | null,
+  executor?: Executor,
+): Promise<ReconcileSignedRecruitmentResult> {
+  const body = async (tx: Executor): Promise<ReconcileSignedRecruitmentResult> => {
+    const signedAt = recruitment.signedAt;
+    const signedDate = signedAt ? signedAt.toISOString().slice(0, 10) : null;
+    const occurredAt = signedAt ?? new Date();
+
+    let plan = await planSignedRecruitmentReconciliation(recruitment, tx);
+
+    if (plan.action === "create") {
+      const { relationship, created } = await createRelationshipIfMissing(
+        {
+          companyId: recruitment.companyId,
+          territoryId: recruitment.territoryId,
+          assignedUserId: plan.resolvedAssignedUserId,
+          status: "active",
+          relationshipStartedAt: signedDate,
+          startedAtPrecision: signedDate ? "exact_date" : "unknown",
+          startedAtProvenance: signedDate ? "system_generated" : null,
+          originType: "recruitment",
+          originRecruitmentId: recruitment.id,
+        },
+        actingUserId,
+        tx,
+      );
+      if (created) return { relationship, action: "created", resolvedAssignedUserId: plan.resolvedAssignedUserId, signedEventRecorded: false };
+      // Created concurrently between the plan and the insert -- re-plan
+      // against the row that now exists rather than assuming its state.
+      plan = await planSignedRecruitmentReconciliation(recruitment, tx);
+    }
+
+    let relationship = plan.existing!;
+    let action: ReconcileSignedRecruitmentResult["action"] = "reused";
+
+    if (plan.action === "promote") {
+      const updates: Partial<typeof partnerRelationshipsTable.$inferInsert> = { status: "active", updatedAt: new Date() };
+      if (signedDate && !relationship.relationshipStartedAt && relationship.startedAtPrecision === "unknown") {
+        updates.relationshipStartedAt = signedDate;
+        updates.startedAtPrecision = "exact_date";
+        updates.startedAtProvenance = "system_generated";
+      }
+      // Conditional on still being needs_review, so a concurrent human
+      // classification (or a second reconcile) is never overwritten.
+      const [promoted] = await tx
+        .update(partnerRelationshipsTable)
+        .set(updates)
+        .where(and(eq(partnerRelationshipsTable.id, relationship.id), eq(partnerRelationshipsTable.status, "needs_review")))
+        .returning();
+      if (promoted) {
+        await tx.insert(partnerRelationshipHistoryTable).values({
+          relationshipId: promoted.id,
+          eventType: eventTypeForTransition("needs_review", "active"),
+          fromStatus: "needs_review",
+          toStatus: "active",
+          sourceRecruitmentId: recruitment.id,
+          occurredAt,
+          note: "Confirmed by signed recruitment",
+          changedByUserId: actingUserId,
+        });
+        relationship = promoted;
+        action = "promoted";
+      }
+    }
+
+    if (plan.needsSignedEvent) {
+      await recordRecruitmentSignedEvent(relationship.id, recruitment.id, occurredAt, actingUserId, tx);
+    }
+
+    return { relationship, action, resolvedAssignedUserId: null, signedEventRecorded: plan.needsSignedEvent };
+  };
+
+  if (executor) return body(executor);
+  return db.transaction(body);
 }
 
 export interface TransitionStatusOptions {
@@ -337,4 +621,30 @@ export async function getExistingPartnerContext(companyId: string | null, territ
       assigned_user_name: row.assignedUser?.name ?? null,
     },
   };
+}
+
+// Recruitment/Radar context shown on a Portfolio relationship's detail
+// view. A relationship is canonical per (company, territory), and the same
+// company can legitimately be recruited or surface Radar signals in more
+// than one territory -- so both lookups are scoped to the relationship's
+// own (company_id, territory_id), never company_id alone, or one
+// territory's detail would show another territory's recruitment/signals.
+export async function getRelationshipScopedContext(
+  relationship: Pick<PartnerRelationship, "companyId" | "territoryId">,
+  radarSignalLimit = 5,
+) {
+  const [recruitments, radarSignals] = await Promise.all([
+    db
+      .select()
+      .from(partnerRecruitmentsTable)
+      .where(and(eq(partnerRecruitmentsTable.companyId, relationship.companyId), eq(partnerRecruitmentsTable.territoryId, relationship.territoryId)))
+      .orderBy(desc(partnerRecruitmentsTable.updatedAt)),
+    db
+      .select()
+      .from(channelRadarSignalsTable)
+      .where(and(eq(channelRadarSignalsTable.companyId, relationship.companyId), eq(channelRadarSignalsTable.territoryId, relationship.territoryId)))
+      .orderBy(desc(channelRadarSignalsTable.discoveredAt))
+      .limit(radarSignalLimit),
+  ]);
+  return { latestRecruitment: recruitments[0] ?? null, radarSignals };
 }

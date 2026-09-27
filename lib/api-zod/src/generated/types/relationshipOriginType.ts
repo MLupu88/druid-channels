@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * opportunity_import (Phase 12) -- auto-created because a partner_opportunities row referenced this company/territory with no existing Portfolio relationship yet. Always paired with status=needs_review at creation.
+ */
 export type RelationshipOriginType = typeof RelationshipOriginType[keyof typeof RelationshipOriginType];
 
 
@@ -13,4 +16,5 @@ export const RelationshipOriginType = {
   recruitment: 'recruitment',
   pam_import: 'pam_import',
   manual: 'manual',
+  opportunity_import: 'opportunity_import',
 } as const;

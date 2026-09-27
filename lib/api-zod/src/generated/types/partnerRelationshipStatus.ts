@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active/dormant/closed, and nothing transitions back into it.
+ */
 export type PartnerRelationshipStatus = typeof PartnerRelationshipStatus[keyof typeof PartnerRelationshipStatus];
 
 
@@ -13,4 +16,5 @@ export const PartnerRelationshipStatus = {
   active: 'active',
   dormant: 'dormant',
   closed: 'closed',
+  needs_review: 'needs_review',
 } as const;

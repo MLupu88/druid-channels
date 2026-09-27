@@ -2549,7 +2549,16 @@ paths:
     get:
       operationId: listPartners
       tags: [partners]
-      summary: List existing partners (accepted/pushed-to-HubSpot prospects)
+      deprecated: true
+      summary: "Deprecated legacy view: prospects that have a CONFIRMED canonical Portfolio relationship (active, dormant, or closed; needs_review does not qualify)"
+      description: >-
+        Deprecated. Partners are defined only by Portfolio (partner_relationships);
+        use GET /portfolio. This legacy view returns accepted/pushed_to_hubspot
+        prospects ONLY when a CONFIRMED canonical relationship exists for the
+        prospect's (company, territory), i.e. one whose status is active, dormant,
+        or closed. A needs_review relationship (unconfirmed, e.g. inferred from
+        opportunity evidence) does NOT qualify. Prospect status alone never makes
+        a partner.
       parameters:
         - name: territory
           in: query
@@ -2569,7 +2578,8 @@ paths:
     get:
       operationId: getPartner
       tags: [partners]
-      summary: Get a partner research briefing
+      deprecated: true
+      summary: "Deprecated: get a partner research briefing (requires a CONFIRMED canonical Portfolio relationship: active, dormant, or closed; needs_review does not qualify)"
       parameters:
         - name: id
           in: path
@@ -2590,7 +2600,8 @@ paths:
     patch:
       operationId: updatePartnerHelpNeeded
       tags: [partners]
-      summary: Update what help a PAM needs to move a partner forward
+      deprecated: true
+      summary: "Deprecated: update what help a PAM needs to move a partner forward (requires a CONFIRMED canonical Portfolio relationship: active, dormant, or closed; needs_review does not qualify)"
       parameters:
         - name: id
           in: path
@@ -3715,7 +3726,8 @@ components:
 
     PartnerRelationshipStatus:
       type: string
-      enum: [active, dormant, closed]
+      enum: [active, dormant, closed, needs_review]
+      description: needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active/dormant/closed, and nothing transitions back into it.
 
     RelationshipStrategicImportance:
       type: string
@@ -3731,7 +3743,8 @@ components:
 
     RelationshipOriginType:
       type: string
-      enum: [recruitment, pam_import, manual]
+      enum: [recruitment, pam_import, manual, opportunity_import]
+      description: opportunity_import (Phase 12) -- auto-created because a partner_opportunities row referenced this company/territory with no existing Portfolio relationship yet. Always paired with status=needs_review at creation.
 
     RelationshipHistoryEventType:
       type: string

@@ -44,7 +44,7 @@ import { RecruitmentJourney } from '@/components/recruitment-journey';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 
-const STATUS_LABELS: Record<string, string> = { active: 'Active', dormant: 'Dormant', closed: 'Closed' };
+const STATUS_LABELS: Record<string, string> = { active: 'Active', dormant: 'Dormant', closed: 'Closed', needs_review: 'Needs review' };
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   meeting: 'Meeting',
   call: 'Call',
@@ -67,6 +67,7 @@ function StatusBadge({ status }: { status: string }) {
     active: statusTone('success'),
     dormant: statusTone('warning'),
     closed: statusTone('neutral'),
+    needs_review: statusTone('info'),
   };
   return <Badge variant="outline" className={`font-normal ${styles[status] ?? ''}`}>{STATUS_LABELS[status] ?? status}</Badge>;
 }
@@ -455,6 +456,13 @@ export function PortfolioView({ territoryId, pamUserId }: { territoryId?: string
                       )}
                       {detail.status === 'closed' && (
                         <Button size="sm" onClick={() => statusMutation.mutate({ id: selectedId, data: { status: 'active' } })} disabled={statusMutation.isPending}>Reactivate</Button>
+                      )}
+                      {detail.status === 'needs_review' && (
+                        <>
+                          <Button size="sm" onClick={() => statusMutation.mutate({ id: selectedId, data: { status: 'active' } })} disabled={statusMutation.isPending}>Confirm active</Button>
+                          <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ id: selectedId, data: { status: 'dormant' } })} disabled={statusMutation.isPending}>Mark dormant</Button>
+                          <Button size="sm" variant="outline" className="text-rose-600 hover:text-rose-600 hover:bg-rose-50" onClick={() => statusMutation.mutate({ id: selectedId, data: { status: 'closed' } })} disabled={statusMutation.isPending}>Close</Button>
+                        </>
                       )}
                     </div>
                   </div>

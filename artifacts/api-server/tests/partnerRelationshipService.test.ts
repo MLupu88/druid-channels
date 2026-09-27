@@ -2,7 +2,7 @@
 // period-reporting eligibility -- no live network, DB, or server.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isValidRelationshipTransition, eventTypeForTransition, isEligibleForPeriodMetric } from "../src/services/partnerRelationshipService";
+import { isValidRelationshipTransition, eventTypeForTransition, isEligibleForPeriodMetric, isNeedingAttention } from "../src/services/partnerRelationshipService";
 
 test("active <-> dormant <-> closed transitions, with direct reactivation from closed", () => {
   assert.equal(isValidRelationshipTransition("active", "dormant"), true);
@@ -41,4 +41,30 @@ test("period eligibility: exact_date/month/quarter precision are usable for both
     assert.equal(isEligibleForPeriodMetric(precision, "quarter"), true, precision);
     assert.equal(isEligibleForPeriodMetric(precision, "year"), true, precision);
   }
+});
+
+// ---- Phase 12 Portfolio Reconciliation: needs_review -----------------------
+
+test("needs_review is entry-only: it may transition to active/dormant/closed, but nothing transitions back into it", () => {
+  assert.equal(isValidRelationshipTransition("needs_review", "active"), true);
+  assert.equal(isValidRelationshipTransition("needs_review", "dormant"), true);
+  assert.equal(isValidRelationshipTransition("needs_review", "closed"), true);
+  assert.equal(isValidRelationshipTransition("needs_review", "needs_review"), false);
+  for (const from of ["active", "dormant", "closed"] as const) {
+    assert.equal(isValidRelationshipTransition(from, "needs_review"), false, `${from} -> needs_review must never be allowed`);
+  }
+});
+
+test("isNeedingAttention: a needs_review relationship always needs attention, regardless of next_action or last_interaction_at", () => {
+  assert.equal(isNeedingAttention({ status: "needs_review", nextAction: null, lastInteractionAt: null }), true);
+  assert.equal(
+    isNeedingAttention({ status: "needs_review", nextAction: "Call scheduled", lastInteractionAt: new Date() }),
+    true,
+    "an unclassified relationship needs a human look even if it happens to have a next_action/recent interaction set",
+  );
+});
+
+test("isNeedingAttention: dormant/closed relationships never need attention, needs_review or not", () => {
+  assert.equal(isNeedingAttention({ status: "dormant", nextAction: null, lastInteractionAt: null }), false);
+  assert.equal(isNeedingAttention({ status: "closed", nextAction: null, lastInteractionAt: null }), false);
 });

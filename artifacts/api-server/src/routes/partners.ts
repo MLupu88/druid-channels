@@ -8,6 +8,7 @@ import {
   partnerResearchItemsTable,
   rfpsTable,
   partnerEventsTable,
+  partnerRelationshipsTable,
 } from "@workspace/db";
 import {
   ListPartnersResponse,
@@ -18,6 +19,34 @@ import {
 import { eq, and, or, inArray } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { isGlobalUser, getOwnTerritory, assertRecordTerritoryAccess, ForbiddenScopeError } from "../services/authz";
+import { findRelationshipByCompanyAndTerritory, type RelationshipStatus } from "../services/partnerRelationshipService";
+
+// DEPRECATED legacy compatibility view (see openapi.yaml). Canonical Portfolio
+// Truth: "partner" is defined ONLY by partner_relationships (one row per
+// company + territory; see routes/portfolio.ts). prospects.status
+// accepted/pushed_to_hubspot is Discovery truth, not partner truth -- a
+// prospect can be accepted into recruitment and never become a partner. So
+// every endpoint here now requires a canonical relationship for the
+// prospect's own (company_id, territory_id) whose status is a CONFIRMED
+// one (active/dormant/closed -- dormant/closed stay visible as confirmed
+// historical states). needs_review never qualifies: it is an unconfirmed,
+// app-inferred row (e.g. from opportunity evidence), not a partner. The
+// remaining prospect-status condition is NOT a partner definition: it only
+// exists because this legacy response contract (Partner.status enum) can
+// only represent those two prospect statuses. No live UI route renders these endpoints any more (the
+// campaign partner picker reads /portfolio); remove them once nothing calls
+// them.
+const CONFIRMED_RELATIONSHIP_STATUSES = ["active", "dormant", "closed"] as const satisfies readonly RelationshipStatus[];
+
+function isConfirmedRelationshipStatus(status: string): boolean {
+  return (CONFIRMED_RELATIONSHIP_STATUSES as readonly string[]).includes(status);
+}
+
+const hasCanonicalRelationship = and(
+  eq(partnerRelationshipsTable.companyId, prospectsTable.companyId),
+  eq(partnerRelationshipsTable.territoryId, prospectsTable.territoryId),
+  inArray(partnerRelationshipsTable.status, [...CONFIRMED_RELATIONSHIP_STATUSES]),
+);
 
 const router: IRouter = Router();
 
@@ -92,6 +121,7 @@ router.get("/partners", requireAuth, async (req, res): Promise<void> => {
     .innerJoin(companiesTable, eq(prospectsTable.companyId, companiesTable.id))
     .leftJoin(territoriesTable, eq(prospectsTable.territoryId, territoriesTable.id))
     .leftJoin(usersTable, eq(prospectsTable.assignedUserId, usersTable.id))
+    .innerJoin(partnerRelationshipsTable, hasCanonicalRelationship)
     .where(or(eq(prospectsTable.status, "accepted"), eq(prospectsTable.status, "pushed_to_hubspot")));
 
   let filtered = scopedTerritoryId
@@ -130,6 +160,7 @@ router.get("/partners/:id", requireAuth, async (req, res): Promise<void> => {
     .innerJoin(companiesTable, eq(prospectsTable.companyId, companiesTable.id))
     .leftJoin(territoriesTable, eq(prospectsTable.territoryId, territoriesTable.id))
     .leftJoin(usersTable, eq(prospectsTable.assignedUserId, usersTable.id))
+    .innerJoin(partnerRelationshipsTable, hasCanonicalRelationship)
     .where(and(eq(prospectsTable.id, id), or(eq(prospectsTable.status, "accepted"), eq(prospectsTable.status, "pushed_to_hubspot"))));
 
   if (!row) {
@@ -226,7 +257,13 @@ router.patch("/partners/:id/help-needed", requireAuth, async (req, res): Promise
   }
 
   const [existing] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, id));
-  if (!existing || (existing.status !== "accepted" && existing.status !== "pushed_to_hubspot")) {
+  const relationship = existing ? await findRelationshipByCompanyAndTerritory(existing.companyId, existing.territoryId) : null;
+  if (
+    !existing ||
+    (existing.status !== "accepted" && existing.status !== "pushed_to_hubspot") ||
+    !relationship ||
+    !isConfirmedRelationshipStatus(relationship.status)
+  ) {
     res.status(404).json({ error: "Partner not found" });
     return;
   }

@@ -17,14 +17,36 @@ import { partnerRecruitmentsTable } from "./partner_recruitments";
 // two different relationships). Within one (company, territory) pair there
 // is exactly one row, ever -- closing/reactivating is a status transition
 // recorded in partner_relationship_history, never a new row.
-export const PARTNER_RELATIONSHIP_STATUSES = ["active", "dormant", "closed"] as const;
+// needs_review (Phase 12): the neutral entry status for a relationship the
+// app itself created (see originType: opportunity_import below) without any
+// human confirmation of whether the partner is actually active. Deliberately
+// NOT a fourth point on the active/dormant/closed lifecycle -- it is an
+// unclassified pre-state a human must resolve into one of those three (see
+// isValidRelationshipTransition in partnerRelationshipService.ts, which only
+// ever allows needs_review -> {active,dormant,closed}, never back into it).
+// Always counted as "needs attention" (see isNeedingAttention), regardless
+// of next_action/last_interaction_at -- an unclassified relationship needs a
+// human look by definition, not by staleness.
+export const PARTNER_RELATIONSHIP_STATUSES = ["active", "dormant", "closed", "needs_review"] as const;
 export const RELATIONSHIP_STRATEGIC_IMPORTANCE = ["high", "medium", "low"] as const;
 // How the relationship first entered the portfolio. This is ORIGIN only,
 // not a complete history -- e.g. a pam_import relationship that later goes
 // through a Signed recruitment does NOT get rewritten to "recruitment"; a
 // partner_relationship_history row (event_type: recruitment_signed) records
 // that instead. See partner_relationship_history.ts.
-export const RELATIONSHIP_ORIGIN_TYPES = ["recruitment", "pam_import", "manual"] as const;
+//
+// opportunity_import (Phase 12): a relationship the app auto-created because
+// a partner_opportunities row referenced this (company, territory) with no
+// existing Portfolio relationship yet -- see
+// reconcilePortfolioRelationshipForOpportunity in partnerRelationshipService.ts.
+// Deliberately distinct from pam_import (an explicit PAM book confirmation)
+// and manual (a human-authored Add) -- this origin means opportunity evidence
+// caused this (company, territory) pair to enter Portfolio review. It does
+// NOT confirm a partnership: a deal referencing a company is evidence to be
+// reviewed, not proof the company is a partner. Always created with status
+// "needs_review" (never "active") -- that status is the explicit record of
+// this uncertainty until a human, or a signed recruitment, confirms it.
+export const RELATIONSHIP_ORIGIN_TYPES = ["recruitment", "pam_import", "manual", "opportunity_import"] as const;
 // Precision/provenance of relationship_started_at -- never fabricate a
 // precise date from an imprecise source ("partner since Q1 2026" must not
 // silently become "2026-01-01"). Reporting eligibility keys off precision

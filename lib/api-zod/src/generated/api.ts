@@ -1206,7 +1206,7 @@ export const ListPortfolioResponseItem = zod.object({
   "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }),zod.null()]).optional(),
-  "status": zod.enum(['active', 'dormant', 'closed']),
+  "status": zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active\/dormant\/closed, and nothing transitions back into it.'),
   "partner_type": zod.string().nullish(),
   "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
   "relationship_summary": zod.string().nullish(),
@@ -1217,7 +1217,7 @@ export const ListPortfolioResponseItem = zod.object({
   "last_interaction_at": zod.string().nullish(),
   "next_action": zod.string().nullish(),
   "next_action_due_at": zod.string().nullish(),
-  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual', 'opportunity_import']).describe('opportunity_import (Phase 12) -- auto-created because a partner_opportunities row referenced this company\/territory with no existing Portfolio relationship yet. Always paired with status=needs_review at creation.'),
   "origin_recruitment_id": zod.string().nullish(),
   "source_as_of_date": zod.string().nullish(),
   "imported_at": zod.string().nullish(),
@@ -1239,7 +1239,7 @@ export const CreatePortfolioRelationshipBody = zod.object({
   "country": zod.string()
 }),zod.null()]).optional(),
   "assigned_user_id": zod.string().nullish(),
-  "status": zod.union([zod.enum(['active', 'dormant', 'closed']),zod.null()]).optional(),
+  "status": zod.union([zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active\/dormant\/closed, and nothing transitions back into it.'),zod.null()]).optional(),
   "partner_type": zod.string().nullish(),
   "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
   "relationship_summary": zod.string().nullish(),
@@ -1270,7 +1270,7 @@ export const CreatePortfolioRelationshipResponse = zod.object({
   "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }),zod.null()]).optional(),
-  "status": zod.enum(['active', 'dormant', 'closed']),
+  "status": zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active\/dormant\/closed, and nothing transitions back into it.'),
   "partner_type": zod.string().nullish(),
   "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
   "relationship_summary": zod.string().nullish(),
@@ -1281,7 +1281,7 @@ export const CreatePortfolioRelationshipResponse = zod.object({
   "last_interaction_at": zod.string().nullish(),
   "next_action": zod.string().nullish(),
   "next_action_due_at": zod.string().nullish(),
-  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual', 'opportunity_import']).describe('opportunity_import (Phase 12) -- auto-created because a partner_opportunities row referenced this company\/territory with no existing Portfolio relationship yet. Always paired with status=needs_review at creation.'),
   "origin_recruitment_id": zod.string().nullish(),
   "source_as_of_date": zod.string().nullish(),
   "imported_at": zod.string().nullish(),
@@ -1317,7 +1317,7 @@ export const GetPortfolioRelationshipResponse = zod.object({
   "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }),zod.null()]).optional(),
-  "status": zod.enum(['active', 'dormant', 'closed']),
+  "status": zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active\/dormant\/closed, and nothing transitions back into it.'),
   "partner_type": zod.string().nullish(),
   "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
   "relationship_summary": zod.string().nullish(),
@@ -1328,7 +1328,7 @@ export const GetPortfolioRelationshipResponse = zod.object({
   "last_interaction_at": zod.string().nullish(),
   "next_action": zod.string().nullish(),
   "next_action_due_at": zod.string().nullish(),
-  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual', 'opportunity_import']).describe('opportunity_import (Phase 12) -- auto-created because a partner_opportunities row referenced this company\/territory with no existing Portfolio relationship yet. Always paired with status=needs_review at creation.'),
   "origin_recruitment_id": zod.string().nullish(),
   "source_as_of_date": zod.string().nullish(),
   "imported_at": zod.string().nullish(),
@@ -1338,8 +1338,8 @@ export const GetPortfolioRelationshipResponse = zod.object({
   "history": zod.array(zod.object({
   "id": zod.string(),
   "event_type": zod.enum(['created', 'status_changed', 'owner_changed', 'reactivated', 'closed', 'recruitment_signed']),
-  "from_status": zod.union([zod.enum(['active', 'dormant', 'closed']),zod.null()]).optional(),
-  "to_status": zod.union([zod.enum(['active', 'dormant', 'closed']),zod.null()]).optional(),
+  "from_status": zod.union([zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active\/dormant\/closed, and nothing transitions back into it.'),zod.null()]).optional(),
+  "to_status": zod.union([zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active\/dormant\/closed, and nothing transitions back into it.'),zod.null()]).optional(),
   "from_user_name": zod.string().nullish(),
   "to_user_name": zod.string().nullish(),
   "source_recruitment_id": zod.string().nullish(),
@@ -1408,7 +1408,7 @@ export const UpdatePortfolioRelationshipResponse = zod.object({
   "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }),zod.null()]).optional(),
-  "status": zod.enum(['active', 'dormant', 'closed']),
+  "status": zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active\/dormant\/closed, and nothing transitions back into it.'),
   "partner_type": zod.string().nullish(),
   "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
   "relationship_summary": zod.string().nullish(),
@@ -1419,7 +1419,7 @@ export const UpdatePortfolioRelationshipResponse = zod.object({
   "last_interaction_at": zod.string().nullish(),
   "next_action": zod.string().nullish(),
   "next_action_due_at": zod.string().nullish(),
-  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual', 'opportunity_import']).describe('opportunity_import (Phase 12) -- auto-created because a partner_opportunities row referenced this company\/territory with no existing Portfolio relationship yet. Always paired with status=needs_review at creation.'),
   "origin_recruitment_id": zod.string().nullish(),
   "source_as_of_date": zod.string().nullish(),
   "imported_at": zod.string().nullish(),
@@ -1436,7 +1436,7 @@ export const TransitionPortfolioStatusParams = zod.object({
 })
 
 export const TransitionPortfolioStatusBody = zod.object({
-  "status": zod.enum(['active', 'dormant', 'closed']),
+  "status": zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active\/dormant\/closed, and nothing transitions back into it.'),
   "occurred_at": zod.string().nullish().describe('When the transition actually happened, if backdated. Defaults to now.'),
   "note": zod.string().nullish()
 })
@@ -1461,7 +1461,7 @@ export const TransitionPortfolioStatusResponse = zod.object({
   "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }),zod.null()]).optional(),
-  "status": zod.enum(['active', 'dormant', 'closed']),
+  "status": zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active\/dormant\/closed, and nothing transitions back into it.'),
   "partner_type": zod.string().nullish(),
   "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
   "relationship_summary": zod.string().nullish(),
@@ -1472,7 +1472,7 @@ export const TransitionPortfolioStatusResponse = zod.object({
   "last_interaction_at": zod.string().nullish(),
   "next_action": zod.string().nullish(),
   "next_action_due_at": zod.string().nullish(),
-  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual', 'opportunity_import']).describe('opportunity_import (Phase 12) -- auto-created because a partner_opportunities row referenced this company\/territory with no existing Portfolio relationship yet. Always paired with status=needs_review at creation.'),
   "origin_recruitment_id": zod.string().nullish(),
   "source_as_of_date": zod.string().nullish(),
   "imported_at": zod.string().nullish(),
@@ -1512,7 +1512,7 @@ export const ReassignPortfolioRelationshipResponse = zod.object({
   "timezone": zod.string().nullable().describe('IANA zone name, e.g. \"Europe\/Bucharest\". Null until explicitly configured -- never inferred from territory\/country.'),
   "active": zod.boolean()
 }),zod.null()]).optional(),
-  "status": zod.enum(['active', 'dormant', 'closed']),
+  "status": zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active\/dormant\/closed, and nothing transitions back into it.'),
   "partner_type": zod.string().nullish(),
   "strategic_importance": zod.union([zod.enum(['high', 'medium', 'low']),zod.null()]).optional(),
   "relationship_summary": zod.string().nullish(),
@@ -1523,7 +1523,7 @@ export const ReassignPortfolioRelationshipResponse = zod.object({
   "last_interaction_at": zod.string().nullish(),
   "next_action": zod.string().nullish(),
   "next_action_due_at": zod.string().nullish(),
-  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual']),
+  "origin_type": zod.enum(['recruitment', 'pam_import', 'manual', 'opportunity_import']).describe('opportunity_import (Phase 12) -- auto-created because a partner_opportunities row referenced this company\/territory with no existing Portfolio relationship yet. Always paired with status=needs_review at creation.'),
   "origin_recruitment_id": zod.string().nullish(),
   "source_as_of_date": zod.string().nullish(),
   "imported_at": zod.string().nullish(),

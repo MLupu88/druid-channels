@@ -18,7 +18,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, or, inArray } from "drizzle-orm";
 import {
   db,
   pool,
@@ -50,6 +50,9 @@ const createdProspectIds: string[] = [];
 const createdRecruitmentIds: string[] = [];
 const createdRelationshipIds: string[] = [];
 const createdOpportunityIds: string[] = [];
+// channel_change_events rows inserted directly by a test (not via a service
+// with a tracked actor/entity) -- see test I.
+const createdChangeEventIds: string[] = [];
 
 async function makeUser(namePrefix: string): Promise<User> {
   const [user] = await db
@@ -81,10 +84,39 @@ async function makeCompany(namePrefix: string): Promise<Company> {
 after(async () => {
   // FK-safe reverse-ish order -- disposable DB, but still cleans up after itself.
   for (const id of createdOpportunityIds) await db.delete(partnerOpportunitiesTable).where(eq(partnerOpportunitiesTable.id, id));
-  await db.delete(channelChangeEventsTable);
+  // Only this file's events, never the whole table (other suites may share
+  // the disposable DB). Every event this file writes is attributable by at
+  // least one of: actor_user_id (every upsertTarget/deleteTarget/
+  // applyOpportunity* call here passes a user this file created), entity_id
+  // (this file's opportunities), or id (rows test I inserts directly with a
+  // null actor and a random entity_id). Must run before users are deleted:
+  // actor_user_id is ON DELETE no action; entity_id has no FK.
+  const changeEventScopes = [
+    createdUserIds.length > 0 ? inArray(channelChangeEventsTable.actorUserId, createdUserIds) : undefined,
+    createdOpportunityIds.length > 0 ? inArray(channelChangeEventsTable.entityId, createdOpportunityIds) : undefined,
+    createdChangeEventIds.length > 0 ? inArray(channelChangeEventsTable.id, createdChangeEventIds) : undefined,
+  ].filter((c) => c !== undefined);
+  if (changeEventScopes.length > 0) await db.delete(channelChangeEventsTable).where(or(...changeEventScopes));
   for (const id of createdRelationshipIds) {
     await db.delete(partnerRelationshipHistoryTable).where(eq(partnerRelationshipHistoryTable.relationshipId, id));
     await db.delete(partnerRelationshipsTable).where(eq(partnerRelationshipsTable.id, id));
+  }
+  // applyOpportunityCreate now also reconciles a needs_review Portfolio
+  // relationship for each opportunity's (company, territory) -- those rows
+  // aren't in createdRelationshipIds, so sweep anything still referencing
+  // this file's own territories/companies. partner_relationships.territory_id/
+  // company_id/origin_recruitment_id are ON DELETE no action, so this must run
+  // before recruitments/territories/companies are deleted below; history and
+  // activity rows cascade from the relationship.
+  if (createdTerritoryIds.length > 0 || createdCompanyIds.length > 0) {
+    await db
+      .delete(partnerRelationshipsTable)
+      .where(
+        or(
+          createdTerritoryIds.length > 0 ? inArray(partnerRelationshipsTable.territoryId, createdTerritoryIds) : undefined,
+          createdCompanyIds.length > 0 ? inArray(partnerRelationshipsTable.companyId, createdCompanyIds) : undefined,
+        ),
+      );
   }
   for (const id of createdRecruitmentIds) {
     await db.delete(partnerRecruitmentHistoryTable).where(eq(partnerRecruitmentHistoryTable.recruitmentId, id));
@@ -546,6 +578,7 @@ test("I: a page boundary never splits two events that share the exact same occur
     .insert(channelChangeEventsTable)
     .values({ entityType: "opportunity", entityId: randomUUID(), eventType: "created", actorUserId: null, occurredAt: tiedAt, oldValues: null, newValues: null })
     .returning();
+  createdChangeEventIds.push(changeEvent!.id);
 
   // limit: 1 would, without the tie-safe boundary extension, arbitrarily
   // keep only one of these two -- and since both share the exact same
