@@ -6,7 +6,7 @@ import {
   useDeleteCampaign,
   useListTerritories,
   useListUsers,
-  useListPartners,
+  useListPortfolio,
   useListOpportunities,
   getListCampaignsQueryKey,
   getListUsersQueryKey,
@@ -193,7 +193,22 @@ export default function Campaigns() {
   });
   const { data: territories } = useListTerritories();
   const { data: users } = useListUsers({ query: { enabled: isGlobalUser, queryKey: getListUsersQueryKey() } });
-  const { data: partners } = useListPartners();
+  // Canonical Portfolio Truth: the partner picker lists only companies with
+  // an ACTIVE canonical Portfolio relationship (GET /portfolio, already
+  // territory-scoped for PAMs server-side) -- never prospects.status.
+  // needs_review/dormant/closed are not confirmed current partners and are
+  // never selectable. One entry per company (a company can hold active
+  // relationships in several territories); campaign territory is still free
+  // text, so no per-territory matching is attempted here.
+  const { data: portfolio } = useListPortfolio();
+  const partners = React.useMemo(() => {
+    const byCompany = new Map<string, { company: { id: string; name: string }; label: string }>();
+    for (const r of portfolio ?? []) {
+      if (r.status !== 'active' || byCompany.has(r.company.id)) continue;
+      byCompany.set(r.company.id, { company: { id: r.company.id, name: r.company.name }, label: r.company.name });
+    }
+    return [...byCompany.values()].sort((a, b) => a.company.name.localeCompare(b.company.name));
+  }, [portfolio]);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -355,7 +370,7 @@ export default function Campaigns() {
           <SelectContent>
             <SelectItem value={ALL}>All partners</SelectItem>
             {partners?.map(p => (
-              <SelectItem key={p.company.id} value={p.company.id}>{p.company.name}</SelectItem>
+              <SelectItem key={p.company.id} value={p.company.id}>{p.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -552,7 +567,7 @@ export default function Campaigns() {
                 <SelectContent>
                   <SelectItem value={NONE_PARTNER}>No specific partner (territory-wide)</SelectItem>
                   {partners?.map(p => (
-                    <SelectItem key={p.company.id} value={p.company.id}>{p.company.name}</SelectItem>
+                    <SelectItem key={p.company.id} value={p.company.id}>{p.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -680,7 +695,7 @@ export default function Campaigns() {
                 <SelectTrigger><SelectValue placeholder="Select a partner" /></SelectTrigger>
                 <SelectContent>
                   {partners?.map(p => (
-                    <SelectItem key={p.company.id} value={p.company.id}>{p.company.name}</SelectItem>
+                    <SelectItem key={p.company.id} value={p.company.id}>{p.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

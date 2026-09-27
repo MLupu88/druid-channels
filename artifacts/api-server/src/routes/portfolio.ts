@@ -8,7 +8,6 @@ import {
   territoriesTable,
   usersTable,
   partnerRecruitmentsTable,
-  channelRadarSignalsTable,
 } from "@workspace/db";
 import {
   ListPortfolioQueryParams,
@@ -38,6 +37,7 @@ import {
   addActivity,
   isNeedingAttention,
   InvalidRelationshipTransitionError,
+  getRelationshipScopedContext,
   type RelationshipStatus,
 } from "../services/partnerRelationshipService";
 import { resolveCompanyMatch, normalizeCompanyName } from "../services/companyMatchingService";
@@ -327,7 +327,7 @@ router.get("/portfolio/:id", requireAuth, async (req, res): Promise<void> => {
     throw err;
   }
 
-  const [historyRows, activityRows, recruitmentRows, radarSignalRows] = await Promise.all([
+  const [historyRows, activityRows, scopedContext] = await Promise.all([
     db
       .select({ history: partnerRelationshipHistoryTable })
       .from(partnerRelationshipHistoryTable)
@@ -339,18 +339,11 @@ router.get("/portfolio/:id", requireAuth, async (req, res): Promise<void> => {
       .leftJoin(usersTable, eq(partnerActivitiesTable.actorUserId, usersTable.id))
       .where(eq(partnerActivitiesTable.relationshipId, id))
       .orderBy(desc(partnerActivitiesTable.occurredAt)),
-    db
-      .select()
-      .from(partnerRecruitmentsTable)
-      .where(eq(partnerRecruitmentsTable.companyId, row.relationship.companyId))
-      .orderBy(desc(partnerRecruitmentsTable.updatedAt)),
-    db
-      .select()
-      .from(channelRadarSignalsTable)
-      .where(eq(channelRadarSignalsTable.companyId, row.relationship.companyId))
-      .orderBy(desc(channelRadarSignalsTable.discoveredAt))
-      .limit(5),
+    // Scoped to this relationship's own (company, territory) -- see
+    // getRelationshipScopedContext.
+    getRelationshipScopedContext(row.relationship),
   ]);
+  const { latestRecruitment, radarSignals: radarSignalRows } = scopedContext;
 
   // History rows need from/to/changed-by user names resolved separately
   // (three independent nullable FKs on one row -- a single multi-join would
@@ -364,8 +357,6 @@ router.get("/portfolio/:id", requireAuth, async (req, res): Promise<void> => {
   }
   const userRows = userIds.size ? await db.select().from(usersTable) : [];
   const userNameById = new Map(userRows.filter((u) => userIds.has(u.id)).map((u) => [u.id, u.name]));
-
-  const latestRecruitment = recruitmentRows[0] ?? null;
 
   res.json(
     GetPortfolioRelationshipResponse.parse({

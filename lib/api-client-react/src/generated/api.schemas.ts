@@ -779,6 +779,9 @@ export interface CompanyRef {
   country: string;
 }
 
+/**
+ * needs_review is entry-only (Phase 12) -- the neutral status an opportunity-triggered relationship starts in; a human resolves it into active/dormant/closed, and nothing transitions back into it.
+ */
 export type PartnerRelationshipStatus = typeof PartnerRelationshipStatus[keyof typeof PartnerRelationshipStatus];
 
 
@@ -786,6 +789,7 @@ export const PartnerRelationshipStatus = {
   active: 'active',
   dormant: 'dormant',
   closed: 'closed',
+  needs_review: 'needs_review',
 } as const;
 
 export type RelationshipStrategicImportance = typeof RelationshipStrategicImportance[keyof typeof RelationshipStrategicImportance];
@@ -818,6 +822,9 @@ export const StartedAtProvenance = {
   system_generated: 'system_generated',
 } as const;
 
+/**
+ * opportunity_import (Phase 12) -- auto-created because a partner_opportunities row referenced this company/territory with no existing Portfolio relationship yet. Always paired with status=needs_review at creation.
+ */
 export type RelationshipOriginType = typeof RelationshipOriginType[keyof typeof RelationshipOriginType];
 
 
@@ -825,6 +832,7 @@ export const RelationshipOriginType = {
   recruitment: 'recruitment',
   pam_import: 'pam_import',
   manual: 'manual',
+  opportunity_import: 'opportunity_import',
 } as const;
 
 export type RelationshipHistoryEventType = typeof RelationshipHistoryEventType[keyof typeof RelationshipHistoryEventType];

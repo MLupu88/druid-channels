@@ -27,6 +27,7 @@ import { resolveProviderSecret } from "../services/connections";
 import { findCompanyByDomain, searchDeals, HubSpotAmbiguousCompanyError, HubSpotProviderError, type HubSpotDeal } from "../services/hubspot";
 import { toRegistrableDomain } from "../services/companyIdentity";
 import { normalizeCompanyName } from "../services/companyMatchingService";
+import { reconcilePortfolioRelationshipForOpportunity } from "../services/partnerRelationshipService";
 
 const router: IRouter = Router();
 
@@ -110,7 +111,18 @@ type Db = typeof db;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Executor = Db | Tx;
 
-/** Inserts an opportunity and its channel_change_events "created" row atomically. A creation is always material. */
+/**
+ * Inserts an opportunity, its channel_change_events "created" row, and
+ * reconciles a Portfolio relationship for its (company, territory) --
+ * atomically. A creation is always material. Phase 12 Portfolio
+ * Reconciliation: every opportunity, manual or imported, must leave its
+ * company with SOME Portfolio relationship (creating a neutral
+ * "needs_review" one if none exists yet, reusing an existing one untouched
+ * otherwise) -- see reconcilePortfolioRelationshipForOpportunity. The
+ * relationship write shares this same transaction as the opportunity insert,
+ * so either both succeed or both roll back together -- an opportunity must
+ * never exist without SOME Portfolio relationship for its company/territory.
+ */
 export async function applyOpportunityCreate(
   executor: Executor,
   values: typeof partnerOpportunitiesTable.$inferInsert,
@@ -130,6 +142,13 @@ export async function applyOpportunityCreate(
     // matters.
     metadata: { name: row!.name, company_id: row!.companyId, territory_id: row!.territoryId },
   });
+
+  await reconcilePortfolioRelationshipForOpportunity(
+    { companyId: row!.companyId, territoryId: row!.territoryId, opportunityAssignedUserId: row!.assignedUserId },
+    values.createdByUserId ?? null,
+    executor,
+  );
+
   return row!;
 }
 
