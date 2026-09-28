@@ -74,7 +74,8 @@
     "test:channel-chief-auth": "tsx --test tests/channelChiefAuth.test.ts",
     "test:channel-chief-snapshot": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/channelChiefSnapshot.test.ts",
     "test:channel-chief": "tsx --test tests/channelChief.test.ts",
-    "test:pptx-quarterly-characterization": "tsx --test --experimental-test-module-mocks tests/pptxReportCharacterization.test.ts",
+    "test:reporting-comparison-truthfulness": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/reportingComparisonTruthfulness.test.ts",
+    "test:pptx-quarterly-characterization":"tsx --test --experimental-test-module-mocks tests/pptxReportCharacterization.test.ts",
     "seed": "tsx ./src/scripts/seed.ts",
     "audit:company-duplicates": "tsx ./src/scripts/auditCompanyDuplicates.ts"
   },

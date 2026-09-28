@@ -2393,7 +2393,7 @@ paths:
                 type: string
                 format: binary
         "400":
-          description: week_start is not a canonical Monday, or currency is invalid
+          description: week_start is not a canonical Monday, is a future week, or currency is invalid
 
   /ai-channel-brief:
     get:
@@ -2970,7 +2970,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ManagementReportSummary"
         "400":
-          description: week_start is not a canonical Monday
+          description: week_start is not a canonical Monday, is a future week, or currency is invalid
         "403":
           description: caller lacks access to the requested territory
 
@@ -6175,7 +6175,8 @@ components:
           additionalProperties:
             type: number
         week_over_week:
-          type: number
+          type: ["number", "null"]
+          description: Always null -- no week-over-week prospect comparison is computed (previously a hard-coded 1.15). Never a fabricated ratio.
 
     ChannelChiefPerformance:
       type: object
@@ -7331,15 +7332,25 @@ components:
       properties:
         week_over_week:
           type: object
-          required: [current_week, previous_week, delta, open_pipeline]
+          required: [current_week, previous_week, comparison_available, comparison_status, delta, open_pipeline]
           properties:
             current_week:
               $ref: "#/components/schemas/ManagementPeriodMoneySnapshot"
+              description: The selected week's figures. For the current week (comparison_status week_in_progress) this is a factual week-to-date value, not a full week.
             previous_week:
               $ref: "#/components/schemas/ManagementPeriodMoneySnapshot"
+            comparison_available:
+              type: boolean
+              description: true only when week_start is a completed calendar week, so both weeks are full weeks. A future week_start is rejected with 400, never reported.
+            comparison_status:
+              type: string
+              enum: [available, week_in_progress]
+              description: available -- both weeks complete, delta is real (a genuine 0 included). week_in_progress -- week_start is the current week; delta is null.
             delta:
-              $ref: "#/components/schemas/ManagementPeriodMoneySnapshot"
-              description: current_week minus previous_week, same shape (values may be negative).
+              oneOf:
+                - $ref: "#/components/schemas/ManagementPeriodMoneySnapshot"
+                - type: "null"
+              description: current_week minus previous_week, same shape (values may be negative). null unless comparison_available -- a partial week is never compared with a full one.
             open_pipeline:
               $ref: "#/components/schemas/ManagementOpenPipelineAvailability"
 

@@ -4236,7 +4236,7 @@ export const GetProspectStatsResponse = zod.object({
 })),
   "by_status": zod.record(zod.string(), zod.number()),
   "by_partner_type": zod.record(zod.string(), zod.number()),
-  "week_over_week": zod.number()
+  "week_over_week": zod.number().nullable().describe('Always null -- no week-over-week prospect comparison is computed (previously a hard-coded 1.15). Never a fabricated ratio.')
 })
 
 
@@ -5278,7 +5278,7 @@ export const GetManagementReportSummaryResponse = zod.object({
   "total": zod.number()
 }),
   "opportunities_created_count": zod.number()
-}),
+}).describe('The selected week\'s figures. For the current week (comparison_status week_in_progress) this is a factual week-to-date value, not a full week.'),
   "previous_week": zod.object({
   "won_revenue_usd": zod.object({
   "sourced": zod.number(),
@@ -5287,14 +5287,16 @@ export const GetManagementReportSummaryResponse = zod.object({
 }),
   "opportunities_created_count": zod.number()
 }),
-  "delta": zod.object({
+  "comparison_available": zod.boolean().describe('true only when week_start is a completed calendar week, so both weeks are full weeks. A future week_start is rejected with 400, never reported.'),
+  "comparison_status": zod.enum(['available', 'week_in_progress']).describe('available -- both weeks complete, delta is real (a genuine 0 included). week_in_progress -- week_start is the current week; delta is null.'),
+  "delta": zod.union([zod.object({
   "won_revenue_usd": zod.object({
   "sourced": zod.number(),
   "influenced": zod.number(),
   "total": zod.number()
 }),
   "opportunities_created_count": zod.number()
-}).describe('current_week minus previous_week, same shape (values may be negative).'),
+}),zod.null()]).describe('current_week minus previous_week, same shape (values may be negative). null unless comparison_available -- a partial week is never compared with a full one.'),
   "open_pipeline": zod.object({
   "available": zod.boolean().describe('Always false in Phase 8 -- reserved for a future phase that adds point-in-time pipeline reconstruction.'),
   "note": zod.string(),

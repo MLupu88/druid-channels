@@ -58,11 +58,21 @@ export interface ManagementOpenPipelineAvailability {
   current_open_pipeline_usd: { sourced: number; influenced: number; total: number };
 }
 
+// "available": week_start is a completed calendar week, so both it and the
+// previous week are full weeks and delta is a real comparison (a genuine 0
+// included). "week_in_progress": week_start is the current week --
+// current_week is a factual week-to-date figure, but comparing it with a
+// full previous week would be misleading, so delta is null. A future
+// week_start is rejected as invalid input, never reported.
+export type ManagementWeekComparisonStatus = "available" | "week_in_progress";
+
 export interface ManagementComparisons {
   week_over_week: {
     current_week: ManagementPeriodMoneySnapshot;
     previous_week: ManagementPeriodMoneySnapshot;
-    delta: ManagementPeriodMoneySnapshot; // current_week - previous_week; values may be negative
+    comparison_available: boolean;
+    comparison_status: ManagementWeekComparisonStatus;
+    delta: ManagementPeriodMoneySnapshot | null; // current_week - previous_week (may be negative); null unless comparison_available
     open_pipeline: ManagementOpenPipelineAvailability;
   };
 }

@@ -14,5 +14,9 @@ export interface ProspectStats {
   by_territory: TerritoryProspectStats[];
   by_status: ProspectStatsByStatus;
   by_partner_type: ProspectStatsByPartnerType;
-  week_over_week: number;
+  /**
+     * Always null -- no week-over-week prospect comparison is computed (previously a hard-coded 1.15). Never a fabricated ratio.
+     * @nullable
+     */
+  week_over_week: number | null;
 }

@@ -45,12 +45,26 @@ import type {
   ManagementPeriodMoneySnapshot,
   ManagementInsight,
   ManagementDataQuality,
+  ManagementWeekComparisonStatus,
 } from "./managementReportContract";
 
 function assertCanonicalMonday(weekStartDate: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate) || !isCanonicalMonday(weekStartDate)) {
     throw new WeeklyReportValidationError(`week_start must be a canonical Monday (YYYY-MM-DD); "${weekStartDate}" is not.`);
   }
+}
+
+// Whether week_start's week-over-week comparison is a real one. Expects a
+// canonical Monday (assertCanonicalMonday first). A week that has not
+// started yet is invalid input -- rejected, never reported as a week of
+// zeros. The current week is still in progress: its week-to-date figures
+// are factual, but not comparable with a full previous week.
+export function classifyManagementWeek(weekStart: string, now: Date = new Date()): ManagementWeekComparisonStatus {
+  const currentWeekStart = mondayOf(now);
+  if (weekStart > currentWeekStart) {
+    throw new WeeklyReportValidationError(`week_start must not be in the future; "${weekStart}" has not started yet (current week starts ${currentWeekStart}).`);
+  }
+  return weekStart === currentWeekStart ? "week_in_progress" : "available";
 }
 
 async function computePeriodMoneySnapshot(start: string, endExclusive: string, scope: OpportunityScope): Promise<ManagementPeriodMoneySnapshot> {
@@ -118,7 +132,9 @@ export function buildManagementInsights(
   targets: Awaited<ReturnType<typeof getTeamTargets>>,
   recruitmentPeriodTransitions: { signed_count: number },
   marketing: { won_revenue_usd: number },
-  weekOverWeekDelta: ManagementPeriodMoneySnapshot,
+  // null when no legitimate comparison exists (week in progress) -- the
+  // commercial WoW insight is then omitted, never phrased from a partial week.
+  weekOverWeekDelta: ManagementPeriodMoneySnapshot | null,
   outstandingCount: number,
   pamComparisonReconciles: boolean,
   pamComparisonReconciliationNote: string | null,
@@ -193,7 +209,7 @@ export function buildManagementInsights(
     });
   }
 
-  if (weekOverWeekDelta.won_revenue_usd.total !== 0) {
+  if (weekOverWeekDelta !== null && weekOverWeekDelta.won_revenue_usd.total !== 0) {
     const up = weekOverWeekDelta.won_revenue_usd.total > 0;
     insights.push({
       id: "commercial-wow",
@@ -228,6 +244,7 @@ export interface ManagementReportOptions {
 export async function getManagementReportSummary(actingUser: ActingUser, options: ManagementReportOptions): Promise<ManagementReportSummary> {
   const weekStart = options.weekStart ?? mondayOf(new Date());
   assertCanonicalMonday(weekStart);
+  const comparisonStatus = classifyManagementWeek(weekStart);
   const weekEndExcl = weekEndExclusive(weekStart);
   const previousWeekStart = weekStartBefore(weekStart);
 
@@ -300,7 +317,8 @@ export async function getManagementReportSummary(actingUser: ActingUser, options
     fx,
   };
 
-  const delta = deltaOf(currentWeekMoney, previousWeekMoney);
+  const comparisonAvailable = comparisonStatus === "available";
+  const delta = comparisonAvailable ? deltaOf(currentWeekMoney, previousWeekMoney) : null;
 
   // Existing PAMs with literally no persisted weekly_pam_reports row for
   // this week (neither draft nor submitted) -- distinct from Phase 7's
@@ -359,6 +377,8 @@ export async function getManagementReportSummary(actingUser: ActingUser, options
       week_over_week: {
         current_week: currentWeekMoney,
         previous_week: previousWeekMoney,
+        comparison_available: comparisonAvailable,
+        comparison_status: comparisonStatus,
         delta,
         open_pipeline: {
           available: false,

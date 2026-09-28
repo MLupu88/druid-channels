@@ -18,8 +18,26 @@ import {
   createSlideBuilder,
 } from "../lib/pptxLayout";
 import { getManagementReportSummary, type ManagementReportOptions } from "./managementReportingService";
+import type { ManagementComparisons } from "./managementReportContract";
 import type { ActingUser } from "./authz";
 import { isMoneyMetric } from "./kpiRegistry";
+
+// Subtitle under the "Won revenue (USD)" week tile. Only a real
+// completed-week comparison gets a signed delta and a green/red direction;
+// an unavailable one (week in progress) renders a neutral, grey message --
+// never a delta computed from a partial week.
+export function weekOverWeekRevenueSubtitle(
+  weekOverWeek: Pick<ManagementComparisons["week_over_week"], "comparison_available" | "delta">,
+): { text: string; color: string } {
+  if (!weekOverWeek.comparison_available || weekOverWeek.delta === null) {
+    return { text: "Comparison unavailable — week in progress", color: BRAND_GREY };
+  }
+  const weekDelta = weekOverWeek.delta.won_revenue_usd.total;
+  return {
+    text: `${weekDelta >= 0 ? "+" : "-"}${formatMoney(Math.abs(weekDelta), "USD")} vs. previous week`,
+    color: weekDelta >= 0 ? GOOD_COLOR : BAD_COLOR,
+  };
+}
 
 // Phase 8 -- the Head/Admin management deck. Built from the EXACT SAME
 // getManagementReportSummary() payload the Overview management view
@@ -61,8 +79,7 @@ export async function buildManagementReportPptx(actingUser: ActingUser, options:
   summarySlide.addText(`${report_context.quarter_to_date_period_label} (to date)`, { x: 6.85, y: 1.55, w: 6, h: 0.35, fontSize: 14, bold: true, color: BRAND_NAVY });
 
   const weekWon = comparisons.week_over_week.current_week.won_revenue_usd.total;
-  const weekDelta = comparisons.week_over_week.delta.won_revenue_usd.total;
-  const deltaText = `${weekDelta >= 0 ? "+" : "-"}${formatMoney(Math.abs(weekDelta), "USD")} vs. previous week`;
+  const weekRevenueSub = weekOverWeekRevenueSubtitle(comparisons.week_over_week);
   const qtdClosedRevenueRow = quarter_to_date.commercial.partnerDevelopment.find((r) => r.metric_key === "closed_revenue");
 
   const tile = (x: number, y: number, label: string, value: string, sub: string, subColor?: string) => {
@@ -74,7 +91,7 @@ export async function buildManagementReportPptx(actingUser: ActingUser, options:
     summarySlide.addText(sub, { x: x + 0.3, y: y + h - 0.42, w: w - 0.6, h: 0.32, fontSize: 11, color: subColor ?? BRAND_GREY });
   };
 
-  tile(0.6, 2.0, "Won revenue (USD)", formatMoney(weekWon, "USD"), deltaText, weekDelta >= 0 ? GOOD_COLOR : BAD_COLOR);
+  tile(0.6, 2.0, "Won revenue (USD)", formatMoney(weekWon, "USD"), weekRevenueSub.text, weekRevenueSub.color);
   tile(0.6, 3.9, "Opportunities created", formatCount(comparisons.week_over_week.current_week.opportunities_created_count), "This week", BRAND_GREY);
   tile(
     6.85,

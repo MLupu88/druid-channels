@@ -157,6 +157,7 @@ export * from './loginInput';
 export * from './managementCommercialQtd';
 export * from './managementComparisons';
 export * from './managementComparisonsWeekOverWeek';
+export * from './managementComparisonsWeekOverWeekComparisonStatus';
 export * from './managementDataQuality';
 export * from './managementInsight';
 export * from './managementInsightCategory';

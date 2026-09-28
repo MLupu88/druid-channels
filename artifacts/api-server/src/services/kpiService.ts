@@ -241,7 +241,8 @@ async function computeNewPartnerProspects(periodKey: string, target: ResolvedTer
 // (naturally, via an empty date window) zero for a future period.
 // last_updated reflects the underlying prospect rows' own updated_at, not
 // request time. Last Week is the same cumulative count through the end of
-// the previous calendar week, clamped to the period's own end.
+// the previous calendar week -- only when that cutoff lies inside the
+// active selected period (previousWeekCutoffInActivePeriod), else null.
 // Stage 4 correction: eligibility is partner_recruitments.stage = "signed"
 // (never prospects.status accepted/pushed_to_hubspot -- Accepted,
 // Contacting, Engaged, and Agreement are all real, ongoing recruitment work,
@@ -256,7 +257,6 @@ async function computeSignedPartners(periodKey: string, target: ResolvedTerritor
   const allRecruitments = await db.select().from(partnerRecruitmentsTable);
 
   const periodStartMs = new Date(periodInfo.start).getTime();
-  const periodEndMs = new Date(periodInfo.end + "T23:59:59.999Z").getTime();
 
   const isEligibleThrough = (r: (typeof allRecruitments)[number], endMs: number) => {
     if (r.stage !== "signed") return false;
@@ -287,17 +287,18 @@ async function computeSignedPartners(periodKey: string, target: ResolvedTerritor
       date: new Date(r.signedAt as unknown as string).toISOString(),
     }));
 
-  const lastWeekEndMs = Math.min(periodEndMs, endOfPreviousCalendarWeek(new Date()).getTime());
-  const lastWeekEligible = allRecruitments.filter((r) => isEligibleThrough(r, lastWeekEndMs));
-  const lastWeekScoped = target.territoryId
-    ? lastWeekEligible.filter((r) => r.territoryId === target.territoryId)
-    : lastWeekEligible;
+  const lastWeekCutoff = previousWeekCutoffInActivePeriod(periodInfo);
+  let lastWeek: number | null = null;
+  if (lastWeekCutoff !== null) {
+    const lastWeekEndMs = new Date(lastWeekCutoff + "T23:59:59.999Z").getTime();
+    const lastWeekEligible = allRecruitments.filter((r) => isEligibleThrough(r, lastWeekEndMs));
+    lastWeek = (target.territoryId ? lastWeekEligible.filter((r) => r.territoryId === target.territoryId) : lastWeekEligible).length;
+  }
 
   return {
     current: scoped.length,
     target: null,
-    last_week: lastWeekScoped.length,
-    trend: trendOf(scoped.length, lastWeekScoped.length),
+    ...cumulativeWeekComparison(scoped.length, lastWeek),
     status: null,
     data_status: "CONNECTED",
     data_source: "Live: partner_recruitments table, stage=signed with signed_at inside the selected period, through the effective as-of date",
@@ -315,7 +316,7 @@ async function computeSignedPartners(periodKey: string, target: ResolvedTerritor
 // as-of date, mirroring signed_partners. last_updated reflects the
 // underlying prospect rows' own updated_at, not request time. Last Week is
 // the same cumulative count through the end of the previous calendar week,
-// clamped to the period's own end.
+// only when that cutoff lies inside the active selected period, else null.
 async function computeRenewals(periodKey: string, target: ResolvedTerritory): Promise<KpiComputation> {
   const periodInfo = resolvePeriodRange(periodKey);
   const allTerritories = await db.select().from(territoriesTable);
@@ -342,17 +343,17 @@ async function computeRenewals(periodKey: string, target: ResolvedTerritory): Pr
     .slice(0, 100)
     .map((p) => ({ label: `Prospect ${p.id.slice(0, 8)} renewal`, value: 1, date: p.renewalDate }));
 
-  const lastWeekEndStr = minDateStr(periodInfo.end, endOfPreviousCalendarWeek(new Date()).toISOString().slice(0, 10));
-  const lastWeekEligible = allProspects.filter((p) => inRange(p.renewalDate, lastWeekEndStr));
-  const lastWeekScoped = target.territoryId
-    ? lastWeekEligible.filter((p) => p.territoryId === target.territoryId)
-    : lastWeekEligible;
+  const lastWeekCutoff = previousWeekCutoffInActivePeriod(periodInfo);
+  let lastWeek: number | null = null;
+  if (lastWeekCutoff !== null) {
+    const lastWeekEligible = allProspects.filter((p) => inRange(p.renewalDate, lastWeekCutoff));
+    lastWeek = (target.territoryId ? lastWeekEligible.filter((p) => p.territoryId === target.territoryId) : lastWeekEligible).length;
+  }
 
   return {
     current: scoped.length,
     target: null,
-    last_week: lastWeekScoped.length,
-    trend: trendOf(scoped.length, lastWeekScoped.length),
+    ...cumulativeWeekComparison(scoped.length, lastWeek),
     status: null,
     data_status: "CONNECTED",
     data_source: "Live: prospects table, renewal_date inside the selected period through the effective as-of date (count, not revenue)",
@@ -454,6 +455,31 @@ function periodState(periodKey: string): "past" | "active" | "future" {
   if (todayStr < periodInfo.start) return "future";
   if (todayStr > periodInfo.end) return "past";
   return "active";
+}
+
+// "Last Week" cutoff (inclusive YYYY-MM-DD, the Sunday ending the previous
+// calendar week) for the cumulative period-flow KPIs (signed_partners,
+// renewals, closed_revenue, opportunities_created). A comparison is only
+// legitimate when the selected period is ACTIVE and that cutoff falls
+// inside it: in the period's first week the cutoff precedes period.start
+// (the "previous" cumulative total would be an empty window, not a real
+// prior value), and for a past or future period "the previous calendar
+// week" is not a point inside the selected period at all. null means
+// unavailable -- never a fabricated 0 or "flat".
+export function previousWeekCutoffInActivePeriod(period: { start: string; end: string }, now: Date = new Date()): string | null {
+  const todayStr = now.toISOString().slice(0, 10);
+  if (todayStr < period.start || todayStr > period.end) return null;
+  const cutoff = endOfPreviousCalendarWeek(now).toISOString().slice(0, 10);
+  if (cutoff < period.start) return null;
+  return cutoff;
+}
+
+// last_week/trend for a cumulative period-flow KPI. An unavailable
+// comparison stays null/null; a genuine comparison -- including an equal
+// value -- goes through trendOf unchanged.
+export function cumulativeWeekComparison(current: number, lastWeek: number | null): Pick<KpiComputation, "last_week" | "trend"> {
+  if (lastWeek === null) return { last_week: null, trend: null };
+  return { last_week: lastWeek, trend: trendOf(current, lastWeek) };
 }
 
 // Most recent persisted kpi_snapshots row for a metric/territory whose
@@ -649,17 +675,19 @@ async function computeClosedRevenue(periodKey: string, target: ResolvedTerritory
 
   const records: KpiDetailRecord[] = scoped.slice(0, 100).map((o) => ({ label: o.name, value: valueOf(o), date: closedAtDateStr(o) }));
 
-  const lastWeekEndStr = minDateStr(periodInfo.end, endOfPreviousCalendarWeek(new Date()).toISOString().slice(0, 10));
-  const lastWeekEligible = await fetchWonOpportunitiesInRange(periodInfo.start, dayAfter(lastWeekEndStr));
-  const lastWeekRateByCurrency = await buildUsdRateMap(lastWeekEligible.map((o) => o.currency));
-  const lastWeekScoped = target.territoryId ? lastWeekEligible.filter((o) => o.territoryId === target.territoryId) : lastWeekEligible;
-  const lastWeek = lastWeekScoped.reduce((sum, o) => sum + usdValueOf(o, lastWeekRateByCurrency), 0);
+  const lastWeekCutoff = previousWeekCutoffInActivePeriod(periodInfo);
+  let lastWeek: number | null = null;
+  if (lastWeekCutoff !== null) {
+    const lastWeekEligible = await fetchWonOpportunitiesInRange(periodInfo.start, dayAfter(lastWeekCutoff));
+    const lastWeekRateByCurrency = await buildUsdRateMap(lastWeekEligible.map((o) => o.currency));
+    const lastWeekScoped = target.territoryId ? lastWeekEligible.filter((o) => o.territoryId === target.territoryId) : lastWeekEligible;
+    lastWeek = lastWeekScoped.reduce((sum, o) => sum + usdValueOf(o, lastWeekRateByCurrency), 0);
+  }
 
   return {
     current,
     target: null,
-    last_week: lastWeek,
-    trend: trendOf(current, lastWeek),
+    ...cumulativeWeekComparison(current, lastWeek),
     status: null,
     data_status: "CONNECTED",
     data_source: "Live: partner_opportunities table, won opportunities with closed_at inside the selected period (period-flow; deal_value normalized to USD)",
@@ -701,15 +729,17 @@ async function computeOpportunitiesCreated(periodKey: string, target: ResolvedTe
 
   const records: KpiDetailRecord[] = scoped.slice(0, 100).map((o) => ({ label: o.name, value: 1, date: o.opportunityDate }));
 
-  const lastWeekEndStr = minDateStr(periodInfo.end, endOfPreviousCalendarWeek(new Date()).toISOString().slice(0, 10));
-  const lastWeekEligible = await fetchOpportunitiesCreatedInRange(periodInfo.start, dayAfter(lastWeekEndStr));
-  const lastWeekScoped = target.territoryId ? lastWeekEligible.filter((o) => o.territoryId === target.territoryId) : lastWeekEligible;
+  const lastWeekCutoff = previousWeekCutoffInActivePeriod(periodInfo);
+  let lastWeek: number | null = null;
+  if (lastWeekCutoff !== null) {
+    const lastWeekEligible = await fetchOpportunitiesCreatedInRange(periodInfo.start, dayAfter(lastWeekCutoff));
+    lastWeek = (target.territoryId ? lastWeekEligible.filter((o) => o.territoryId === target.territoryId) : lastWeekEligible).length;
+  }
 
   return {
     current: scoped.length,
     target: null,
-    last_week: lastWeekScoped.length,
-    trend: trendOf(scoped.length, lastWeekScoped.length),
+    ...cumulativeWeekComparison(scoped.length, lastWeek),
     status: null,
     data_status: "CONNECTED",
     data_source: "Live: partner_opportunities table, opportunity_date inside the selected period through the effective as-of date (count)",

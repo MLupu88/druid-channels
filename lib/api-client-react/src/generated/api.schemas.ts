@@ -2829,7 +2829,11 @@ export interface ProspectStats {
   by_territory: TerritoryProspectStats[];
   by_status: ProspectStatsByStatus;
   by_partner_type: ProspectStatsByPartnerType;
-  week_over_week: number;
+  /**
+     * Always null -- no week-over-week prospect comparison is computed (previously a hard-coded 1.15). Never a fabricated ratio.
+     * @nullable
+     */
+  week_over_week: number | null;
 }
 
 /**
@@ -3565,11 +3569,27 @@ export interface ManagementOpenPipelineAvailability {
   current_open_pipeline_usd: WeeklySourcedInfluencedAmount;
 }
 
+/**
+ * available -- both weeks complete, delta is real (a genuine 0 included). week_in_progress -- week_start is the current week; delta is null.
+ */
+export type ManagementComparisonsWeekOverWeekComparisonStatus = typeof ManagementComparisonsWeekOverWeekComparisonStatus[keyof typeof ManagementComparisonsWeekOverWeekComparisonStatus];
+
+
+export const ManagementComparisonsWeekOverWeekComparisonStatus = {
+  available: 'available',
+  week_in_progress: 'week_in_progress',
+} as const;
+
 export type ManagementComparisonsWeekOverWeek = {
+  /** The selected week's figures. For the current week (comparison_status week_in_progress) this is a factual week-to-date value, not a full week. */
   current_week: ManagementPeriodMoneySnapshot;
   previous_week: ManagementPeriodMoneySnapshot;
-  /** current_week minus previous_week, same shape (values may be negative). */
-  delta: ManagementPeriodMoneySnapshot;
+  /** true only when week_start is a completed calendar week, so both weeks are full weeks. A future week_start is rejected with 400, never reported. */
+  comparison_available: boolean;
+  /** available -- both weeks complete, delta is real (a genuine 0 included). week_in_progress -- week_start is the current week; delta is null. */
+  comparison_status: ManagementComparisonsWeekOverWeekComparisonStatus;
+  /** current_week minus previous_week, same shape (values may be negative). null unless comparison_available -- a partial week is never compared with a full one. */
+  delta: ManagementPeriodMoneySnapshot | null;
   open_pipeline: ManagementOpenPipelineAvailability;
 };
 

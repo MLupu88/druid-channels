@@ -113,6 +113,35 @@ test("GET /reporting/management/summary: comparisons.week_over_week.open_pipelin
   assert.ok(body.comparisons.week_over_week.open_pipeline.current_open_pipeline_usd);
 });
 
+test("GET /reporting/management/summary: the current (in-progress) week reports week-to-date figures but no week-over-week delta", async () => {
+  const { status, body } = await get("/reporting/management/summary?currency=USD", tokens.irina);
+  assert.equal(status, 200);
+  const wow = body.comparisons.week_over_week;
+  assert.equal(wow.comparison_available, false);
+  assert.equal(wow.comparison_status, "week_in_progress");
+  assert.equal(wow.delta, null);
+  assert.ok(wow.current_week);
+  assert.equal(body.management_insights.some((i: { id: string }) => i.id === "commercial-wow"), false);
+});
+
+test("GET /reporting/management/summary: a completed historical week carries a real numeric delta", async () => {
+  const { status, body } = await get("/reporting/management/summary?currency=USD&week_start=2025-01-06", tokens.irina);
+  assert.equal(status, 200);
+  const wow = body.comparisons.week_over_week;
+  assert.equal(wow.comparison_available, true);
+  assert.equal(wow.comparison_status, "available");
+  assert.equal(typeof wow.delta.won_revenue_usd.total, "number");
+  assert.equal(wow.delta.won_revenue_usd.total, wow.current_week.won_revenue_usd.total - wow.previous_week.won_revenue_usd.total);
+});
+
+test("GET /reporting/management/summary and /exports/management-pptx: a future week_start is rejected with 400, never zero-filled", async () => {
+  const nextMonday = new Date();
+  nextMonday.setUTCDate(nextMonday.getUTCDate() + ((8 - nextMonday.getUTCDay()) % 7 || 7));
+  const futureWeek = nextMonday.toISOString().slice(0, 10);
+  assert.equal((await get(`/reporting/management/summary?currency=USD&week_start=${futureWeek}`, tokens.irina)).status, 400);
+  assert.equal((await get(`/exports/management-pptx?currency=USD&week_start=${futureWeek}`, tokens.irina)).status, 400);
+});
+
 test("GET /reporting/management/summary: quarter_to_date.pam_comparison never asserts a fabricated Global-equals-sum-of-PAMs equality -- reconciles/reconciliation_note pass through verbatim", async () => {
   const { status, body } = await get("/reporting/management/summary?currency=USD", tokens.irina);
   assert.equal(status, 200);

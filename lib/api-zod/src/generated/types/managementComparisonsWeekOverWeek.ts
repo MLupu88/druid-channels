@@ -5,13 +5,19 @@
  * DRUID Partner Radar Lite API
  * OpenAPI spec version: 0.1.0
  */
+import type { ManagementComparisonsWeekOverWeekComparisonStatus } from './managementComparisonsWeekOverWeekComparisonStatus';
 import type { ManagementOpenPipelineAvailability } from './managementOpenPipelineAvailability';
 import type { ManagementPeriodMoneySnapshot } from './managementPeriodMoneySnapshot';
 
 export type ManagementComparisonsWeekOverWeek = {
+  /** The selected week's figures. For the current week (comparison_status week_in_progress) this is a factual week-to-date value, not a full week. */
   current_week: ManagementPeriodMoneySnapshot;
   previous_week: ManagementPeriodMoneySnapshot;
-  /** current_week minus previous_week, same shape (values may be negative). */
-  delta: ManagementPeriodMoneySnapshot;
+  /** true only when week_start is a completed calendar week, so both weeks are full weeks. A future week_start is rejected with 400, never reported. */
+  comparison_available: boolean;
+  /** available -- both weeks complete, delta is real (a genuine 0 included). week_in_progress -- week_start is the current week; delta is null. */
+  comparison_status: ManagementComparisonsWeekOverWeekComparisonStatus;
+  /** current_week minus previous_week, same shape (values may be negative). null unless comparison_available -- a partial week is never compared with a full one. */
+  delta: ManagementPeriodMoneySnapshot | null;
   open_pipeline: ManagementOpenPipelineAvailability;
 };

@@ -229,7 +229,9 @@ router.get("/prospects/stats/summary", requireAuth, async (req, res): Promise<vo
     by_territory: Object.values(byTerritory),
     by_status: byStatus,
     by_partner_type: byPartnerType,
-    week_over_week: 1.15,
+    // No prospect history is compared here, so there is no week-over-week
+    // figure to report -- null, never a fabricated ratio.
+    week_over_week: null,
   }));
 });
 
