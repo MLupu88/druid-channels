@@ -12,6 +12,7 @@ import { Building2 } from 'lucide-react';
 import { PeriodSelector } from '@/components/period-selector';
 import { getDefaultPeriodKey } from '@/lib/period';
 import { PamCopilot } from '@/components/pam-copilot';
+import { PamCommercialWorkspace } from '@/components/pam-commercial-workspace';
 
 /**
  * Shared workspace view scoped to a single PAM's territory. Used both as the
@@ -62,12 +63,17 @@ export function PamWorkspace({ territoryId, pamName, pamUserId }: { territoryId?
       </div>
 
       <Tabs defaultValue="prospects">
-        <TabsList>
-          <TabsTrigger value="prospects" data-testid="tab-workspace-prospects">New partners</TabsTrigger>
-          <TabsTrigger value="partners" data-testid="tab-workspace-partners">Partners</TabsTrigger>
-          <TabsTrigger value="targets" data-testid="tab-workspace-targets">{pamName ? 'Targets' : 'My targets'}</TabsTrigger>
-          <TabsTrigger value="activities" data-testid="tab-workspace-activities">Marketing activities</TabsTrigger>
-        </TabsList>
+        {/* overflow-x-auto: same narrow-viewport guard as WorkspaceSubNav --
+            5 tabs can exceed a mobile content width. */}
+        <div className="overflow-x-auto">
+          <TabsList>
+            <TabsTrigger value="prospects" data-testid="tab-workspace-prospects">New partners</TabsTrigger>
+            <TabsTrigger value="partners" data-testid="tab-workspace-partners">Partners</TabsTrigger>
+            <TabsTrigger value="commercial" data-testid="tab-workspace-commercial">Commercial</TabsTrigger>
+            <TabsTrigger value="targets" data-testid="tab-workspace-targets">{pamName ? 'Targets' : 'My targets'}</TabsTrigger>
+            <TabsTrigger value="activities" data-testid="tab-workspace-activities">Marketing activities</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="prospects">
           <Card className="shadow-none border-border/60">
@@ -116,6 +122,12 @@ export function PamWorkspace({ territoryId, pamName, pamUserId }: { territoryId?
               <Link href="/portfolio"><Button size="sm">Open Portfolio</Button></Link>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* PAM Commercial Workspace v1: pamUserId is the same Head/Admin
+            drill-down scope used above; a PAM's own view omits it. */}
+        <TabsContent value="commercial">
+          <PamCommercialWorkspace pamUserId={pamUserId} pamName={pamName} />
         </TabsContent>
 
         <TabsContent value="targets" className="space-y-4">
