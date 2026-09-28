@@ -66,6 +66,8 @@ tags:
     description: Phase 11.5C.1 -- admin-curated facts about DRUID itself (product, positioning, ideal partner profile), kept separate from partner evidence and AI hypotheses. Not yet wired into Discovery/Channel Radar qualification (11.5C.3).
   - name: druid-context-sources
     description: Phase 11.5C.2 -- extracted druidai.com source material (via Tavily Crawl), reviewed by an admin and optionally turned into one or more UNVERIFIED druid_facts. Source review status is completely independent of druid_facts.verification_status -- reviewing a source, or creating a fact from it, never verifies anything.
+  - name: pam-commercial
+    description: PAM Commercial Workspace v1 -- human-session, read-only, factual commercial context for a PAM's canonical Portfolio relationships (partner_relationships.assigned_user_id). The workspace listing is DB-only; HubSpot deals are read lazily per relationship via GET-only calls. Live HubSpot company-to-deal associations define deal membership; DRUID partner_opportunities only enrich matching deal IDs. No AI, scoring, risk, momentum or recommendations. Not a Channel Chief endpoint.
 
 paths:
   /auth/login:
@@ -1511,6 +1513,60 @@ paths:
                   $ref: "#/components/schemas/PamDirectoryEntry"
         "401":
           description: Missing or invalid Authorization Bearer service token, or the Channel Chief API is not configured
+
+  /pam-commercial:
+    get:
+      operationId: getPamCommercialWorkspace
+      tags: [pam-commercial]
+      summary: DB-only commercial workspace for one PAM -- the canonical Portfolio relationships assigned to that PAM (partner_relationships.assigned_user_id, never territory), split into confirmed partners (active/dormant) and relationships awaiting review (needs_review, not confirmed partners). closed relationships are excluded. HubSpot is never called; each relationship states only whether its company has a hubspot_company_id. A PAM sees only their own workspace (pam_user_id omitted or equal to their own ID). head_of_channels/admin have no workspace of their own and must select a PAM via pam_user_id.
+      parameters:
+        - name: pam_user_id
+          in: query
+          description: Required for head_of_channels/admin (400 when omitted). A PAM may omit it or pass their own ID; any other ID receives 403.
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: The PAM's commercial workspace. No deal counts are included -- deal activity is read lazily per relationship.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PamCommercialWorkspace"
+        "400":
+          description: A head_of_channels/admin caller omitted pam_user_id
+        "401":
+          description: Missing or invalid session
+        "403":
+          description: A PAM requested another user's workspace
+        "404":
+          description: The selected user does not exist or is not a PAM
+
+  /pam-commercial/relationships/{id}/deals:
+    get:
+      operationId: getPamCommercialRelationshipDeals
+      tags: [pam-commercial]
+      summary: Lazy, read-only HubSpot deal facts for one canonical relationship. The relationship is loaded, the caller's access is checked against partner_relationships.assigned_user_id (global roles see all), and closed relationships are rejected -- all before any HubSpot call. The live HubSpot company-to-deal association defines the deal set; DRUID partner_opportunities only enrich matching deal IDs. unknown is never reported as zero -- `deals` is null whenever the deal set could not be read, and [] only after a successful association lookup returned none.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Relationship deal facts with explicit HubSpot availability.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PamCommercialRelationshipDeals"
+        "401":
+          description: Missing or invalid session
+        "403":
+          description: The relationship is not assigned to the caller
+        "404":
+          description: Relationship not found
+        "409":
+          description: The relationship is closed and not part of the current commercial workspace
 
   /connections:
     get:
@@ -7405,3 +7461,309 @@ components:
             $ref: "#/components/schemas/ManagementInsight"
         data_quality:
           $ref: "#/components/schemas/ManagementDataQuality"
+
+    PamCommercialPam:
+      type: object
+      required: [user_id, name, email, role, active]
+      properties:
+        user_id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        active:
+          type: boolean
+
+    PamCommercialRelationship:
+      type: object
+      required: [relationship_id, company_id, company_name, company_domain, territory_id, territory_name, status, confirmed_partner, assigned_user_id, hubspot_company_id, hubspot_link_status]
+      properties:
+        relationship_id:
+          type: string
+        company_id:
+          type: string
+        company_name:
+          type: string
+        company_domain:
+          type: ["string", "null"]
+        territory_id:
+          type: string
+        territory_name:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, dormant, closed, needs_review]
+          description: Canonical relationship status. active/dormant are confirmed partners; needs_review is CRM/opportunity evidence awaiting confirmation. closed never appears in the workspace listing.
+        confirmed_partner:
+          type: boolean
+          description: True only for active/dormant.
+        assigned_user_id:
+          type: ["string", "null"]
+          description: Canonical PAM ownership (partner_relationships.assigned_user_id). Unrelated to any HubSpot CRM owner.
+        hubspot_company_id:
+          type: ["string", "null"]
+        hubspot_link_status:
+          type: string
+          enum: [linked, not_linked]
+          description: not_linked means HubSpot is not linked and commercial activity is unknown -- never zero deals.
+
+    PamCommercialWorkspace:
+      type: object
+      required: [pam, ownership_basis, hubspot_read, confirmed_relationships, awaiting_review]
+      properties:
+        pam:
+          $ref: "#/components/schemas/PamCommercialPam"
+        ownership_basis:
+          type: string
+          enum: [partner_relationships.assigned_user_id]
+        hubspot_read:
+          type: string
+          enum: [not_performed]
+          description: This listing is DB-only; HubSpot deals are read per relationship via /pam-commercial/relationships/{id}/deals.
+        confirmed_relationships:
+          type: array
+          description: Portfolio -- active and dormant relationships assigned to this PAM, ordered by company name.
+          items:
+            $ref: "#/components/schemas/PamCommercialRelationship"
+        awaiting_review:
+          type: array
+          description: Awaiting review -- needs_review relationships assigned to this PAM. Not confirmed partners.
+          items:
+            $ref: "#/components/schemas/PamCommercialRelationship"
+
+    PamCommercialHubSpotStatus:
+      type: object
+      required: [availability, message]
+      properties:
+        availability:
+          type: string
+          enum: [not_linked, available, not_configured, credential_error, authentication_failed, permission_denied, rate_limited, timeout, provider_error, hubspot_company_not_found, invalid_hubspot_company_id]
+          description: Only "available" means the deal set is known. Every other value means commercial activity is unknown (never zero).
+        message:
+          type: string
+          description: Fixed, credential-free explanation. Never raw provider text.
+
+    PamCommercialAssociation:
+      type: object
+      required: [returned_count, truncated]
+      properties:
+        returned_count:
+          type: integer
+          description: Number of deals returned. Not HubSpot's total -- when truncated is true the full association count is unknown.
+        truncated:
+          type: boolean
+
+    PamCommercialCrmOwner:
+      type: object
+      description: HubSpot CRM owner of the deal. Not PAM ownership.
+      required: [owner_id, resolution, first_name, last_name, email, archived]
+      properties:
+        owner_id:
+          type: string
+        resolution:
+          type: string
+          enum: [resolved, not_found, unavailable]
+        first_name:
+          type: ["string", "null"]
+        last_name:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        archived:
+          type: ["boolean", "null"]
+
+    PamCommercialIdLabel:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: ["string", "null"]
+          description: Raw HubSpot ID, preserved even when the label is unavailable.
+        label:
+          type: ["string", "null"]
+          description: Resolved within the deal's own pipeline; null when metadata is unavailable or the ID is unknown.
+
+    PamCommercialAssociatedCompany:
+      type: object
+      required: [hubspot_company_id, association_types]
+      properties:
+        hubspot_company_id:
+          type: string
+        association_types:
+          type: array
+          items:
+            type: string
+
+    PamCommercialDealHistoryEvent:
+      type: object
+      description: A factual property-value change from HubSpot property history. No direction or interpretation is implied.
+      required: [property, kind, previous_value, new_value, previous_label, new_label, changed_at, source_type]
+      properties:
+        property:
+          type: string
+          enum: [dealstage, amount, deal_currency_code, closedate, pipeline, hubspot_owner_id]
+        kind:
+          type: string
+          enum: [initial, changed, cleared]
+        previous_value:
+          type: ["string", "null"]
+        new_value:
+          type: ["string", "null"]
+        previous_label:
+          type: ["string", "null"]
+        new_label:
+          type: ["string", "null"]
+        changed_at:
+          type: string
+        source_type:
+          type: ["string", "null"]
+
+    PamCommercialDealFacts:
+      type: object
+      required: [deal_name, amount, currency, pipeline, stage, deal_state, close_date, create_date, last_modified_at, crm_owner, associated_companies, associated_companies_truncated, property_history]
+      properties:
+        deal_name:
+          type: ["string", "null"]
+        amount:
+          type: ["string", "null"]
+          description: Raw HubSpot amount string.
+        currency:
+          type: ["string", "null"]
+        pipeline:
+          $ref: "#/components/schemas/PamCommercialIdLabel"
+        stage:
+          $ref: "#/components/schemas/PamCommercialIdLabel"
+        deal_state:
+          type: string
+          enum: [open, closed_won, closed_lost, closed_outcome_unknown, unknown]
+          description: Derived only from HubSpot's explicit hs_is_closed / hs_is_closed_won / hs_is_closed_lost flags.
+        close_date:
+          type: ["string", "null"]
+        create_date:
+          type: ["string", "null"]
+        last_modified_at:
+          type: ["string", "null"]
+        crm_owner:
+          oneOf:
+            - $ref: "#/components/schemas/PamCommercialCrmOwner"
+            - type: "null"
+        associated_companies:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamCommercialAssociatedCompany"
+        associated_companies_truncated:
+          type: boolean
+        property_history:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamCommercialDealHistoryEvent"
+
+    PamCommercialDruidOpportunity:
+      type: object
+      required: [opportunity_id, name, source_system, external_id, company_id, company_name, same_company_as_relationship, territory_id, assigned_user_id, assigned_user_name, attribution_type, status, deal_value, currency, opportunity_date, expected_close_date, closed_at, source_updated_at, last_synced_at]
+      properties:
+        opportunity_id:
+          type: string
+        name:
+          type: string
+        source_system:
+          type: string
+        external_id:
+          type: ["string", "null"]
+        company_id:
+          type: string
+        company_name:
+          type: ["string", "null"]
+        same_company_as_relationship:
+          type: boolean
+        territory_id:
+          type: string
+        assigned_user_id:
+          type: string
+        assigned_user_name:
+          type: ["string", "null"]
+        attribution_type:
+          type: string
+        status:
+          type: string
+        deal_value:
+          type: number
+        currency:
+          type: string
+        opportunity_date:
+          type: string
+        expected_close_date:
+          type: ["string", "null"]
+        closed_at:
+          type: ["string", "null"]
+        source_updated_at:
+          type: ["string", "null"]
+        last_synced_at:
+          type: ["string", "null"]
+
+    PamCommercialDruidEnrichment:
+      type: object
+      description: DRUID partner_opportunities with source_system=hubspot whose external_id equals this HubSpot deal ID -- the only source that structurally establishes HubSpot deal identity (source_system=import rows are never matched). Limited to records the caller may read under the existing opportunity scope; others are omitted without any indication. Enrichment only -- never affects deal membership. no_match means no matching DRUID record visible to the caller, not that the deal does not exist.
+      required: [match_status, records]
+      properties:
+        match_status:
+          type: string
+          enum: [matched, no_match]
+        records:
+          type: array
+          description: Every visible match; none is silently chosen.
+          items:
+            $ref: "#/components/schemas/PamCommercialDruidOpportunity"
+
+    PamCommercialDeal:
+      type: object
+      required: [deal_id, association_types, load_status, error, facts, druid_opportunities]
+      properties:
+        deal_id:
+          type: string
+        association_types:
+          type: array
+          items:
+            type: string
+        load_status:
+          type: string
+          enum: [loaded, unavailable]
+        error:
+          description: Bounded reason when load_status is unavailable. The deal is still associated with the company.
+          oneOf:
+            - type: string
+              enum: [authentication_failed, permission_denied, rate_limited, timeout, not_found, provider_error, invalid_deal_id]
+            - type: "null"
+        facts:
+          oneOf:
+            - $ref: "#/components/schemas/PamCommercialDealFacts"
+            - type: "null"
+        druid_opportunities:
+          $ref: "#/components/schemas/PamCommercialDruidEnrichment"
+
+    PamCommercialRelationshipDeals:
+      type: object
+      required: [relationship, hubspot, association, pipeline_metadata, deals]
+      properties:
+        relationship:
+          $ref: "#/components/schemas/PamCommercialRelationship"
+        hubspot:
+          $ref: "#/components/schemas/PamCommercialHubSpotStatus"
+        association:
+          oneOf:
+            - $ref: "#/components/schemas/PamCommercialAssociation"
+            - type: "null"
+        pipeline_metadata:
+          type: string
+          enum: [available, unavailable, not_requested]
+          description: unavailable means labels are null; raw pipeline/stage IDs are still returned.
+        deals:
+          description: null when the deal set is unknown (not linked or HubSpot unavailable). [] only after a successful association lookup returned no deals.
+          oneOf:
+            - type: array
+              items:
+                $ref: "#/components/schemas/PamCommercialDeal"
+            - type: "null"

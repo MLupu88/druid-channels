@@ -67,6 +67,7 @@ import type {
   GetKpiDetailsParams,
   GetManagementReportSummaryParams,
   GetMyWeeklyReportParams,
+  GetPamCommercialWorkspaceParams,
   GetPamOverviewParams,
   GetPamWeeklyReportParams,
   GetPortfolioSummaryParams,
@@ -103,6 +104,8 @@ import type {
   Opportunity,
   OpportunityEditInput,
   OpportunityInput,
+  PamCommercialRelationshipDeals,
+  PamCommercialWorkspace,
   PamCopilotChatBody,
   PamCopilotChatResponse,
   PamDirectoryEntry,
@@ -4530,6 +4533,167 @@ export function useGetPamDirectory<TData = Awaited<ReturnType<typeof getPamDirec
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPamDirectoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPamCommercialWorkspaceUrl = (params?: GetPamCommercialWorkspaceParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/pam-commercial?${stringifiedParams}` : `/api/pam-commercial`
+}
+
+/**
+ * @summary DB-only commercial workspace for one PAM -- the canonical Portfolio relationships assigned to that PAM (partner_relationships.assigned_user_id, never territory), split into confirmed partners (active/dormant) and relationships awaiting review (needs_review, not confirmed partners). closed relationships are excluded. HubSpot is never called; each relationship states only whether its company has a hubspot_company_id. A PAM sees only their own workspace (pam_user_id omitted or equal to their own ID). head_of_channels/admin have no workspace of their own and must select a PAM via pam_user_id.
+ */
+export const getPamCommercialWorkspace = async (params?: GetPamCommercialWorkspaceParams, options?: Parameters<typeof customFetch>[1]): Promise<PamCommercialWorkspace> => {
+
+  return customFetch<PamCommercialWorkspace>(getGetPamCommercialWorkspaceUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPamCommercialWorkspaceQueryKey = (params?: GetPamCommercialWorkspaceParams,) => {
+    return [
+    `/api/pam-commercial`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPamCommercialWorkspaceQueryOptions = <TData = Awaited<ReturnType<typeof getPamCommercialWorkspace>>, TError = ErrorType<void>>(params?: GetPamCommercialWorkspaceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamCommercialWorkspace>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPamCommercialWorkspaceQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPamCommercialWorkspace>>> = ({ signal }) => getPamCommercialWorkspace(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPamCommercialWorkspace>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPamCommercialWorkspaceQueryResult = NonNullable<Awaited<ReturnType<typeof getPamCommercialWorkspace>>>
+export type GetPamCommercialWorkspaceQueryError = ErrorType<void>
+
+
+/**
+ * @summary DB-only commercial workspace for one PAM -- the canonical Portfolio relationships assigned to that PAM (partner_relationships.assigned_user_id, never territory), split into confirmed partners (active/dormant) and relationships awaiting review (needs_review, not confirmed partners). closed relationships are excluded. HubSpot is never called; each relationship states only whether its company has a hubspot_company_id. A PAM sees only their own workspace (pam_user_id omitted or equal to their own ID). head_of_channels/admin have no workspace of their own and must select a PAM via pam_user_id.
+ */
+
+export function useGetPamCommercialWorkspace<TData = Awaited<ReturnType<typeof getPamCommercialWorkspace>>, TError = ErrorType<void>>(
+ params?: GetPamCommercialWorkspaceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamCommercialWorkspace>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPamCommercialWorkspaceQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPamCommercialRelationshipDealsUrl = (id: string,) => {
+
+
+
+
+  return `/api/pam-commercial/relationships/${id}/deals`
+}
+
+/**
+ * @summary Lazy, read-only HubSpot deal facts for one canonical relationship. The relationship is loaded, the caller's access is checked against partner_relationships.assigned_user_id (global roles see all), and closed relationships are rejected -- all before any HubSpot call. The live HubSpot company-to-deal association defines the deal set; DRUID partner_opportunities only enrich matching deal IDs. unknown is never reported as zero -- `deals` is null whenever the deal set could not be read, and [] only after a successful association lookup returned none.
+ */
+export const getPamCommercialRelationshipDeals = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PamCommercialRelationshipDeals> => {
+
+  return customFetch<PamCommercialRelationshipDeals>(getGetPamCommercialRelationshipDealsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPamCommercialRelationshipDealsQueryKey = (id: string,) => {
+    return [
+    `/api/pam-commercial/relationships/${id}/deals`
+    ] as const;
+    }
+
+
+export const getGetPamCommercialRelationshipDealsQueryOptions = <TData = Awaited<ReturnType<typeof getPamCommercialRelationshipDeals>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamCommercialRelationshipDeals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPamCommercialRelationshipDealsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPamCommercialRelationshipDeals>>> = ({ signal }) => getPamCommercialRelationshipDeals(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPamCommercialRelationshipDeals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPamCommercialRelationshipDealsQueryResult = NonNullable<Awaited<ReturnType<typeof getPamCommercialRelationshipDeals>>>
+export type GetPamCommercialRelationshipDealsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Lazy, read-only HubSpot deal facts for one canonical relationship. The relationship is loaded, the caller's access is checked against partner_relationships.assigned_user_id (global roles see all), and closed relationships are rejected -- all before any HubSpot call. The live HubSpot company-to-deal association defines the deal set; DRUID partner_opportunities only enrich matching deal IDs. unknown is never reported as zero -- `deals` is null whenever the deal set could not be read, and [] only after a successful association lookup returned none.
+ */
+
+export function useGetPamCommercialRelationshipDeals<TData = Awaited<ReturnType<typeof getPamCommercialRelationshipDeals>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamCommercialRelationshipDeals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPamCommercialRelationshipDealsQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

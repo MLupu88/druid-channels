@@ -3691,6 +3691,348 @@ export interface ManagementReportSummary {
   data_quality: ManagementDataQuality;
 }
 
+export interface PamCommercialPam {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+  active: boolean;
+}
+
+/**
+ * Canonical relationship status. active/dormant are confirmed partners; needs_review is CRM/opportunity evidence awaiting confirmation. closed never appears in the workspace listing.
+ */
+export type PamCommercialRelationshipStatus = typeof PamCommercialRelationshipStatus[keyof typeof PamCommercialRelationshipStatus];
+
+
+export const PamCommercialRelationshipStatus = {
+  active: 'active',
+  dormant: 'dormant',
+  closed: 'closed',
+  needs_review: 'needs_review',
+} as const;
+
+/**
+ * not_linked means HubSpot is not linked and commercial activity is unknown -- never zero deals.
+ */
+export type PamCommercialRelationshipHubspotLinkStatus = typeof PamCommercialRelationshipHubspotLinkStatus[keyof typeof PamCommercialRelationshipHubspotLinkStatus];
+
+
+export const PamCommercialRelationshipHubspotLinkStatus = {
+  linked: 'linked',
+  not_linked: 'not_linked',
+} as const;
+
+export interface PamCommercialRelationship {
+  relationship_id: string;
+  company_id: string;
+  company_name: string;
+  /** @nullable */
+  company_domain: string | null;
+  territory_id: string;
+  /** @nullable */
+  territory_name: string | null;
+  /** Canonical relationship status. active/dormant are confirmed partners; needs_review is CRM/opportunity evidence awaiting confirmation. closed never appears in the workspace listing. */
+  status: PamCommercialRelationshipStatus;
+  /** True only for active/dormant. */
+  confirmed_partner: boolean;
+  /**
+     * Canonical PAM ownership (partner_relationships.assigned_user_id). Unrelated to any HubSpot CRM owner.
+     * @nullable
+     */
+  assigned_user_id: string | null;
+  /** @nullable */
+  hubspot_company_id: string | null;
+  /** not_linked means HubSpot is not linked and commercial activity is unknown -- never zero deals. */
+  hubspot_link_status: PamCommercialRelationshipHubspotLinkStatus;
+}
+
+export type PamCommercialWorkspaceOwnershipBasis = typeof PamCommercialWorkspaceOwnershipBasis[keyof typeof PamCommercialWorkspaceOwnershipBasis];
+
+
+export const PamCommercialWorkspaceOwnershipBasis = {
+  partner_relationshipsassigned_user_id: 'partner_relationships.assigned_user_id',
+} as const;
+
+/**
+ * This listing is DB-only; HubSpot deals are read per relationship via /pam-commercial/relationships/{id}/deals.
+ */
+export type PamCommercialWorkspaceHubspotRead = typeof PamCommercialWorkspaceHubspotRead[keyof typeof PamCommercialWorkspaceHubspotRead];
+
+
+export const PamCommercialWorkspaceHubspotRead = {
+  not_performed: 'not_performed',
+} as const;
+
+export interface PamCommercialWorkspace {
+  pam: PamCommercialPam;
+  ownership_basis: PamCommercialWorkspaceOwnershipBasis;
+  /** This listing is DB-only; HubSpot deals are read per relationship via /pam-commercial/relationships/{id}/deals. */
+  hubspot_read: PamCommercialWorkspaceHubspotRead;
+  /** Portfolio -- active and dormant relationships assigned to this PAM, ordered by company name. */
+  confirmed_relationships: PamCommercialRelationship[];
+  /** Awaiting review -- needs_review relationships assigned to this PAM. Not confirmed partners. */
+  awaiting_review: PamCommercialRelationship[];
+}
+
+/**
+ * Only "available" means the deal set is known. Every other value means commercial activity is unknown (never zero).
+ */
+export type PamCommercialHubSpotStatusAvailability = typeof PamCommercialHubSpotStatusAvailability[keyof typeof PamCommercialHubSpotStatusAvailability];
+
+
+export const PamCommercialHubSpotStatusAvailability = {
+  not_linked: 'not_linked',
+  available: 'available',
+  not_configured: 'not_configured',
+  credential_error: 'credential_error',
+  authentication_failed: 'authentication_failed',
+  permission_denied: 'permission_denied',
+  rate_limited: 'rate_limited',
+  timeout: 'timeout',
+  provider_error: 'provider_error',
+  hubspot_company_not_found: 'hubspot_company_not_found',
+  invalid_hubspot_company_id: 'invalid_hubspot_company_id',
+} as const;
+
+export interface PamCommercialHubSpotStatus {
+  /** Only "available" means the deal set is known. Every other value means commercial activity is unknown (never zero). */
+  availability: PamCommercialHubSpotStatusAvailability;
+  /** Fixed, credential-free explanation. Never raw provider text. */
+  message: string;
+}
+
+export interface PamCommercialAssociation {
+  /** Number of deals returned. Not HubSpot's total -- when truncated is true the full association count is unknown. */
+  returned_count: number;
+  truncated: boolean;
+}
+
+export type PamCommercialCrmOwnerResolution = typeof PamCommercialCrmOwnerResolution[keyof typeof PamCommercialCrmOwnerResolution];
+
+
+export const PamCommercialCrmOwnerResolution = {
+  resolved: 'resolved',
+  not_found: 'not_found',
+  unavailable: 'unavailable',
+} as const;
+
+/**
+ * HubSpot CRM owner of the deal. Not PAM ownership.
+ */
+export interface PamCommercialCrmOwner {
+  owner_id: string;
+  resolution: PamCommercialCrmOwnerResolution;
+  /** @nullable */
+  first_name: string | null;
+  /** @nullable */
+  last_name: string | null;
+  /** @nullable */
+  email: string | null;
+  /** @nullable */
+  archived: boolean | null;
+}
+
+export interface PamCommercialIdLabel {
+  /**
+     * Raw HubSpot ID, preserved even when the label is unavailable.
+     * @nullable
+     */
+  id: string | null;
+  /**
+     * Resolved within the deal's own pipeline; null when metadata is unavailable or the ID is unknown.
+     * @nullable
+     */
+  label: string | null;
+}
+
+export interface PamCommercialAssociatedCompany {
+  hubspot_company_id: string;
+  association_types: string[];
+}
+
+export type PamCommercialDealHistoryEventProperty = typeof PamCommercialDealHistoryEventProperty[keyof typeof PamCommercialDealHistoryEventProperty];
+
+
+export const PamCommercialDealHistoryEventProperty = {
+  dealstage: 'dealstage',
+  amount: 'amount',
+  deal_currency_code: 'deal_currency_code',
+  closedate: 'closedate',
+  pipeline: 'pipeline',
+  hubspot_owner_id: 'hubspot_owner_id',
+} as const;
+
+export type PamCommercialDealHistoryEventKind = typeof PamCommercialDealHistoryEventKind[keyof typeof PamCommercialDealHistoryEventKind];
+
+
+export const PamCommercialDealHistoryEventKind = {
+  initial: 'initial',
+  changed: 'changed',
+  cleared: 'cleared',
+} as const;
+
+/**
+ * A factual property-value change from HubSpot property history. No direction or interpretation is implied.
+ */
+export interface PamCommercialDealHistoryEvent {
+  property: PamCommercialDealHistoryEventProperty;
+  kind: PamCommercialDealHistoryEventKind;
+  /** @nullable */
+  previous_value: string | null;
+  /** @nullable */
+  new_value: string | null;
+  /** @nullable */
+  previous_label: string | null;
+  /** @nullable */
+  new_label: string | null;
+  changed_at: string;
+  /** @nullable */
+  source_type: string | null;
+}
+
+/**
+ * Derived only from HubSpot's explicit hs_is_closed / hs_is_closed_won / hs_is_closed_lost flags.
+ */
+export type PamCommercialDealFactsDealState = typeof PamCommercialDealFactsDealState[keyof typeof PamCommercialDealFactsDealState];
+
+
+export const PamCommercialDealFactsDealState = {
+  open: 'open',
+  closed_won: 'closed_won',
+  closed_lost: 'closed_lost',
+  closed_outcome_unknown: 'closed_outcome_unknown',
+  unknown: 'unknown',
+} as const;
+
+export interface PamCommercialDealFacts {
+  /** @nullable */
+  deal_name: string | null;
+  /**
+     * Raw HubSpot amount string.
+     * @nullable
+     */
+  amount: string | null;
+  /** @nullable */
+  currency: string | null;
+  pipeline: PamCommercialIdLabel;
+  stage: PamCommercialIdLabel;
+  /** Derived only from HubSpot's explicit hs_is_closed / hs_is_closed_won / hs_is_closed_lost flags. */
+  deal_state: PamCommercialDealFactsDealState;
+  /** @nullable */
+  close_date: string | null;
+  /** @nullable */
+  create_date: string | null;
+  /** @nullable */
+  last_modified_at: string | null;
+  crm_owner: PamCommercialCrmOwner | null;
+  associated_companies: PamCommercialAssociatedCompany[];
+  associated_companies_truncated: boolean;
+  property_history: PamCommercialDealHistoryEvent[];
+}
+
+export interface PamCommercialDruidOpportunity {
+  opportunity_id: string;
+  name: string;
+  source_system: string;
+  /** @nullable */
+  external_id: string | null;
+  company_id: string;
+  /** @nullable */
+  company_name: string | null;
+  same_company_as_relationship: boolean;
+  territory_id: string;
+  assigned_user_id: string;
+  /** @nullable */
+  assigned_user_name: string | null;
+  attribution_type: string;
+  status: string;
+  deal_value: number;
+  currency: string;
+  opportunity_date: string;
+  /** @nullable */
+  expected_close_date: string | null;
+  /** @nullable */
+  closed_at: string | null;
+  /** @nullable */
+  source_updated_at: string | null;
+  /** @nullable */
+  last_synced_at: string | null;
+}
+
+export type PamCommercialDruidEnrichmentMatchStatus = typeof PamCommercialDruidEnrichmentMatchStatus[keyof typeof PamCommercialDruidEnrichmentMatchStatus];
+
+
+export const PamCommercialDruidEnrichmentMatchStatus = {
+  matched: 'matched',
+  no_match: 'no_match',
+} as const;
+
+/**
+ * DRUID partner_opportunities with source_system=hubspot whose external_id equals this HubSpot deal ID -- the only source that structurally establishes HubSpot deal identity (source_system=import rows are never matched). Limited to records the caller may read under the existing opportunity scope; others are omitted without any indication. Enrichment only -- never affects deal membership. no_match means no matching DRUID record visible to the caller, not that the deal does not exist.
+ */
+export interface PamCommercialDruidEnrichment {
+  match_status: PamCommercialDruidEnrichmentMatchStatus;
+  /** Every visible match; none is silently chosen. */
+  records: PamCommercialDruidOpportunity[];
+}
+
+export type PamCommercialDealLoadStatus = typeof PamCommercialDealLoadStatus[keyof typeof PamCommercialDealLoadStatus];
+
+
+export const PamCommercialDealLoadStatus = {
+  loaded: 'loaded',
+  unavailable: 'unavailable',
+} as const;
+
+/**
+ * Bounded reason when load_status is unavailable. The deal is still associated with the company.
+ */
+export type PamCommercialDealError = typeof PamCommercialDealError[keyof typeof PamCommercialDealError] | null;
+
+
+export const PamCommercialDealError = {
+  authentication_failed: 'authentication_failed',
+  permission_denied: 'permission_denied',
+  rate_limited: 'rate_limited',
+  timeout: 'timeout',
+  not_found: 'not_found',
+  provider_error: 'provider_error',
+  invalid_deal_id: 'invalid_deal_id',
+} as const;
+
+export interface PamCommercialDeal {
+  deal_id: string;
+  association_types: string[];
+  load_status: PamCommercialDealLoadStatus;
+  /** Bounded reason when load_status is unavailable. The deal is still associated with the company. */
+  error: PamCommercialDealError;
+  facts: PamCommercialDealFacts | null;
+  druid_opportunities: PamCommercialDruidEnrichment;
+}
+
+/**
+ * unavailable means labels are null; raw pipeline/stage IDs are still returned.
+ */
+export type PamCommercialRelationshipDealsPipelineMetadata = typeof PamCommercialRelationshipDealsPipelineMetadata[keyof typeof PamCommercialRelationshipDealsPipelineMetadata];
+
+
+export const PamCommercialRelationshipDealsPipelineMetadata = {
+  available: 'available',
+  unavailable: 'unavailable',
+  not_requested: 'not_requested',
+} as const;
+
+export interface PamCommercialRelationshipDeals {
+  relationship: PamCommercialRelationship;
+  hubspot: PamCommercialHubSpotStatus;
+  association: PamCommercialAssociation | null;
+  /** unavailable means labels are null; raw pipeline/stage IDs are still returned. */
+  pipeline_metadata: PamCommercialRelationshipDealsPipelineMetadata;
+  /** null when the deal set is unknown (not linked or HubSpot unavailable). [] only after a successful association lookup returned no deals. */
+  deals: PamCommercialDeal[] | null;
+}
+
 export type ListProspectsParams = {
 /**
  * @nullable
@@ -3972,6 +4314,14 @@ pam_name: string;
  * @nullable
  */
 period?: string | null;
+};
+
+export type GetPamCommercialWorkspaceParams = {
+/**
+ * Required for head_of_channels/admin (400 when omitted). A PAM may omit it or pass their own ID; any other ID receives 403.
+ * @nullable
+ */
+pam_user_id?: string | null;
 };
 
 export type ListManualMetricValuesParams = {

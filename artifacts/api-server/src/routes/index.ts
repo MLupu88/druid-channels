@@ -30,6 +30,7 @@ import managementReportingRouter from "./management_reporting";
 import discoveryExclusionsRouter from "./discovery_exclusions";
 import druidFactsRouter from "./druid_facts";
 import druidContextSourcesRouter from "./druid_context_sources";
+import pamCommercialRouter from "./pam_commercial";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use(managementReportingRouter);
 router.use(discoveryExclusionsRouter);
 router.use(druidFactsRouter);
 router.use(druidContextSourcesRouter);
+router.use(pamCommercialRouter);
 
 export default router;

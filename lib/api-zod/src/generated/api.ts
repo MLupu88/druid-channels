@@ -2395,6 +2395,155 @@ export const GetPamDirectoryResponse = zod.array(GetPamDirectoryResponseItem)
 
 
 /**
+ * @summary DB-only commercial workspace for one PAM -- the canonical Portfolio relationships assigned to that PAM (partner_relationships.assigned_user_id, never territory), split into confirmed partners (active/dormant) and relationships awaiting review (needs_review, not confirmed partners). closed relationships are excluded. HubSpot is never called; each relationship states only whether its company has a hubspot_company_id. A PAM sees only their own workspace (pam_user_id omitted or equal to their own ID). head_of_channels/admin have no workspace of their own and must select a PAM via pam_user_id.
+ */
+export const GetPamCommercialWorkspaceQueryParams = zod.object({
+  "pam_user_id": zod.coerce.string().nullish().describe('Required for head_of_channels\/admin (400 when omitted). A PAM may omit it or pass their own ID; any other ID receives 403.')
+})
+
+export const GetPamCommercialWorkspaceResponse = zod.object({
+  "pam": zod.object({
+  "user_id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.string(),
+  "active": zod.boolean()
+}),
+  "ownership_basis": zod.enum(['partner_relationships.assigned_user_id']),
+  "hubspot_read": zod.enum(['not_performed']).describe('This listing is DB-only; HubSpot deals are read per relationship via \/pam-commercial\/relationships\/{id}\/deals.'),
+  "confirmed_relationships": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "company_domain": zod.string().nullable(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullable(),
+  "status": zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('Canonical relationship status. active\/dormant are confirmed partners; needs_review is CRM\/opportunity evidence awaiting confirmation. closed never appears in the workspace listing.'),
+  "confirmed_partner": zod.boolean().describe('True only for active\/dormant.'),
+  "assigned_user_id": zod.string().nullable().describe('Canonical PAM ownership (partner_relationships.assigned_user_id). Unrelated to any HubSpot CRM owner.'),
+  "hubspot_company_id": zod.string().nullable(),
+  "hubspot_link_status": zod.enum(['linked', 'not_linked']).describe('not_linked means HubSpot is not linked and commercial activity is unknown -- never zero deals.')
+})).describe('Portfolio -- active and dormant relationships assigned to this PAM, ordered by company name.'),
+  "awaiting_review": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "company_domain": zod.string().nullable(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullable(),
+  "status": zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('Canonical relationship status. active\/dormant are confirmed partners; needs_review is CRM\/opportunity evidence awaiting confirmation. closed never appears in the workspace listing.'),
+  "confirmed_partner": zod.boolean().describe('True only for active\/dormant.'),
+  "assigned_user_id": zod.string().nullable().describe('Canonical PAM ownership (partner_relationships.assigned_user_id). Unrelated to any HubSpot CRM owner.'),
+  "hubspot_company_id": zod.string().nullable(),
+  "hubspot_link_status": zod.enum(['linked', 'not_linked']).describe('not_linked means HubSpot is not linked and commercial activity is unknown -- never zero deals.')
+})).describe('Awaiting review -- needs_review relationships assigned to this PAM. Not confirmed partners.')
+})
+
+
+/**
+ * @summary Lazy, read-only HubSpot deal facts for one canonical relationship. The relationship is loaded, the caller's access is checked against partner_relationships.assigned_user_id (global roles see all), and closed relationships are rejected -- all before any HubSpot call. The live HubSpot company-to-deal association defines the deal set; DRUID partner_opportunities only enrich matching deal IDs. unknown is never reported as zero -- `deals` is null whenever the deal set could not be read, and [] only after a successful association lookup returned none.
+ */
+export const GetPamCommercialRelationshipDealsParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetPamCommercialRelationshipDealsResponse = zod.object({
+  "relationship": zod.object({
+  "relationship_id": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "company_domain": zod.string().nullable(),
+  "territory_id": zod.string(),
+  "territory_name": zod.string().nullable(),
+  "status": zod.enum(['active', 'dormant', 'closed', 'needs_review']).describe('Canonical relationship status. active\/dormant are confirmed partners; needs_review is CRM\/opportunity evidence awaiting confirmation. closed never appears in the workspace listing.'),
+  "confirmed_partner": zod.boolean().describe('True only for active\/dormant.'),
+  "assigned_user_id": zod.string().nullable().describe('Canonical PAM ownership (partner_relationships.assigned_user_id). Unrelated to any HubSpot CRM owner.'),
+  "hubspot_company_id": zod.string().nullable(),
+  "hubspot_link_status": zod.enum(['linked', 'not_linked']).describe('not_linked means HubSpot is not linked and commercial activity is unknown -- never zero deals.')
+}),
+  "hubspot": zod.object({
+  "availability": zod.enum(['not_linked', 'available', 'not_configured', 'credential_error', 'authentication_failed', 'permission_denied', 'rate_limited', 'timeout', 'provider_error', 'hubspot_company_not_found', 'invalid_hubspot_company_id']).describe('Only \"available\" means the deal set is known. Every other value means commercial activity is unknown (never zero).'),
+  "message": zod.string().describe('Fixed, credential-free explanation. Never raw provider text.')
+}),
+  "association": zod.union([zod.object({
+  "returned_count": zod.number().int().describe('Number of deals returned. Not HubSpot\'s total -- when truncated is true the full association count is unknown.'),
+  "truncated": zod.boolean()
+}),zod.null()]),
+  "pipeline_metadata": zod.enum(['available', 'unavailable', 'not_requested']).describe('unavailable means labels are null; raw pipeline\/stage IDs are still returned.'),
+  "deals": zod.union([zod.array(zod.object({
+  "deal_id": zod.string(),
+  "association_types": zod.array(zod.string()),
+  "load_status": zod.enum(['loaded', 'unavailable']),
+  "error": zod.union([zod.enum(['authentication_failed', 'permission_denied', 'rate_limited', 'timeout', 'not_found', 'provider_error', 'invalid_deal_id']),zod.null()]).describe('Bounded reason when load_status is unavailable. The deal is still associated with the company.'),
+  "facts": zod.union([zod.object({
+  "deal_name": zod.string().nullable(),
+  "amount": zod.string().nullable().describe('Raw HubSpot amount string.'),
+  "currency": zod.string().nullable(),
+  "pipeline": zod.object({
+  "id": zod.string().nullable().describe('Raw HubSpot ID, preserved even when the label is unavailable.'),
+  "label": zod.string().nullable().describe('Resolved within the deal\'s own pipeline; null when metadata is unavailable or the ID is unknown.')
+}),
+  "stage": zod.object({
+  "id": zod.string().nullable().describe('Raw HubSpot ID, preserved even when the label is unavailable.'),
+  "label": zod.string().nullable().describe('Resolved within the deal\'s own pipeline; null when metadata is unavailable or the ID is unknown.')
+}),
+  "deal_state": zod.enum(['open', 'closed_won', 'closed_lost', 'closed_outcome_unknown', 'unknown']).describe('Derived only from HubSpot\'s explicit hs_is_closed \/ hs_is_closed_won \/ hs_is_closed_lost flags.'),
+  "close_date": zod.string().nullable(),
+  "create_date": zod.string().nullable(),
+  "last_modified_at": zod.string().nullable(),
+  "crm_owner": zod.union([zod.object({
+  "owner_id": zod.string(),
+  "resolution": zod.enum(['resolved', 'not_found', 'unavailable']),
+  "first_name": zod.string().nullable(),
+  "last_name": zod.string().nullable(),
+  "email": zod.string().nullable(),
+  "archived": zod.boolean().nullable()
+}).describe('HubSpot CRM owner of the deal. Not PAM ownership.'),zod.null()]),
+  "associated_companies": zod.array(zod.object({
+  "hubspot_company_id": zod.string(),
+  "association_types": zod.array(zod.string())
+})),
+  "associated_companies_truncated": zod.boolean(),
+  "property_history": zod.array(zod.object({
+  "property": zod.enum(['dealstage', 'amount', 'deal_currency_code', 'closedate', 'pipeline', 'hubspot_owner_id']),
+  "kind": zod.enum(['initial', 'changed', 'cleared']),
+  "previous_value": zod.string().nullable(),
+  "new_value": zod.string().nullable(),
+  "previous_label": zod.string().nullable(),
+  "new_label": zod.string().nullable(),
+  "changed_at": zod.string(),
+  "source_type": zod.string().nullable()
+}).describe('A factual property-value change from HubSpot property history. No direction or interpretation is implied.'))
+}),zod.null()]),
+  "druid_opportunities": zod.object({
+  "match_status": zod.enum(['matched', 'no_match']),
+  "records": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "name": zod.string(),
+  "source_system": zod.string(),
+  "external_id": zod.string().nullable(),
+  "company_id": zod.string(),
+  "company_name": zod.string().nullable(),
+  "same_company_as_relationship": zod.boolean(),
+  "territory_id": zod.string(),
+  "assigned_user_id": zod.string(),
+  "assigned_user_name": zod.string().nullable(),
+  "attribution_type": zod.string(),
+  "status": zod.string(),
+  "deal_value": zod.number(),
+  "currency": zod.string(),
+  "opportunity_date": zod.string(),
+  "expected_close_date": zod.string().nullable(),
+  "closed_at": zod.string().nullable(),
+  "source_updated_at": zod.string().nullable(),
+  "last_synced_at": zod.string().nullable()
+})).describe('Every visible match; none is silently chosen.')
+}).describe('DRUID partner_opportunities with source_system=hubspot whose external_id equals this HubSpot deal ID -- the only source that structurally establishes HubSpot deal identity (source_system=import rows are never matched). Limited to records the caller may read under the existing opportunity scope; others are omitted without any indication. Enrichment only -- never affects deal membership. no_match means no matching DRUID record visible to the caller, not that the deal does not exist.')
+})),zod.null()]).describe('null when the deal set is unknown (not linked or HubSpot unavailable). [] only after a successful association lookup returned no deals.')
+})
+
+
+/**
  * @summary List configured integration connections (HubSpot, web search, web reader, AI) with live status
  */
 export const ListConnectionsResponseItem = zod.object({
