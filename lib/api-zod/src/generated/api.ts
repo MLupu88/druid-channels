@@ -2395,6 +2395,55 @@ export const GetPamDirectoryResponse = zod.array(GetPamDirectoryResponseItem)
 
 
 /**
+ * @summary Read-only, DB-only PAM commercial roll-up for Aniri -- the exact same result the Head/Admin Reporting page reads from GET /pam-commercial/rollup (one shared service). Current canonical Portfolio relationships only (active/dormant confirmed, needs_review awaiting review, closed excluded), grouped by partner_relationships.assigned_user_id -- never by territory ownership. Unassigned relationships stay unassigned. CRM linked counts only state that a company has a hubspot_company_id; they are not deal, opportunity, pipeline or revenue counts. No HubSpot calls, no AI, no writes. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes.
+ */
+export const GetChannelChiefPamCommercialRollupResponse = zod.object({
+  "ownership_basis": zod.enum(['partner_relationships.assigned_user_id']),
+  "territory_basis": zod.enum(['context_only']).describe('Territory ownership never attributes a relationship to a PAM.'),
+  "hubspot_read": zod.enum(['not_performed']).describe('DB-only. No deal, pipeline or revenue figures are included.'),
+  "included_statuses": zod.object({
+  "confirmed": zod.array(zod.enum(['active', 'dormant'])),
+  "awaiting_review": zod.array(zod.enum(['needs_review'])),
+  "excluded": zod.array(zod.enum(['closed']))
+}),
+  "totals": zod.object({
+  "confirmed_partners": zod.number().int().describe('active + dormant relationships.'),
+  "awaiting_review": zod.number().int().describe('needs_review relationships -- evidence exists, not confirmed partners.'),
+  "crm_linked_confirmed": zod.number().int().describe('Confirmed relationships whose company has a hubspot_company_id.'),
+  "crm_linked_awaiting_review": zod.number().int().describe('Awaiting-review relationships whose company has a hubspot_company_id.')
+}).describe('Current-state relationship counts. CRM linked means the company has a hubspot_company_id -- it does not mean a deal, active opportunity or commercial activity exists.'),
+  "pams": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "pam_name": zod.string(),
+  "pam_email": zod.string(),
+  "territories": zod.array(zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "countries": zod.array(zod.string())
+}).describe('One territory canonically owned by a PAM (territories.owner_user_id). Shared by get_pam_overview and get_pam_directory so both represent ownership identically.')).describe('Every territory this PAM owns (territories.owner_user_id). Context only -- never the basis of the counts.'),
+  "counts": zod.object({
+  "confirmed_partners": zod.number().int().describe('active + dormant relationships.'),
+  "awaiting_review": zod.number().int().describe('needs_review relationships -- evidence exists, not confirmed partners.'),
+  "crm_linked_confirmed": zod.number().int().describe('Confirmed relationships whose company has a hubspot_company_id.'),
+  "crm_linked_awaiting_review": zod.number().int().describe('Awaiting-review relationships whose company has a hubspot_company_id.')
+}).describe('Current-state relationship counts. CRM linked means the company has a hubspot_company_id -- it does not mean a deal, active opportunity or commercial activity exists.')
+})).describe('Every active PAM exactly once (name then id order), including PAMs with zero relationships.'),
+  "unassigned": zod.object({
+  "confirmed_partners": zod.number().int().describe('active + dormant relationships.'),
+  "awaiting_review": zod.number().int().describe('needs_review relationships -- evidence exists, not confirmed partners.'),
+  "crm_linked_confirmed": zod.number().int().describe('Confirmed relationships whose company has a hubspot_company_id.'),
+  "crm_linked_awaiting_review": zod.number().int().describe('Awaiting-review relationships whose company has a hubspot_company_id.')
+}).describe('Current-state relationship counts. CRM linked means the company has a hubspot_company_id -- it does not mean a deal, active opportunity or commercial activity exists.'),
+  "other_assignees": zod.object({
+  "confirmed_partners": zod.number().int().describe('active + dormant relationships.'),
+  "awaiting_review": zod.number().int().describe('needs_review relationships -- evidence exists, not confirmed partners.'),
+  "crm_linked_confirmed": zod.number().int().describe('Confirmed relationships whose company has a hubspot_company_id.'),
+  "crm_linked_awaiting_review": zod.number().int().describe('Awaiting-review relationships whose company has a hubspot_company_id.')
+}).describe('Current-state relationship counts. CRM linked means the company has a hubspot_company_id -- it does not mean a deal, active opportunity or commercial activity exists.')
+}).describe('DB-only management roll-up. totals = sum(pams[].counts) + unassigned + other_assignees. unassigned = relationships with no assigned_user_id (never attributed to a territory owner). other_assignees = relationships assigned to a user who is not an active PAM (an inactive PAM or a head_of_channels\/admin account).')
+
+
+/**
  * @summary DB-only commercial workspace for one PAM -- the canonical Portfolio relationships assigned to that PAM (partner_relationships.assigned_user_id, never territory), split into confirmed partners (active/dormant) and relationships awaiting review (needs_review, not confirmed partners). closed relationships are excluded. HubSpot is never called; each relationship states only whether its company has a hubspot_company_id. A PAM sees only their own workspace (pam_user_id omitted or equal to their own ID). head_of_channels/admin have no workspace of their own and must select a PAM via pam_user_id.
  */
 export const GetPamCommercialWorkspaceQueryParams = zod.object({
@@ -2438,6 +2487,55 @@ export const GetPamCommercialWorkspaceResponse = zod.object({
   "hubspot_link_status": zod.enum(['linked', 'not_linked']).describe('not_linked means HubSpot is not linked and commercial activity is unknown -- never zero deals.')
 })).describe('Awaiting review -- needs_review relationships assigned to this PAM. Not confirmed partners.')
 })
+
+
+/**
+ * @summary Head/Admin-only, DB-only team commercial roll-up -- current canonical Portfolio relationship counts per active PAM (partner_relationships.assigned_user_id, never territory ownership), plus explicit unassigned and other-assignee buckets. closed relationships are excluded. CRM linked counts are HubSpot company linkage only, never deals, pipeline or revenue. HubSpot is never called; select a PAM and use GET /pam-commercial?pam_user_id= and the lazy per-relationship deal endpoint to inspect live deals. Same service as GET /channel-chief/pam-commercial-rollup.
+ */
+export const GetPamCommercialRollupResponse = zod.object({
+  "ownership_basis": zod.enum(['partner_relationships.assigned_user_id']),
+  "territory_basis": zod.enum(['context_only']).describe('Territory ownership never attributes a relationship to a PAM.'),
+  "hubspot_read": zod.enum(['not_performed']).describe('DB-only. No deal, pipeline or revenue figures are included.'),
+  "included_statuses": zod.object({
+  "confirmed": zod.array(zod.enum(['active', 'dormant'])),
+  "awaiting_review": zod.array(zod.enum(['needs_review'])),
+  "excluded": zod.array(zod.enum(['closed']))
+}),
+  "totals": zod.object({
+  "confirmed_partners": zod.number().int().describe('active + dormant relationships.'),
+  "awaiting_review": zod.number().int().describe('needs_review relationships -- evidence exists, not confirmed partners.'),
+  "crm_linked_confirmed": zod.number().int().describe('Confirmed relationships whose company has a hubspot_company_id.'),
+  "crm_linked_awaiting_review": zod.number().int().describe('Awaiting-review relationships whose company has a hubspot_company_id.')
+}).describe('Current-state relationship counts. CRM linked means the company has a hubspot_company_id -- it does not mean a deal, active opportunity or commercial activity exists.'),
+  "pams": zod.array(zod.object({
+  "pam_user_id": zod.string(),
+  "pam_name": zod.string(),
+  "pam_email": zod.string(),
+  "territories": zod.array(zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "countries": zod.array(zod.string())
+}).describe('One territory canonically owned by a PAM (territories.owner_user_id). Shared by get_pam_overview and get_pam_directory so both represent ownership identically.')).describe('Every territory this PAM owns (territories.owner_user_id). Context only -- never the basis of the counts.'),
+  "counts": zod.object({
+  "confirmed_partners": zod.number().int().describe('active + dormant relationships.'),
+  "awaiting_review": zod.number().int().describe('needs_review relationships -- evidence exists, not confirmed partners.'),
+  "crm_linked_confirmed": zod.number().int().describe('Confirmed relationships whose company has a hubspot_company_id.'),
+  "crm_linked_awaiting_review": zod.number().int().describe('Awaiting-review relationships whose company has a hubspot_company_id.')
+}).describe('Current-state relationship counts. CRM linked means the company has a hubspot_company_id -- it does not mean a deal, active opportunity or commercial activity exists.')
+})).describe('Every active PAM exactly once (name then id order), including PAMs with zero relationships.'),
+  "unassigned": zod.object({
+  "confirmed_partners": zod.number().int().describe('active + dormant relationships.'),
+  "awaiting_review": zod.number().int().describe('needs_review relationships -- evidence exists, not confirmed partners.'),
+  "crm_linked_confirmed": zod.number().int().describe('Confirmed relationships whose company has a hubspot_company_id.'),
+  "crm_linked_awaiting_review": zod.number().int().describe('Awaiting-review relationships whose company has a hubspot_company_id.')
+}).describe('Current-state relationship counts. CRM linked means the company has a hubspot_company_id -- it does not mean a deal, active opportunity or commercial activity exists.'),
+  "other_assignees": zod.object({
+  "confirmed_partners": zod.number().int().describe('active + dormant relationships.'),
+  "awaiting_review": zod.number().int().describe('needs_review relationships -- evidence exists, not confirmed partners.'),
+  "crm_linked_confirmed": zod.number().int().describe('Confirmed relationships whose company has a hubspot_company_id.'),
+  "crm_linked_awaiting_review": zod.number().int().describe('Awaiting-review relationships whose company has a hubspot_company_id.')
+}).describe('Current-state relationship counts. CRM linked means the company has a hubspot_company_id -- it does not mean a deal, active opportunity or commercial activity exists.')
+}).describe('DB-only management roll-up. totals = sum(pams[].counts) + unassigned + other_assignees. unassigned = relationships with no assigned_user_id (never attributed to a territory owner). other_assignees = relationships assigned to a user who is not an active PAM (an inactive PAM or a head_of_channels\/admin account).')
 
 
 /**

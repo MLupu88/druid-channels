@@ -3776,6 +3776,101 @@ export interface PamCommercialWorkspace {
 }
 
 /**
+ * Current-state relationship counts. CRM linked means the company has a hubspot_company_id -- it does not mean a deal, active opportunity or commercial activity exists.
+ */
+export interface PamCommercialRollupCounts {
+  /** active + dormant relationships. */
+  confirmed_partners: number;
+  /** needs_review relationships -- evidence exists, not confirmed partners. */
+  awaiting_review: number;
+  /** Confirmed relationships whose company has a hubspot_company_id. */
+  crm_linked_confirmed: number;
+  /** Awaiting-review relationships whose company has a hubspot_company_id. */
+  crm_linked_awaiting_review: number;
+}
+
+export interface PamCommercialRollupPam {
+  pam_user_id: string;
+  pam_name: string;
+  pam_email: string;
+  /** Every territory this PAM owns (territories.owner_user_id). Context only -- never the basis of the counts. */
+  territories: PamTerritory[];
+  counts: PamCommercialRollupCounts;
+}
+
+export type PamCommercialRollupIncludedStatusesConfirmedItem = typeof PamCommercialRollupIncludedStatusesConfirmedItem[keyof typeof PamCommercialRollupIncludedStatusesConfirmedItem];
+
+
+export const PamCommercialRollupIncludedStatusesConfirmedItem = {
+  active: 'active',
+  dormant: 'dormant',
+} as const;
+
+export type PamCommercialRollupIncludedStatusesAwaitingReviewItem = typeof PamCommercialRollupIncludedStatusesAwaitingReviewItem[keyof typeof PamCommercialRollupIncludedStatusesAwaitingReviewItem];
+
+
+export const PamCommercialRollupIncludedStatusesAwaitingReviewItem = {
+  needs_review: 'needs_review',
+} as const;
+
+export type PamCommercialRollupIncludedStatusesExcludedItem = typeof PamCommercialRollupIncludedStatusesExcludedItem[keyof typeof PamCommercialRollupIncludedStatusesExcludedItem];
+
+
+export const PamCommercialRollupIncludedStatusesExcludedItem = {
+  closed: 'closed',
+} as const;
+
+export interface PamCommercialRollupIncludedStatuses {
+  confirmed: PamCommercialRollupIncludedStatusesConfirmedItem[];
+  awaiting_review: PamCommercialRollupIncludedStatusesAwaitingReviewItem[];
+  excluded: PamCommercialRollupIncludedStatusesExcludedItem[];
+}
+
+export type PamCommercialRollupOwnershipBasis = typeof PamCommercialRollupOwnershipBasis[keyof typeof PamCommercialRollupOwnershipBasis];
+
+
+export const PamCommercialRollupOwnershipBasis = {
+  partner_relationshipsassigned_user_id: 'partner_relationships.assigned_user_id',
+} as const;
+
+/**
+ * Territory ownership never attributes a relationship to a PAM.
+ */
+export type PamCommercialRollupTerritoryBasis = typeof PamCommercialRollupTerritoryBasis[keyof typeof PamCommercialRollupTerritoryBasis];
+
+
+export const PamCommercialRollupTerritoryBasis = {
+  context_only: 'context_only',
+} as const;
+
+/**
+ * DB-only. No deal, pipeline or revenue figures are included.
+ */
+export type PamCommercialRollupHubspotRead = typeof PamCommercialRollupHubspotRead[keyof typeof PamCommercialRollupHubspotRead];
+
+
+export const PamCommercialRollupHubspotRead = {
+  not_performed: 'not_performed',
+} as const;
+
+/**
+ * DB-only management roll-up. totals = sum(pams[].counts) + unassigned + other_assignees. unassigned = relationships with no assigned_user_id (never attributed to a territory owner). other_assignees = relationships assigned to a user who is not an active PAM (an inactive PAM or a head_of_channels/admin account).
+ */
+export interface PamCommercialRollup {
+  ownership_basis: PamCommercialRollupOwnershipBasis;
+  /** Territory ownership never attributes a relationship to a PAM. */
+  territory_basis: PamCommercialRollupTerritoryBasis;
+  /** DB-only. No deal, pipeline or revenue figures are included. */
+  hubspot_read: PamCommercialRollupHubspotRead;
+  included_statuses: PamCommercialRollupIncludedStatuses;
+  totals: PamCommercialRollupCounts;
+  /** Every active PAM exactly once (name then id order), including PAMs with zero relationships. */
+  pams: PamCommercialRollupPam[];
+  unassigned: PamCommercialRollupCounts;
+  other_assignees: PamCommercialRollupCounts;
+}
+
+/**
  * Only "available" means the deal set is known. Every other value means commercial activity is unknown (never zero).
  */
 export type PamCommercialHubSpotStatusAvailability = typeof PamCommercialHubSpotStatusAvailability[keyof typeof PamCommercialHubSpotStatusAvailability];

@@ -4,9 +4,10 @@ import {
   GetPamCommercialWorkspaceQueryParams,
   GetPamCommercialWorkspaceResponse,
   GetPamCommercialRelationshipDealsResponse,
+  GetPamCommercialRollupResponse,
 } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireAdmin } from "../middleware/auth";
 import { ForbiddenScopeError } from "../services/authz";
 import {
   resolveCommercialWorkspaceUserId,
@@ -16,6 +17,7 @@ import {
   PamSelectionRequiredError,
   RelationshipNotEligibleError,
 } from "../services/pamCommercialService";
+import { getPamCommercialRollup } from "../services/pamCommercialRollupService";
 
 // PAM Commercial Workspace v1: human-session API (requireAuth), never the
 // Channel Chief service token. See services/pamCommercialService.ts.
@@ -56,6 +58,13 @@ router.get("/pam-commercial", requireAuth, async (req, res): Promise<void> => {
   }
 
   res.json(GetPamCommercialWorkspaceResponse.parse(await getPamCommercialWorkspace(pam)));
+});
+
+// Slice E: Head/Admin team roll-up. DB-only -- never reads HubSpot. Same
+// service as GET /channel-chief/pam-commercial-rollup. Drill-down into a
+// PAM reuses GET /pam-commercial?pam_user_id= above.
+router.get("/pam-commercial/rollup", requireAdmin, async (_req, res): Promise<void> => {
+  res.json(GetPamCommercialRollupResponse.parse(await getPamCommercialRollup()));
 });
 
 // Lazy, per-relationship HubSpot read: load -> authorize -> eligibility ->

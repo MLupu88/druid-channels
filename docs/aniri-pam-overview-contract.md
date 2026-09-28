@@ -87,6 +87,13 @@ is `[]` -- never invented -- when they own none. There is no single
 `territory_id`/`territory_name` field; never assume a PAM has exactly one
 territory.
 
+### Companion endpoint: `GET /channel-chief/pam-commercial-rollup`
+
+Team-level, DB-only commercial coverage per PAM (confirmed partners,
+awaiting review, CRM linkage, unassigned). Same auth. It contains no deal,
+pipeline or revenue figures -- see
+[`aniri-pam-commercial-rollup-contract.md`](aniri-pam-commercial-rollup-contract.md).
+
 ### Example plugin pseudocode (illustrative only -- not for the actual OpenClaw file, which lives outside this repo)
 
 ```

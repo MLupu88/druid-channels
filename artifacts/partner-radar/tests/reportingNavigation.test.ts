@@ -135,9 +135,9 @@ test("Team Targets and PAMs pages still render the same shared Reporting subnav"
   assert.ok(pamsSource.includes("<WorkspaceSubNav items={REPORTING_SUBNAV_ITEMS} />"));
 });
 
-test("REPORTING_SUBNAV_ITEMS still lists exactly weekly-team, team-targets, and pams, in that order", () => {
+test("REPORTING_SUBNAV_ITEMS lists exactly weekly-team, team-targets, pams, and team-commercial, in that order", () => {
   assert.deepEqual(
     REPORTING_SUBNAV_ITEMS.map((i) => i.value),
-    ["weekly-team", "team-targets", "pams"],
+    ["weekly-team", "team-targets", "pams", "team-commercial"],
   );
 });

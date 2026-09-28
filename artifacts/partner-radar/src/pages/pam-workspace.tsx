@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'wouter';
 import { useListProspects, useListCampaigns, useListTerritories, useListTeamTargets, useGetTerritoryPotential } from '@workspace/api-client-react';
 import { TerritoryPotentialCard } from '@/components/territory-potential-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -7,8 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
-import { Building2 } from 'lucide-react';
 import { PeriodSelector } from '@/components/period-selector';
 import { getDefaultPeriodKey } from '@/lib/period';
 import { PamCopilot } from '@/components/pam-copilot';
@@ -58,17 +55,16 @@ export function PamWorkspace({ territoryId, pamName, pamUserId }: { territoryId?
           {pamName ? `${pamName}'s workspace` : 'My workspace'}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {territoryName ? `Territory: ${territoryName}` : 'Prospects, partners, and activities for your territory.'}
+          {territoryName ? `Territory: ${territoryName}` : 'New partners, commercial context, targets, and activities you are working on.'}
         </p>
       </div>
 
       <Tabs defaultValue="prospects">
         {/* overflow-x-auto: same narrow-viewport guard as WorkspaceSubNav --
-            5 tabs can exceed a mobile content width. */}
+            4 tabs can exceed a mobile content width. */}
         <div className="overflow-x-auto">
           <TabsList>
             <TabsTrigger value="prospects" data-testid="tab-workspace-prospects">New partners</TabsTrigger>
-            <TabsTrigger value="partners" data-testid="tab-workspace-partners">Partners</TabsTrigger>
             <TabsTrigger value="commercial" data-testid="tab-workspace-commercial">Commercial</TabsTrigger>
             <TabsTrigger value="targets" data-testid="tab-workspace-targets">{pamName ? 'Targets' : 'My targets'}</TabsTrigger>
             <TabsTrigger value="activities" data-testid="tab-workspace-activities">Marketing activities</TabsTrigger>
@@ -105,21 +101,6 @@ export function PamWorkspace({ territoryId, pamName, pamUserId }: { territoryId?
                   )}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="partners">
-          <Card className="shadow-none border-border/60">
-            <CardContent className="p-8 flex flex-col items-center text-center gap-3">
-              <Building2 className="h-8 w-8 text-muted-foreground" />
-              <div>
-                <p className="font-medium">Partners has moved to Portfolio</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Relationship status, activity history, and next actions for your partners now live in the Portfolio workspace.
-                </p>
-              </div>
-              <Link href="/portfolio"><Button size="sm">Open Portfolio</Button></Link>
             </CardContent>
           </Card>
         </TabsContent>

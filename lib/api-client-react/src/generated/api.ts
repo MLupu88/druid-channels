@@ -105,6 +105,7 @@ import type {
   OpportunityEditInput,
   OpportunityInput,
   PamCommercialRelationshipDeals,
+  PamCommercialRollup,
   PamCommercialWorkspace,
   PamCopilotChatBody,
   PamCopilotChatResponse,
@@ -4545,6 +4546,83 @@ export function useGetPamDirectory<TData = Awaited<ReturnType<typeof getPamDirec
 
 
 
+export const getGetChannelChiefPamCommercialRollupUrl = () => {
+
+
+
+
+  return `/api/channel-chief/pam-commercial-rollup`
+}
+
+/**
+ * @summary Read-only, DB-only PAM commercial roll-up for Aniri -- the exact same result the Head/Admin Reporting page reads from GET /pam-commercial/rollup (one shared service). Current canonical Portfolio relationships only (active/dormant confirmed, needs_review awaiting review, closed excluded), grouped by partner_relationships.assigned_user_id -- never by territory ownership. Unassigned relationships stay unassigned. CRM linked counts only state that a company has a hubspot_company_id; they are not deal, opportunity, pipeline or revenue counts. No HubSpot calls, no AI, no writes. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes.
+ */
+export const getChannelChiefPamCommercialRollup = async ( options?: Parameters<typeof customFetch>[1]): Promise<PamCommercialRollup> => {
+
+  return customFetch<PamCommercialRollup>(getGetChannelChiefPamCommercialRollupUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChannelChiefPamCommercialRollupQueryKey = () => {
+    return [
+    `/api/channel-chief/pam-commercial-rollup`
+    ] as const;
+    }
+
+
+export const getGetChannelChiefPamCommercialRollupQueryOptions = <TData = Awaited<ReturnType<typeof getChannelChiefPamCommercialRollup>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelChiefPamCommercialRollup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChannelChiefPamCommercialRollupQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannelChiefPamCommercialRollup>>> = ({ signal }) => getChannelChiefPamCommercialRollup({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChannelChiefPamCommercialRollup>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChannelChiefPamCommercialRollupQueryResult = NonNullable<Awaited<ReturnType<typeof getChannelChiefPamCommercialRollup>>>
+export type GetChannelChiefPamCommercialRollupQueryError = ErrorType<void>
+
+
+/**
+ * @summary Read-only, DB-only PAM commercial roll-up for Aniri -- the exact same result the Head/Admin Reporting page reads from GET /pam-commercial/rollup (one shared service). Current canonical Portfolio relationships only (active/dormant confirmed, needs_review awaiting review, closed excluded), grouped by partner_relationships.assigned_user_id -- never by territory ownership. Unassigned relationships stay unassigned. CRM linked counts only state that a company has a hubspot_company_id; they are not deal, opportunity, pipeline or revenue counts. No HubSpot calls, no AI, no writes. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes.
+ */
+
+export function useGetChannelChiefPamCommercialRollup<TData = Awaited<ReturnType<typeof getChannelChiefPamCommercialRollup>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelChiefPamCommercialRollup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChannelChiefPamCommercialRollupQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetPamCommercialWorkspaceUrl = (params?: GetPamCommercialWorkspaceParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -4617,6 +4695,83 @@ export function useGetPamCommercialWorkspace<TData = Awaited<ReturnType<typeof g
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPamCommercialWorkspaceQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPamCommercialRollupUrl = () => {
+
+
+
+
+  return `/api/pam-commercial/rollup`
+}
+
+/**
+ * @summary Head/Admin-only, DB-only team commercial roll-up -- current canonical Portfolio relationship counts per active PAM (partner_relationships.assigned_user_id, never territory ownership), plus explicit unassigned and other-assignee buckets. closed relationships are excluded. CRM linked counts are HubSpot company linkage only, never deals, pipeline or revenue. HubSpot is never called; select a PAM and use GET /pam-commercial?pam_user_id= and the lazy per-relationship deal endpoint to inspect live deals. Same service as GET /channel-chief/pam-commercial-rollup.
+ */
+export const getPamCommercialRollup = async ( options?: Parameters<typeof customFetch>[1]): Promise<PamCommercialRollup> => {
+
+  return customFetch<PamCommercialRollup>(getGetPamCommercialRollupUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPamCommercialRollupQueryKey = () => {
+    return [
+    `/api/pam-commercial/rollup`
+    ] as const;
+    }
+
+
+export const getGetPamCommercialRollupQueryOptions = <TData = Awaited<ReturnType<typeof getPamCommercialRollup>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamCommercialRollup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPamCommercialRollupQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPamCommercialRollup>>> = ({ signal }) => getPamCommercialRollup({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPamCommercialRollup>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPamCommercialRollupQueryResult = NonNullable<Awaited<ReturnType<typeof getPamCommercialRollup>>>
+export type GetPamCommercialRollupQueryError = ErrorType<void>
+
+
+/**
+ * @summary Head/Admin-only, DB-only team commercial roll-up -- current canonical Portfolio relationship counts per active PAM (partner_relationships.assigned_user_id, never territory ownership), plus explicit unassigned and other-assignee buckets. closed relationships are excluded. CRM linked counts are HubSpot company linkage only, never deals, pipeline or revenue. HubSpot is never called; select a PAM and use GET /pam-commercial?pam_user_id= and the lazy per-relationship deal endpoint to inspect live deals. Same service as GET /channel-chief/pam-commercial-rollup.
+ */
+
+export function useGetPamCommercialRollup<TData = Awaited<ReturnType<typeof getPamCommercialRollup>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamCommercialRollup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPamCommercialRollupQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

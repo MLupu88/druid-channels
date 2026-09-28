@@ -26,7 +26,8 @@
     "test:evidence-interpretation-hierarchy": "tsx --test tests/evidenceInterpretationHierarchy.test.ts",
     "test:reporting-navigation": "tsx --test tests/reportingNavigation.test.ts",
     "test:discovery-summary-labels": "tsx --test tests/discoverySummaryLabels.test.ts",
-    "test:pam-commercial-workspace": "tsx --test tests/pamCommercialWorkspace.test.ts"
+    "test:pam-commercial-workspace": "tsx --test tests/pamCommercialWorkspace.test.ts",
+    "test:team-commercial-rollup": "tsx --test tests/teamCommercialRollup.test.ts"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

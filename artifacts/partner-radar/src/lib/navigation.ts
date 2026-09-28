@@ -23,7 +23,7 @@ export function getPartnersSubNavItems(isGlobalUser: boolean): WorkspaceSubNavIt
   ];
 }
 
-// Global-only: Weekly Team, Team Targets, and PAMs are all Head/Admin-scoped
+// Global-only: Weekly Team, Team Targets, PAMs, and Commercial are all Head/Admin-scoped
 // routes (see App.tsx's Guarded wrappers) and together form one reporting/
 // team-oversight workspace, not a lifecycle. Phase 11.6.1: Weekly Team has
 // its own real route (/weekly-team, see pages/weekly-team.tsx) -- it no
@@ -34,4 +34,7 @@ export const REPORTING_SUBNAV_ITEMS: WorkspaceSubNavItem[] = [
   { value: 'weekly-team', label: 'Weekly Team', href: '/weekly-team' },
   { value: 'team-targets', label: 'Team Targets', href: '/team-targets' },
   { value: 'pams', label: 'PAMs', href: '/pams' },
+  // Slice E: DB-only team commercial roll-up with PAM drill-down into the
+  // existing PAM Commercial workspace (see pages/team-commercial.tsx).
+  { value: 'team-commercial', label: 'Commercial', href: '/team-commercial' },
 ];

@@ -3,7 +3,7 @@ import { Router, type IRouter } from "express";
 // .agents/memory/orval-codegen-flow.md): the runtime zod schema is named
 // after the operationId (getChannelChiefSnapshot -> GetChannelChiefSnapshotResponse),
 // not the OpenAPI component schema name (ChannelChiefSnapshot).
-import { GetChannelChiefSnapshotResponse, GetChannelChiefChangesQueryParams, GetChannelChiefChangesResponse, GetPamOverviewQueryParams, GetPamOverviewResponse, GetPamDirectoryResponse } from "@workspace/api-zod";
+import { GetChannelChiefSnapshotResponse, GetChannelChiefChangesQueryParams, GetChannelChiefChangesResponse, GetPamOverviewQueryParams, GetPamOverviewResponse, GetPamDirectoryResponse, GetChannelChiefPamCommercialRollupResponse } from "@workspace/api-zod";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireChannelChiefToken } from "../middleware/channelChiefAuth";
@@ -12,6 +12,7 @@ import { getChannelChiefSnapshot } from "../services/channelChiefContextService"
 import { getChannelChangeFeed } from "../services/channelChangeFeedService";
 import { getPamOverview } from "../services/pamOverviewService";
 import { getPamDirectory } from "../services/pamDirectoryService";
+import { getPamCommercialRollup } from "../services/pamCommercialRollupService";
 import { resolvePamByName } from "../services/pamResolution";
 import { FxUnavailableError } from "../services/fx";
 
@@ -157,6 +158,16 @@ router.get("/channel-chief/pam-overview", requireChannelChiefToken, async (req, 
 router.get("/channel-chief/pam-directory", requireChannelChiefToken, async (_req, res): Promise<void> => {
   const directory = await getPamDirectory();
   res.json(GetPamDirectoryResponse.parse(directory));
+});
+
+// Slice E: the same DB-only commercial roll-up the human Head/Admin
+// Reporting page reads (GET /pam-commercial/rollup) -- one service, one
+// result, so Aniri and the Head of Channels always see identical counts.
+// Same requireChannelChiefToken machine-to-machine auth as every route
+// above. No HubSpot, no AI, no writes: CRM linked is reported as linkage
+// only, never as deals, pipeline or revenue.
+router.get("/channel-chief/pam-commercial-rollup", requireChannelChiefToken, async (_req, res): Promise<void> => {
+  res.json(GetChannelChiefPamCommercialRollupResponse.parse(await getPamCommercialRollup()));
 });
 
 export default router;

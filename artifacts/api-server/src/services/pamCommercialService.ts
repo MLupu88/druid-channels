@@ -53,24 +53,22 @@ import {
   type DealPipelineIndex,
   type DealState,
 } from "./hubspotDealFacts";
+import {
+  AWAITING_REVIEW_STATUS,
+  isCommercialWorkspaceStatus,
+  isConfirmedPartnerStatus,
+  normalizeHubSpotCompanyId,
+  type RelationshipStatus,
+} from "./pamCommercialSemantics";
 
 // ---------------------------------------------------------------------------
 // Relationship eligibility
 // ---------------------------------------------------------------------------
 
-type RelationshipStatus = (typeof partnerRelationshipsTable.$inferSelect)["status"];
-
-const CONFIRMED_STATUSES: ReadonlySet<RelationshipStatus> = new Set(["active", "dormant"]);
-const AWAITING_REVIEW_STATUS: RelationshipStatus = "needs_review";
-
-export function isConfirmedPartnerStatus(status: RelationshipStatus): boolean {
-  return CONFIRMED_STATUSES.has(status);
-}
-
-// closed is historical and never part of the current commercial workspace.
-export function isCommercialWorkspaceStatus(status: RelationshipStatus): boolean {
-  return isConfirmedPartnerStatus(status) || status === AWAITING_REVIEW_STATUS;
-}
+// The status rules and CRM-linkage normalization live in the pure
+// pamCommercialSemantics.ts (shared with the team roll-up); re-exported here
+// so existing importers keep working.
+export { isConfirmedPartnerStatus, isCommercialWorkspaceStatus, normalizeHubSpotCompanyId } from "./pamCommercialSemantics";
 
 export class RelationshipNotEligibleError extends Error {
   constructor() {
@@ -138,11 +136,6 @@ export interface PamCommercialWorkspace {
   hubspot_read: "not_performed";
   confirmed_relationships: CommercialRelationship[];
   awaiting_review: CommercialRelationship[];
-}
-
-function normalizeHubSpotCompanyId(value: string | null): string | null {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
 }
 
 function shapeCommercialRelationship(

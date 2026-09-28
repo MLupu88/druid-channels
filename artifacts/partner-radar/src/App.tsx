@@ -19,6 +19,7 @@ import OpportunitiesImport from '@/pages/opportunities-import';
 import TeamTargets from '@/pages/team-targets';
 import WeeklyTeam from '@/pages/weekly-team';
 import Pams from '@/pages/pams';
+import TeamCommercial from '@/pages/team-commercial';
 import MyWorkspace from '@/pages/pam-workspace';
 import Campaigns from '@/pages/campaigns';
 import MyWeeklyReport from '@/pages/weekly-report';
@@ -74,6 +75,10 @@ function AuthenticatedApp() {
         </Route>
         <Route path="/pams">
           <Guarded allow={isGlobalUser}><Pams /></Guarded>
+        </Route>
+        {/* Slice E: Head/Admin commercial roll-up (Reporting). */}
+        <Route path="/team-commercial">
+          <Guarded allow={isGlobalUser}><TeamCommercial /></Guarded>
         </Route>
         <Route path="/team-targets">
           <Guarded allow={isGlobalUser}><TeamTargets /></Guarded>
