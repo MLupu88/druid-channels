@@ -8,11 +8,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import type { PamCommercialDeal, PamCommercialDealFacts, PamCommercialRelationshipDeals } from "@workspace/api-client-react";
+import type {
+  PamCommercialDeal,
+  PamCommercialDealFacts,
+  PamCommercialDealHistoryEvent,
+  PamCommercialRelationshipDeals,
+} from "@workspace/api-client-react";
+import { getPartnersSubNavItems } from "../src/lib/navigation";
 import {
   AWAITING_REVIEW_SECTION_TITLE,
   COMMERCIAL_UNKNOWN,
   CRM_OWNER_LABEL,
+  HISTORY_EMPTY_COPY,
   NOT_LINKED_TITLE,
   OWNER_DETAILS_UNAVAILABLE,
   PROVEN_ZERO_COPY,
@@ -22,13 +29,19 @@ import {
   formatCrmOwner,
   formatDealAmount,
   formatDealDate,
+  formatHistoryValue,
   formatIdLabel,
+  historyEventText,
+  historyNewestFirst,
+  historyPropertyLabel,
   truncationNotice,
 } from "../src/lib/pam-commercial";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const componentSource = readFileSync(path.join(__dirname, "../src/components/pam-commercial-workspace.tsx"), "utf-8");
 const workspaceSource = readFileSync(path.join(__dirname, "../src/pages/pam-workspace.tsx"), "utf-8");
+const libSource = readFileSync(path.join(__dirname, "../src/lib/pam-commercial.ts"), "utf-8");
+const layoutSource = readFileSync(path.join(__dirname, "../src/components/layout.tsx"), "utf-8");
 
 function sliceFunction(source: string, name: string): string {
   const start = source.indexOf(`function ${name}(`);
@@ -209,13 +222,140 @@ test("truncation says more may exist and uses returned_count, never a total", ()
 
 // 12 + no interpretation ------------------------------------------------------
 
-test("no history/timeline UI and no interpretive signals are introduced", () => {
-  for (const forbidden of ["property_history", "history", "timeline", "Timeline"]) {
-    assert.ok(!componentSource.includes(forbidden), `Commercial tab must not reference "${forbidden}" yet (Slice D)`);
+const INTERPRETIVE = [
+  /\bhot\b/i,
+  /\bcold\b/i,
+  /momentum/i,
+  /velocity/i,
+  /propensity/i,
+  /probabilit/i,
+  /likely to close/i,
+  /next[- ]best[- ]action/i,
+  /recommend/i,
+  /engagement score/i,
+  /\brisk\b/i,
+  /health/i,
+  /progress/i,
+  /regress/i,
+  /moved? (forward|backward)/i,
+  /\b(won|lost)\b/i,
+];
+
+test("no interpretive signals are introduced by the Commercial tab or its history", () => {
+  const historyHelpers = libSource.slice(libSource.indexOf("// ---- Deal history (Slice D)"), libSource.indexOf("// ---- DRUID enrichment"));
+  for (const forbidden of INTERPRETIVE) {
+    assert.doesNotMatch(sliceFunction(componentSource, "DealHistory"), forbidden);
+    assert.doesNotMatch(historyHelpers, forbidden);
   }
-  for (const forbidden of [/\bhot\b/i, /\bcold\b/i, /momentum/i, /propensity/i, /likely to close/i, /next best action/i, /engagement score/i, /\brisk\b/i]) {
-    assert.doesNotMatch(componentSource, forbidden);
+  for (const forbidden of INTERPRETIVE.slice(0, 11)) assert.doesNotMatch(componentSource, forbidden);
+});
+
+// Slice D: deal history ---------------------------------------------------------
+
+function historyEvent(overrides: Partial<PamCommercialDealHistoryEvent> = {}): PamCommercialDealHistoryEvent {
+  return {
+    property: "dealstage",
+    kind: "changed",
+    previous_value: "111",
+    new_value: "222",
+    previous_label: "Qualified",
+    new_label: "Proposal sent",
+    changed_at: "2026-09-01T10:00:00.000Z",
+    source_type: "CRM_UI",
+    ...overrides,
+  };
+}
+
+test("history is collapsed by default and is rendered from the deal already loaded -- no extra read", () => {
+  const history = sliceFunction(componentSource, "DealHistory");
+  assert.ok(history.includes("useState(false)"), "history starts collapsed");
+  assert.ok(history.includes("<Collapsible open={open} onOpenChange={setOpen}"));
+  assert.ok(history.includes("<CollapsibleContent>"), "timeline lives inside the disclosure");
+  assert.ok(!/use[A-Z]\w*Query|useGet|fetch\(/.test(history), "history never triggers a request");
+  assert.equal(componentSource.match(/useGetPamCommercialRelationshipDeals\(/g)?.length, 1);
+});
+
+test("the disclosure opens a factual, newest-first timeline of property_history", () => {
+  const row = sliceFunction(componentSource, "DealRow");
+  assert.ok(row.includes("<DealHistory dealId={deal.deal_id} events={f.property_history} />"));
+  const history = sliceFunction(componentSource, "DealHistory");
+  assert.ok(history.includes("historyNewestFirst(events).map"));
+  assert.ok(history.includes("historyEventText(event)"));
+  assert.ok(history.includes("formatDealDate(event.changed_at)"));
+
+  const events = [historyEvent({ changed_at: "2026-01-01T00:00:00.000Z" }), historyEvent({ changed_at: "2026-02-01T00:00:00.000Z" })];
+  const snapshot = JSON.stringify(events);
+  assert.deepEqual(historyNewestFirst(events).map((e) => e.changed_at), ["2026-02-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"]);
+  assert.equal(JSON.stringify(events), snapshot, "the underlying history is not mutated");
+});
+
+test("initial / changed / cleared render the normalized kind truthfully", () => {
+  assert.equal(historyEventText(historyEvent({ kind: "initial", previous_value: null, previous_label: null, new_label: "Qualified", new_value: "111" })), "Stage initially Qualified");
+  assert.equal(historyEventText(historyEvent()), "Stage changed from Qualified to Proposal sent");
+  assert.equal(
+    historyEventText(historyEvent({ property: "closedate", kind: "cleared", previous_value: "2026-11-30T00:00:00.000Z", new_value: null, previous_label: null, new_label: null })),
+    "Close date cleared (was Nov 30, 2026)",
+  );
+  assert.equal(historyEventText(historyEvent({ property: "closedate", kind: "initial", previous_value: null, new_value: "1795996800000", previous_label: null, new_label: null })), "Close date initially Nov 30, 2026");
+  assert.equal(historyEventText(historyEvent({ property: "deal_currency_code", previous_value: "USD", new_value: "EUR", previous_label: null, new_label: null })), "Currency changed from USD to EUR");
+  assert.equal(historyPropertyLabel("hubspot_owner_id"), CRM_OWNER_LABEL);
+  assert.equal(historyPropertyLabel("pipeline"), "Pipeline");
+});
+
+test("a resolved label is preferred over the raw provider ID", () => {
+  assert.equal(formatHistoryValue("dealstage", "222", "Proposal sent"), "Proposal sent");
+  assert.equal(formatHistoryValue("pipeline", "default", "Sales pipeline"), "Sales pipeline");
+});
+
+test("the raw provider value is retained when no label was returned -- nothing is invented", () => {
+  assert.equal(formatHistoryValue("dealstage", "222", null), "222 (label unavailable)");
+  assert.equal(formatHistoryValue("pipeline", "default", null), "default (label unavailable)");
+  // A historical owner ID is never turned into a person.
+  assert.equal(formatHistoryValue("hubspot_owner_id", "77", null), `${OWNER_DETAILS_UNAVAILABLE} (ID 77)`);
+  // A historical amount carries no currency; the deal's current one is not assumed.
+  assert.equal(formatHistoryValue("amount", "12500", null), "12,500");
+  assert.equal(formatHistoryValue("amount", "about 10k", null), "about 10k");
+  assert.equal(formatHistoryValue("closedate", "not-a-date", null), "not-a-date");
+  // Only epoch ms, YYYY-MM-DD, or a zoned ISO datetime are parsed; anything
+  // ambiguous is shown raw rather than read in the browser's time zone.
+  assert.equal(formatHistoryValue("closedate", "1795996800000", null), "Nov 30, 2026");
+  assert.equal(formatHistoryValue("closedate", "2026-11-30", null), "Nov 30, 2026");
+  assert.equal(formatHistoryValue("closedate", "2026-11-30T00:00:00.000Z", null), "Nov 30, 2026");
+  assert.equal(formatHistoryValue("closedate", "2026-11-30T23:00:00-05:00", null), "Dec 1, 2026");
+  for (const ambiguous of ["2026-11-30T00:00:00", "2026-11-30T00:00", "11/30/2026", "Nov 30, 2026", "2026-02-30", "1796083200"]) {
+    assert.equal(formatHistoryValue("closedate", ambiguous, null), ambiguous, `expected ${ambiguous} to stay raw`);
   }
+  assert.equal(
+    historyEventText(historyEvent({ property: "amount", previous_value: "10000", new_value: "12500", previous_label: null, new_label: null })),
+    "Amount changed from 10,000 to 12,500",
+  );
+  const history = sliceFunction(componentSource, "DealHistory");
+  assert.ok(!history.includes("f.currency") && !history.includes("crm_owner"), "history never borrows current deal facts");
+});
+
+test("empty history is a quiet factual state, not an error; an unavailable deal gets no history", () => {
+  assert.equal(HISTORY_EMPTY_COPY, "No HubSpot history returned for these fields");
+  const history = sliceFunction(componentSource, "DealHistory");
+  assert.ok(history.includes("events.length === 0 ?"));
+  assert.ok(history.includes("{HISTORY_EMPTY_COPY}."));
+  assert.ok(!history.includes("AlertCircle") && !history.includes("PanelNote"), "empty history is not styled as a failure");
+  const row = sliceFunction(componentSource, "DealRow");
+  const unavailableBranch = row.slice(row.indexOf("deal.load_status === 'unavailable'"), row.indexOf("const f = deal.facts;"));
+  assert.ok(unavailableBranch.includes("{DEAL_UNAVAILABLE_TITLE}"), "the unavailable deal still renders exactly as before");
+  assert.ok(!unavailableBranch.includes("DealHistory"), "no history is invented for a deal that failed to load");
+});
+
+// Sidebar -------------------------------------------------------------------
+
+test("the global sidebar says Portfolio and routes to /portfolio; the in-page Portfolio tabs are unchanged", () => {
+  const entries = layoutSource.match(/\{ href: '\/portfolio', label: '[^']+', icon: Building2, activePaths: partnersActivePaths \}/g) ?? [];
+  assert.equal(entries.length, 2, "both the global and PAM sidebars keep one /portfolio entry");
+  for (const entry of entries) assert.ok(entry.includes("label: 'Portfolio'"));
+  assert.ok(!layoutSource.includes("label: 'Partners'"));
+  assert.deepEqual(
+    getPartnersSubNavItems(false).map((i) => i.label),
+    ["My Prospects", "Recruitment", "Portfolio", "Activities"],
+  );
 });
 
 // Integration ---------------------------------------------------------------

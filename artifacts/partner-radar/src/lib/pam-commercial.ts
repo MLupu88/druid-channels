@@ -9,6 +9,8 @@ import type {
   PamCommercialCrmOwner,
   PamCommercialDealError,
   PamCommercialDealFactsDealState,
+  PamCommercialDealHistoryEvent,
+  PamCommercialDealHistoryEventProperty,
   PamCommercialDruidOpportunity,
   PamCommercialHubSpotStatusAvailability,
   PamCommercialIdLabel,
@@ -181,6 +183,95 @@ export function formatDealDate(iso: string | null): string | null {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
+// ---- Deal history (Slice D) ----------------------------------------------
+
+// Renders facts.property_history exactly as normalized server-side
+// (hubspotDealFacts.normalizeDealHistory): one value change per event, no
+// direction, no interpretation. Values are raw HubSpot property values; only
+// pipeline/stage can carry a resolved label, and a historical CRM owner is
+// never resolved to a person.
+
+export const HISTORY_EMPTY_COPY = 'No HubSpot history returned for these fields';
+
+// closedate is labelled neutrally: whether the deal was open when a close
+// date was recorded is not part of the history event.
+export const HISTORY_PROPERTY_LABELS: Record<PamCommercialDealHistoryEventProperty, string> = {
+  pipeline: 'Pipeline',
+  dealstage: 'Stage',
+  amount: 'Amount',
+  deal_currency_code: 'Currency',
+  closedate: 'Close date',
+  hubspot_owner_id: CRM_OWNER_LABEL,
+};
+
+export function historyPropertyLabel(property: PamCommercialDealHistoryEventProperty): string {
+  return HISTORY_PROPERTY_LABELS[property] ?? property;
+}
+
+const EPOCH_MS = /^\d{12,15}$/;
+// YYYY-MM-DD, or an ISO datetime with an explicit zone (Z or +hh:mm).
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2}))?$/;
+
+// History date values are raw HubSpot strings. Only epoch milliseconds, a
+// plain date, or a zoned ISO datetime are parsed; anything else (including a
+// zone-less datetime) returns null so the raw value is shown rather than
+// letting the browser apply its local time zone.
+function parseHistoryDate(value: string): string | null {
+  const trimmed = value.trim();
+  if (EPOCH_MS.test(trimmed)) {
+    const date = new Date(Number(trimmed));
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  const match = ISO_DATE.exec(trimmed);
+  if (!match) return null;
+  const [, y, mo, d, h, mi, s] = match;
+  const calendar = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+  if (calendar.getUTCFullYear() !== Number(y) || calendar.getUTCMonth() !== Number(mo) - 1 || calendar.getUTCDate() !== Number(d)) return null;
+  if (h !== undefined && (Number(h) > 23 || Number(mi) > 59 || Number(s ?? '0') > 59)) return null;
+  const ms = Date.parse(trimmed);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
+// Never returns an empty string for a present value: anything that cannot be
+// formatted is shown raw.
+export function formatHistoryValue(property: PamCommercialDealHistoryEventProperty, value: string, label: string | null): string {
+  if (label) return label;
+  switch (property) {
+    case 'pipeline':
+    case 'dealstage':
+      return `${value} (label unavailable)`;
+    case 'hubspot_owner_id':
+      return `${OWNER_DETAILS_UNAVAILABLE} (ID ${value})`;
+    case 'amount': {
+      // No currency: a historical amount does not record which currency it
+      // was in, and the deal's current currency is not assumed.
+      const n = Number(value);
+      return value.trim() !== '' && Number.isFinite(n) ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(n) : value;
+    }
+    case 'closedate': {
+      const iso = parseHistoryDate(value);
+      return (iso && formatDealDate(iso)) ?? value;
+    }
+    default:
+      return value;
+  }
+}
+
+export function historyEventText(event: PamCommercialDealHistoryEvent): string {
+  const property = historyPropertyLabel(event.property);
+  const previous = event.previous_value !== null ? formatHistoryValue(event.property, event.previous_value, event.previous_label) : null;
+  const next = event.new_value !== null ? formatHistoryValue(event.property, event.new_value, event.new_label) : null;
+  if (event.kind === 'cleared') return previous ? `${property} cleared (was ${previous})` : `${property} cleared`;
+  if (event.kind === 'initial') return `${property} initially ${next ?? 'not set'}`;
+  return `${property} changed from ${previous ?? 'not set'} to ${next ?? 'not set'}`;
+}
+
+// Newest first for display. The server returns ascending chronological order
+// with deterministic tie-breaks; this only reverses a copy of it.
+export function historyNewestFirst(events: readonly PamCommercialDealHistoryEvent[]): PamCommercialDealHistoryEvent[] {
+  return [...events].reverse();
 }
 
 // ---- DRUID enrichment ----------------------------------------------------

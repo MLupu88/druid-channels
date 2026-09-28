@@ -76,7 +76,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navItems: NavItem[] = isGlobalUser
     ? [
         { href: '/', label: 'Overview', icon: LayoutDashboard },
-        { href: '/portfolio', label: 'Partners', icon: Building2, activePaths: partnersActivePaths },
+        { href: '/portfolio', label: 'Portfolio', icon: Building2, activePaths: partnersActivePaths },
         { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
         { href: '/channel-radar', label: 'Radar', icon: Satellite },
         { href: '/team-targets', label: 'Reporting', icon: ClipboardList, activePaths: ['/weekly-team', '/team-targets', '/pams'] },
@@ -97,7 +97,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         // as a tab (see overview.tsx) rather than staying an isolated
         // sidebar item; its route is unchanged too.
         { href: '/', label: 'Overview', icon: LayoutDashboard },
-        { href: '/portfolio', label: 'Partners', icon: Building2, activePaths: partnersActivePaths },
+        { href: '/portfolio', label: 'Portfolio', icon: Building2, activePaths: partnersActivePaths },
         { href: '/opportunities', label: 'Opportunities', icon: DollarSign },
         { href: '/channel-radar', label: 'Radar', icon: Satellite },
       ];

@@ -4,6 +4,7 @@ import {
   useGetPamCommercialRelationshipDeals,
   getGetPamCommercialRelationshipDealsQueryKey,
   type PamCommercialDeal,
+  type PamCommercialDealHistoryEvent,
   type PamCommercialRelationship,
 } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +22,7 @@ import {
   DEALS_STALE_TIME_MS,
   DEAL_STATE_TONE,
   DEAL_UNAVAILABLE_TITLE,
+  HISTORY_EMPTY_COPY,
   NOT_LINKED_TITLE,
   PROVEN_ZERO_COPY,
   RELATIONSHIP_STATUS_LABELS,
@@ -35,6 +37,8 @@ import {
   formatDealDate,
   formatDruidRecord,
   formatIdLabel,
+  historyEventText,
+  historyNewestFirst,
   isRetryableAvailability,
   returnedDealsLabel,
   truncationNotice,
@@ -343,6 +347,7 @@ function DealRow({ deal }: { deal: PamCommercialDeal }) {
         <Fact label="Last modified" value={formatDealDate(f.last_modified_at) ?? '—'} />
         <Fact label="HubSpot ID" value={deal.deal_id} />
       </dl>
+      <DealHistory dealId={deal.deal_id} events={f.property_history} />
       {druidRecords.length > 0 && (
         <div className="text-[11px] text-muted-foreground space-y-0.5">
           {druidRecords.map((record) => (
@@ -351,5 +356,36 @@ function DealRow({ deal }: { deal: PamCommercialDeal }) {
         </div>
       )}
     </li>
+  );
+}
+
+// Slice D: the factual HubSpot property history already returned on the
+// loaded deal -- collapsed by default, rendered newest first, no extra read.
+function DealHistory({ dealId, events }: { dealId: string; events: PamCommercialDealHistoryEvent[] }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} data-testid={`commercial-deal-history-${dealId}`}>
+      <CollapsibleTrigger asChild>
+        <button type="button" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" aria-expanded={open}>
+          <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+          History{events.length > 0 ? ` (${events.length})` : ''}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        {events.length === 0 ? (
+          <p className="mt-1.5 text-xs text-muted-foreground">{HISTORY_EMPTY_COPY}.</p>
+        ) : (
+          <ol className="mt-1.5 space-y-1 border-l border-border/60 pl-3">
+            {historyNewestFirst(events).map((event, i) => (
+              <li key={`${event.changed_at}-${event.property}-${i}`} className="flex flex-wrap gap-x-2 text-xs">
+                <span className="text-muted-foreground tabular-nums shrink-0">{formatDealDate(event.changed_at) ?? event.changed_at}</span>
+                <span className="text-foreground/80 break-words min-w-0">{historyEventText(event)}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
