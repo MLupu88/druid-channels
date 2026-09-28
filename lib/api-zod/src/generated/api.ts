@@ -2244,6 +2244,157 @@ export const GetChannelChiefChangesResponse = zod.array(GetChannelChiefChangesRe
 
 
 /**
+ * @summary Bounded, read-only overview of ONE named PAM -- identity (with every owned territory), portfolio (relationships assigned to the PAM via partner_relationships.assigned_user_id), per-territory performance, DRUID-recorded opportunities (not the complete HubSpot pipeline; HubSpot is never read by this endpoint), recruitment (assigned to the PAM via partner_recruitments.assigned_user_id), and recent activity -- assembled entirely from canonical DRUID data via the same service functions the rest of the app already uses (never a second scoring/performance engine). pam_name is resolved case-insensitively against canonical PAM users (exact full name, email, first name, or substring, most-specific match wins); ambiguous or unknown names are reported explicitly rather than guessed. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes -- never normal UI session auth.
+ */
+export const GetPamOverviewQueryParams = zod.object({
+  "pam_name": zod.coerce.string().describe('Free-text PAM reference, e.g. \"Denny\", \"denny\", or \"Denny Morais\". Case-insensitive.'),
+  "period": zod.coerce.string().nullish().describe('Composite period key, e.g. \"2026-q3\" or \"2026-ytd\". Defaults to the current quarter when omitted.')
+})
+
+export const GetPamOverviewResponse = zod.object({
+  "identity": zod.object({
+  "pam_user_id": zod.string(),
+  "pam_name": zod.string(),
+  "pam_email": zod.string(),
+  "active": zod.boolean(),
+  "territories": zod.array(zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "countries": zod.array(zod.string())
+}).describe('One territory canonically owned by a PAM (territories.owner_user_id). Shared by get_pam_overview and get_pam_directory so both represent ownership identically.')).describe('Every territory this PAM owns (territories.owner_user_id), ordered by name then id -- never just the first. Empty (never invented) when the PAM owns none; performance targets are then empty, see `availability`. Territory is context only -- Portfolio relationships and recruitments are selected by assignment, not territory.'),
+  "period": zod.string(),
+  "period_key": zod.string()
+}),
+  "portfolio": zod.object({
+  "assigned_partner_count": zod.number().int().describe('Confirmed partners assigned to this PAM -- status active or dormant. Never includes needs_review (unconfirmed) or closed (historical).'),
+  "active_partner_count": zod.number().int(),
+  "counts_by_status": zod.object({
+  "active": zod.number().int(),
+  "dormant": zod.number().int(),
+  "closed": zod.number().int()
+}).describe('Confirmed-relationship lifecycle counts for relationships assigned to this PAM. closed is historical and is not part of assigned_partner_count.'),
+  "needs_review_count": zod.number().int().describe('Assigned relationships in needs_review -- opportunity\/CRM evidence awaiting human confirmation, NOT confirmed partnerships. Review context only; never part of any partner count.'),
+  "needs_attention_count": zod.number().int(),
+  "needs_attention": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_name": zod.string(),
+  "status": zod.string(),
+  "last_interaction_at": zod.string().nullable(),
+  "next_action": zod.string().nullable()
+})).describe('Bounded top-N of assigned relationships needing attention (canonical isNeedingAttention, which includes every needs_review relationship for review), oldest\/never-contacted first -- never a full-table dump.'),
+  "assigned_partners": zod.array(zod.object({
+  "relationship_id": zod.string(),
+  "company_name": zod.string(),
+  "status": zod.string()
+})).describe('Bounded top-N confirmed (active or dormant) partners assigned to this PAM, alphabetical by company name -- never a full-table dump.'),
+  "recent_activity": zod.array(zod.object({
+  "company_name": zod.string(),
+  "activity_type": zod.string(),
+  "note": zod.string(),
+  "occurred_at": zod.string()
+})).describe('Bounded most-recent-N partner_activities entries across relationships assigned to this PAM.')
+}).describe('Relationships assigned to this PAM (partner_relationships.assigned_user_id). Territory ownership never implies assignment -- unassigned or reassigned relationships in the PAM\'s territories are excluded.'),
+  "performance": zod.array(zod.object({
+  "territory_id": zod.string().describe('The owned territory this target\/actual row belongs to -- targets are per (PAM, territory).'),
+  "territory_name": zod.string(),
+  "metric_key": zod.string(),
+  "metric_label": zod.string(),
+  "target": zod.number().nullable(),
+  "actual": zod.number().nullable(),
+  "progress_percent": zod.number().nullable(),
+  "status": zod.enum(['ahead', 'behind', 'no_target']).describe('no_target means no target has been configured for this metric\/period -- never a fabricated attainment figure.')
+})),
+  "druid_recorded_opportunities": zod.object({
+  "source": zod.enum(['druid_partner_opportunities']).describe('Provenance of every figure in this block -- DRUID\'s own partner_opportunities table only.'),
+  "hubspot_pipeline": zod.enum(['not_included']).describe('HubSpot deals are not included in this block. Treat the complete CRM pipeline as unknown, never as zero or as equal to these figures.'),
+  "open_count": zod.number().int(),
+  "open_value_usd": zod.number(),
+  "sourced_open_value_usd": zod.number(),
+  "influenced_open_value_usd": zod.number(),
+  "won_count": zod.number().int(),
+  "won_value_usd": zod.number(),
+  "lost_count": zod.number().int(),
+  "lost_value_usd": zod.number(),
+  "largest_open": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "name": zod.string(),
+  "company_name": zod.string(),
+  "customer_name": zod.string().nullable(),
+  "deal_value_usd": zod.number().describe('deal_value converted to USD via the same live FX resolution the rest of the app\'s pipeline totals use (services\/fx.ts) -- never a second conversion path.'),
+  "currency": zod.string(),
+  "status": zod.string(),
+  "attribution_type": zod.string(),
+  "opportunity_date": zod.string(),
+  "expected_close_date": zod.string().nullable()
+})).describe('Bounded top-N open opportunities, largest USD value first.'),
+  "upcoming_expected_closes": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "name": zod.string(),
+  "company_name": zod.string(),
+  "customer_name": zod.string().nullable(),
+  "deal_value_usd": zod.number().describe('deal_value converted to USD via the same live FX resolution the rest of the app\'s pipeline totals use (services\/fx.ts) -- never a second conversion path.'),
+  "currency": zod.string(),
+  "status": zod.string(),
+  "attribution_type": zod.string(),
+  "opportunity_date": zod.string(),
+  "expected_close_date": zod.string().nullable()
+})).describe('Bounded top-N open opportunities with a future expected_close_date, soonest first.'),
+  "past_due_open": zod.array(zod.object({
+  "opportunity_id": zod.string(),
+  "name": zod.string(),
+  "company_name": zod.string(),
+  "customer_name": zod.string().nullable(),
+  "deal_value_usd": zod.number().describe('deal_value converted to USD via the same live FX resolution the rest of the app\'s pipeline totals use (services\/fx.ts) -- never a second conversion path.'),
+  "currency": zod.string(),
+  "status": zod.string(),
+  "attribution_type": zod.string(),
+  "opportunity_date": zod.string(),
+  "expected_close_date": zod.string().nullable()
+})).describe('Bounded top-N open opportunities whose expected_close_date has already passed, most-overdue first. A plain date fact, never a fabricated \"stalled\" verdict -- see the endpoint\'s `availability` notes.')
+}).describe('Opportunities recorded in DRUID (partner_opportunities assigned to this PAM) -- NOT the complete HubSpot pipeline. DRUID-recorded opportunities can be a subset of the PAM\'s HubSpot deals, and HubSpot is never read by this endpoint, so the full CRM pipeline is unknown here (not zero).'),
+  "recruitment": zod.object({
+  "active_count": zod.number().int(),
+  "stalled_count": zod.number().int(),
+  "priority_recruitments": zod.array(zod.object({
+  "recruitment_id": zod.string(),
+  "company_name": zod.string(),
+  "stage": zod.string(),
+  "days_in_stage": zod.number().int(),
+  "is_stalled": zod.boolean(),
+  "next_step": zod.string().nullable(),
+  "follow_up_date": zod.string().nullable()
+})).describe('Bounded top-N, stalled-first then longest-in-stage first -- never a full-table dump.')
+}).describe('Recruitments assigned to this PAM (partner_recruitments.assigned_user_id). A recruitment in the PAM\'s territory assigned to someone else, or to no one, is not theirs.'),
+  "activity": zod.object({
+  "recent": zod.array(zod.object({
+  "company_name": zod.string(),
+  "activity_type": zod.string(),
+  "note": zod.string(),
+  "occurred_at": zod.string()
+}))
+}),
+  "availability": zod.array(zod.string()).describe('Plain-language notes about what could not be computed from canonical data (no owned territory, no target configured, needs_review relationships awaiting confirmation, HubSpot pipeline not included, no canonical stalled-opportunity rule, etc.) -- never silently omitted.')
+})
+
+
+/**
+ * @summary Read-only canonical PAM roster -- every active PAM's identity and every territory they own (possibly none). Sourced only from canonical DRUID users/territories data (role=pam, active=true); no hardcoded names. Exists so Aniri always knows who the PAMs are and which territories they own without needing a name up front (contrast get_pam_overview, which requires one) -- get_channel_snapshot carries no PAM identity at all. Deliberately identity-only -- no performance/portfolio/pipeline computation belongs here, see get_pam_overview for that once a specific PAM is known. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes.
+ */
+export const GetPamDirectoryResponseItem = zod.object({
+  "pam_user_id": zod.string(),
+  "pam_name": zod.string(),
+  "pam_email": zod.string(),
+  "territories": zod.array(zod.object({
+  "territory_id": zod.string(),
+  "territory_name": zod.string(),
+  "countries": zod.array(zod.string())
+}).describe('One territory canonically owned by a PAM (territories.owner_user_id). Shared by get_pam_overview and get_pam_directory so both represent ownership identically.')).describe('Every territory this PAM owns (territories.owner_user_id), ordered by name then id -- never just the first. Empty (never invented) when the PAM owns none.'),
+  "active": zod.boolean()
+})
+export const GetPamDirectoryResponse = zod.array(GetPamDirectoryResponseItem)
+
+
+/**
  * @summary List configured integration connections (HubSpot, web search, web reader, AI) with live status
  */
 export const ListConnectionsResponseItem = zod.object({
@@ -3645,7 +3796,9 @@ export const UpdateTerritoryResponse = zod.object({
 
 
 /**
- * @summary List existing partners (accepted/pushed-to-HubSpot prospects)
+ * Deprecated. Partners are defined only by Portfolio (partner_relationships); use GET /portfolio. This legacy view returns accepted/pushed_to_hubspot prospects ONLY when a CONFIRMED canonical relationship exists for the prospect's (company, territory), i.e. one whose status is active, dormant, or closed. A needs_review relationship (unconfirmed, e.g. inferred from opportunity evidence) does NOT qualify. Prospect status alone never makes a partner.
+ * @deprecated
+ * @summary Deprecated legacy view: prospects that have a CONFIRMED canonical Portfolio relationship (active, dormant, or closed; needs_review does not qualify)
  */
 export const ListPartnersQueryParams = zod.object({
   "territory": zod.coerce.string().nullish()
@@ -3689,7 +3842,8 @@ export const ListPartnersResponse = zod.array(ListPartnersResponseItem)
 
 
 /**
- * @summary Get a partner research briefing
+ * @deprecated
+ * @summary Deprecated: get a partner research briefing (requires a CONFIRMED canonical Portfolio relationship: active, dormant, or closed; needs_review does not qualify)
  */
 export const GetPartnerParams = zod.object({
   "id": zod.coerce.string()
@@ -3769,7 +3923,8 @@ export const GetPartnerResponse = zod.object({
 
 
 /**
- * @summary Update what help a PAM needs to move a partner forward
+ * @deprecated
+ * @summary Deprecated: update what help a PAM needs to move a partner forward (requires a CONFIRMED canonical Portfolio relationship: active, dormant, or closed; needs_review does not qualify)
  */
 export const UpdatePartnerHelpNeededParams = zod.object({
   "id": zod.coerce.string()

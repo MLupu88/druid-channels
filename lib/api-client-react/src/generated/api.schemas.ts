@@ -2992,6 +2992,217 @@ export interface ChannelChangeFeedItem {
   context: ChannelChangeFeedItemContext;
 }
 
+/**
+ * One territory canonically owned by a PAM (territories.owner_user_id). Shared by get_pam_overview and get_pam_directory so both represent ownership identically.
+ */
+export interface PamTerritory {
+  territory_id: string;
+  territory_name: string;
+  countries: string[];
+}
+
+export interface PamDirectoryEntry {
+  pam_user_id: string;
+  pam_name: string;
+  pam_email: string;
+  /** Every territory this PAM owns (territories.owner_user_id), ordered by name then id -- never just the first. Empty (never invented) when the PAM owns none. */
+  territories: PamTerritory[];
+  active: boolean;
+}
+
+export interface PamOverviewAmbiguousCandidate {
+  id: string;
+  name: string;
+}
+
+export interface PamOverviewIdentity {
+  pam_user_id: string;
+  pam_name: string;
+  pam_email: string;
+  active: boolean;
+  /** Every territory this PAM owns (territories.owner_user_id), ordered by name then id -- never just the first. Empty (never invented) when the PAM owns none; performance targets are then empty, see `availability`. Territory is context only -- Portfolio relationships and recruitments are selected by assignment, not territory. */
+  territories: PamTerritory[];
+  period: string;
+  period_key: string;
+}
+
+/**
+ * no_target means no target has been configured for this metric/period -- never a fabricated attainment figure.
+ */
+export type PamOverviewPerformanceRowStatus = typeof PamOverviewPerformanceRowStatus[keyof typeof PamOverviewPerformanceRowStatus];
+
+
+export const PamOverviewPerformanceRowStatus = {
+  ahead: 'ahead',
+  behind: 'behind',
+  no_target: 'no_target',
+} as const;
+
+export interface PamOverviewPerformanceRow {
+  /** The owned territory this target/actual row belongs to -- targets are per (PAM, territory). */
+  territory_id: string;
+  territory_name: string;
+  metric_key: string;
+  metric_label: string;
+  /** @nullable */
+  target: number | null;
+  /** @nullable */
+  actual: number | null;
+  /** @nullable */
+  progress_percent: number | null;
+  /** no_target means no target has been configured for this metric/period -- never a fabricated attainment figure. */
+  status: PamOverviewPerformanceRowStatus;
+}
+
+export interface PamPortfolioAttentionItem {
+  relationship_id: string;
+  company_name: string;
+  status: string;
+  /** @nullable */
+  last_interaction_at: string | null;
+  /** @nullable */
+  next_action: string | null;
+}
+
+export interface PamPortfolioPartnerItem {
+  relationship_id: string;
+  company_name: string;
+  status: string;
+}
+
+export interface PamPortfolioActivityItem {
+  company_name: string;
+  activity_type: string;
+  note: string;
+  occurred_at: string;
+}
+
+/**
+ * Confirmed-relationship lifecycle counts for relationships assigned to this PAM. closed is historical and is not part of assigned_partner_count.
+ */
+export type PamOverviewPortfolioCountsByStatus = {
+  active: number;
+  dormant: number;
+  closed: number;
+};
+
+/**
+ * Relationships assigned to this PAM (partner_relationships.assigned_user_id). Territory ownership never implies assignment -- unassigned or reassigned relationships in the PAM's territories are excluded.
+ */
+export interface PamOverviewPortfolio {
+  /** Confirmed partners assigned to this PAM -- status active or dormant. Never includes needs_review (unconfirmed) or closed (historical). */
+  assigned_partner_count: number;
+  active_partner_count: number;
+  /** Confirmed-relationship lifecycle counts for relationships assigned to this PAM. closed is historical and is not part of assigned_partner_count. */
+  counts_by_status: PamOverviewPortfolioCountsByStatus;
+  /** Assigned relationships in needs_review -- opportunity/CRM evidence awaiting human confirmation, NOT confirmed partnerships. Review context only; never part of any partner count. */
+  needs_review_count: number;
+  needs_attention_count: number;
+  /** Bounded top-N of assigned relationships needing attention (canonical isNeedingAttention, which includes every needs_review relationship for review), oldest/never-contacted first -- never a full-table dump. */
+  needs_attention: PamPortfolioAttentionItem[];
+  /** Bounded top-N confirmed (active or dormant) partners assigned to this PAM, alphabetical by company name -- never a full-table dump. */
+  assigned_partners: PamPortfolioPartnerItem[];
+  /** Bounded most-recent-N partner_activities entries across relationships assigned to this PAM. */
+  recent_activity: PamPortfolioActivityItem[];
+}
+
+export interface PamOpportunityItem {
+  opportunity_id: string;
+  name: string;
+  company_name: string;
+  /** @nullable */
+  customer_name: string | null;
+  /** deal_value converted to USD via the same live FX resolution the rest of the app's pipeline totals use (services/fx.ts) -- never a second conversion path. */
+  deal_value_usd: number;
+  currency: string;
+  status: string;
+  attribution_type: string;
+  opportunity_date: string;
+  /** @nullable */
+  expected_close_date: string | null;
+}
+
+/**
+ * Provenance of every figure in this block -- DRUID's own partner_opportunities table only.
+ */
+export type PamOverviewDruidRecordedOpportunitiesSource = typeof PamOverviewDruidRecordedOpportunitiesSource[keyof typeof PamOverviewDruidRecordedOpportunitiesSource];
+
+
+export const PamOverviewDruidRecordedOpportunitiesSource = {
+  druid_partner_opportunities: 'druid_partner_opportunities',
+} as const;
+
+/**
+ * HubSpot deals are not included in this block. Treat the complete CRM pipeline as unknown, never as zero or as equal to these figures.
+ */
+export type PamOverviewDruidRecordedOpportunitiesHubspotPipeline = typeof PamOverviewDruidRecordedOpportunitiesHubspotPipeline[keyof typeof PamOverviewDruidRecordedOpportunitiesHubspotPipeline];
+
+
+export const PamOverviewDruidRecordedOpportunitiesHubspotPipeline = {
+  not_included: 'not_included',
+} as const;
+
+/**
+ * Opportunities recorded in DRUID (partner_opportunities assigned to this PAM) -- NOT the complete HubSpot pipeline. DRUID-recorded opportunities can be a subset of the PAM's HubSpot deals, and HubSpot is never read by this endpoint, so the full CRM pipeline is unknown here (not zero).
+ */
+export interface PamOverviewDruidRecordedOpportunities {
+  /** Provenance of every figure in this block -- DRUID's own partner_opportunities table only. */
+  source: PamOverviewDruidRecordedOpportunitiesSource;
+  /** HubSpot deals are not included in this block. Treat the complete CRM pipeline as unknown, never as zero or as equal to these figures. */
+  hubspot_pipeline: PamOverviewDruidRecordedOpportunitiesHubspotPipeline;
+  open_count: number;
+  open_value_usd: number;
+  sourced_open_value_usd: number;
+  influenced_open_value_usd: number;
+  won_count: number;
+  won_value_usd: number;
+  lost_count: number;
+  lost_value_usd: number;
+  /** Bounded top-N open opportunities, largest USD value first. */
+  largest_open: PamOpportunityItem[];
+  /** Bounded top-N open opportunities with a future expected_close_date, soonest first. */
+  upcoming_expected_closes: PamOpportunityItem[];
+  /** Bounded top-N open opportunities whose expected_close_date has already passed, most-overdue first. A plain date fact, never a fabricated "stalled" verdict -- see the endpoint's `availability` notes. */
+  past_due_open: PamOpportunityItem[];
+}
+
+export interface PamOverviewRecruitmentItem {
+  recruitment_id: string;
+  company_name: string;
+  stage: string;
+  days_in_stage: number;
+  is_stalled: boolean;
+  /** @nullable */
+  next_step: string | null;
+  /** @nullable */
+  follow_up_date: string | null;
+}
+
+/**
+ * Recruitments assigned to this PAM (partner_recruitments.assigned_user_id). A recruitment in the PAM's territory assigned to someone else, or to no one, is not theirs.
+ */
+export interface PamOverviewRecruitment {
+  active_count: number;
+  stalled_count: number;
+  /** Bounded top-N, stalled-first then longest-in-stage first -- never a full-table dump. */
+  priority_recruitments: PamOverviewRecruitmentItem[];
+}
+
+export interface PamOverviewActivity {
+  recent: PamPortfolioActivityItem[];
+}
+
+export interface PamOverview {
+  identity: PamOverviewIdentity;
+  portfolio: PamOverviewPortfolio;
+  performance: PamOverviewPerformanceRow[];
+  druid_recorded_opportunities: PamOverviewDruidRecordedOpportunities;
+  recruitment: PamOverviewRecruitment;
+  activity: PamOverviewActivity;
+  /** Plain-language notes about what could not be computed from canonical data (no owned territory, no target configured, needs_review relationships awaiting confirmation, HubSpot pipeline not included, no canonical stalled-opportunity rule, etc.) -- never silently omitted. */
+  availability: string[];
+}
+
 export interface WeeklySourcedInfluencedAmount {
   sourced: number;
   influenced: number;
@@ -3749,6 +3960,18 @@ since?: string | null;
  * @nullable
  */
 limit?: number | null;
+};
+
+export type GetPamOverviewParams = {
+/**
+ * Free-text PAM reference, e.g. "Denny", "denny", or "Denny Morais". Case-insensitive.
+ */
+pam_name: string;
+/**
+ * Composite period key, e.g. "2026-q3" or "2026-ytd". Defaults to the current quarter when omitted.
+ * @nullable
+ */
+period?: string | null;
 };
 
 export type ListManualMetricValuesParams = {

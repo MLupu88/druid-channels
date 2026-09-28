@@ -1462,6 +1462,56 @@ paths:
         "401":
           description: Missing or invalid Authorization Bearer service token, or the Channel Chief API is not configured
 
+  /channel-chief/pam-overview:
+    get:
+      operationId: getPamOverview
+      tags: [channel-chief]
+      summary: Bounded, read-only overview of ONE named PAM -- identity (with every owned territory), portfolio (relationships assigned to the PAM via partner_relationships.assigned_user_id), per-territory performance, DRUID-recorded opportunities (not the complete HubSpot pipeline; HubSpot is never read by this endpoint), recruitment (assigned to the PAM via partner_recruitments.assigned_user_id), and recent activity -- assembled entirely from canonical DRUID data via the same service functions the rest of the app already uses (never a second scoring/performance engine). pam_name is resolved case-insensitively against canonical PAM users (exact full name, email, first name, or substring, most-specific match wins); ambiguous or unknown names are reported explicitly rather than guessed. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes -- never normal UI session auth.
+      parameters:
+        - name: pam_name
+          in: query
+          required: true
+          description: Free-text PAM reference, e.g. "Denny", "denny", or "Denny Morais". Case-insensitive.
+          schema:
+            type: string
+        - name: period
+          in: query
+          description: Composite period key, e.g. "2026-q3" or "2026-ytd". Defaults to the current quarter when omitted.
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Bounded PAM overview (fixed-size top-N lists, never a full-table dump). Fields the app cannot compute are represented as empty/null and named explicitly in `availability`, never invented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PamOverview"
+        "400":
+          description: Missing pam_name or invalid period
+        "401":
+          description: Missing or invalid Authorization Bearer service token, or the Channel Chief API is not configured
+        "404":
+          description: No PAM matches pam_name
+        "409":
+          description: Multiple PAMs match pam_name -- a bounded `candidates` list is returned instead of guessing
+
+  /channel-chief/pam-directory:
+    get:
+      operationId: getPamDirectory
+      tags: [channel-chief]
+      summary: Read-only canonical PAM roster -- every active PAM's identity and every territory they own (possibly none). Sourced only from canonical DRUID users/territories data (role=pam, active=true); no hardcoded names. Exists so Aniri always knows who the PAMs are and which territories they own without needing a name up front (contrast get_pam_overview, which requires one) -- get_channel_snapshot carries no PAM identity at all. Deliberately identity-only -- no performance/portfolio/pipeline computation belongs here, see get_pam_overview for that once a specific PAM is known. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes.
+      responses:
+        "200":
+          description: Every active PAM, deterministically ordered by name then id. `territories` lists every owned territory (name then id order) and is empty (never invented) for a PAM who does not yet canonically own one.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PamDirectoryEntry"
+        "401":
+          description: Missing or invalid Authorization Bearer service token, or the Channel Chief API is not configured
+
   /connections:
     get:
       operationId: listConnections
@@ -6263,6 +6313,314 @@ components:
           type: ["object", "null"]
           additionalProperties: true
           description: Small, display-oriented names (e.g. company_name, territory_name, pam_name) -- enough to write a useful leadership notification without a second lookup.
+
+    # ---- Phase 12: Aniri PAM-level intelligence (get_pam_overview) -------
+
+    PamTerritory:
+      type: object
+      description: One territory canonically owned by a PAM (territories.owner_user_id). Shared by get_pam_overview and get_pam_directory so both represent ownership identically.
+      required: [territory_id, territory_name, countries]
+      properties:
+        territory_id:
+          type: string
+        territory_name:
+          type: string
+        countries:
+          type: array
+          items:
+            type: string
+
+    PamDirectoryEntry:
+      type: object
+      required: [pam_user_id, pam_name, pam_email, territories, active]
+      properties:
+        pam_user_id:
+          type: string
+        pam_name:
+          type: string
+        pam_email:
+          type: string
+        territories:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamTerritory"
+          description: Every territory this PAM owns (territories.owner_user_id), ordered by name then id -- never just the first. Empty (never invented) when the PAM owns none.
+        active:
+          type: boolean
+
+    PamOverviewAmbiguousCandidate:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    PamOverviewIdentity:
+      type: object
+      required: [pam_user_id, pam_name, pam_email, active, territories, period, period_key]
+      properties:
+        pam_user_id:
+          type: string
+        pam_name:
+          type: string
+        pam_email:
+          type: string
+        active:
+          type: boolean
+        territories:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamTerritory"
+          description: Every territory this PAM owns (territories.owner_user_id), ordered by name then id -- never just the first. Empty (never invented) when the PAM owns none; performance targets are then empty, see `availability`. Territory is context only -- Portfolio relationships and recruitments are selected by assignment, not territory.
+        period:
+          type: string
+        period_key:
+          type: string
+
+    PamOverviewPerformanceRow:
+      type: object
+      required: [territory_id, territory_name, metric_key, metric_label, target, actual, progress_percent, status]
+      properties:
+        territory_id:
+          type: string
+          description: The owned territory this target/actual row belongs to -- targets are per (PAM, territory).
+        territory_name:
+          type: string
+        metric_key:
+          type: string
+        metric_label:
+          type: string
+        target:
+          type: ["number", "null"]
+        actual:
+          type: ["number", "null"]
+        progress_percent:
+          type: ["number", "null"]
+        status:
+          type: string
+          enum: [ahead, behind, no_target]
+          description: no_target means no target has been configured for this metric/period -- never a fabricated attainment figure.
+
+    PamPortfolioAttentionItem:
+      type: object
+      required: [relationship_id, company_name, status, last_interaction_at, next_action]
+      properties:
+        relationship_id:
+          type: string
+        company_name:
+          type: string
+        status:
+          type: string
+        last_interaction_at:
+          type: ["string", "null"]
+        next_action:
+          type: ["string", "null"]
+
+    PamPortfolioPartnerItem:
+      type: object
+      required: [relationship_id, company_name, status]
+      properties:
+        relationship_id:
+          type: string
+        company_name:
+          type: string
+        status:
+          type: string
+
+    PamPortfolioActivityItem:
+      type: object
+      required: [company_name, activity_type, note, occurred_at]
+      properties:
+        company_name:
+          type: string
+        activity_type:
+          type: string
+        note:
+          type: string
+        occurred_at:
+          type: string
+
+    PamOverviewPortfolio:
+      type: object
+      description: Relationships assigned to this PAM (partner_relationships.assigned_user_id). Territory ownership never implies assignment -- unassigned or reassigned relationships in the PAM's territories are excluded.
+      required: [assigned_partner_count, active_partner_count, counts_by_status, needs_review_count, needs_attention_count, needs_attention, assigned_partners, recent_activity]
+      properties:
+        assigned_partner_count:
+          type: integer
+          description: Confirmed partners assigned to this PAM -- status active or dormant. Never includes needs_review (unconfirmed) or closed (historical).
+        active_partner_count:
+          type: integer
+        counts_by_status:
+          type: object
+          description: Confirmed-relationship lifecycle counts for relationships assigned to this PAM. closed is historical and is not part of assigned_partner_count.
+          required: [active, dormant, closed]
+          properties:
+            active:
+              type: integer
+            dormant:
+              type: integer
+            closed:
+              type: integer
+        needs_review_count:
+          type: integer
+          description: Assigned relationships in needs_review -- opportunity/CRM evidence awaiting human confirmation, NOT confirmed partnerships. Review context only; never part of any partner count.
+        needs_attention_count:
+          type: integer
+        needs_attention:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamPortfolioAttentionItem"
+          description: Bounded top-N of assigned relationships needing attention (canonical isNeedingAttention, which includes every needs_review relationship for review), oldest/never-contacted first -- never a full-table dump.
+        assigned_partners:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamPortfolioPartnerItem"
+          description: Bounded top-N confirmed (active or dormant) partners assigned to this PAM, alphabetical by company name -- never a full-table dump.
+        recent_activity:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamPortfolioActivityItem"
+          description: Bounded most-recent-N partner_activities entries across relationships assigned to this PAM.
+
+    PamOpportunityItem:
+      type: object
+      required: [opportunity_id, name, company_name, customer_name, deal_value_usd, currency, status, attribution_type, opportunity_date, expected_close_date]
+      properties:
+        opportunity_id:
+          type: string
+        name:
+          type: string
+        company_name:
+          type: string
+        customer_name:
+          type: ["string", "null"]
+        deal_value_usd:
+          type: number
+          description: deal_value converted to USD via the same live FX resolution the rest of the app's pipeline totals use (services/fx.ts) -- never a second conversion path.
+        currency:
+          type: string
+        status:
+          type: string
+        attribution_type:
+          type: string
+        opportunity_date:
+          type: string
+        expected_close_date:
+          type: ["string", "null"]
+
+    PamOverviewDruidRecordedOpportunities:
+      type: object
+      description: Opportunities recorded in DRUID (partner_opportunities assigned to this PAM) -- NOT the complete HubSpot pipeline. DRUID-recorded opportunities can be a subset of the PAM's HubSpot deals, and HubSpot is never read by this endpoint, so the full CRM pipeline is unknown here (not zero).
+      required: [source, hubspot_pipeline, open_count, open_value_usd, sourced_open_value_usd, influenced_open_value_usd, won_count, won_value_usd, lost_count, lost_value_usd, largest_open, upcoming_expected_closes, past_due_open]
+      properties:
+        source:
+          type: string
+          enum: [druid_partner_opportunities]
+          description: Provenance of every figure in this block -- DRUID's own partner_opportunities table only.
+        hubspot_pipeline:
+          type: string
+          enum: [not_included]
+          description: HubSpot deals are not included in this block. Treat the complete CRM pipeline as unknown, never as zero or as equal to these figures.
+        open_count:
+          type: integer
+        open_value_usd:
+          type: number
+        sourced_open_value_usd:
+          type: number
+        influenced_open_value_usd:
+          type: number
+        won_count:
+          type: integer
+        won_value_usd:
+          type: number
+        lost_count:
+          type: integer
+        lost_value_usd:
+          type: number
+        largest_open:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamOpportunityItem"
+          description: Bounded top-N open opportunities, largest USD value first.
+        upcoming_expected_closes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamOpportunityItem"
+          description: Bounded top-N open opportunities with a future expected_close_date, soonest first.
+        past_due_open:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamOpportunityItem"
+          description: Bounded top-N open opportunities whose expected_close_date has already passed, most-overdue first. A plain date fact, never a fabricated "stalled" verdict -- see the endpoint's `availability` notes.
+
+    PamOverviewRecruitmentItem:
+      type: object
+      required: [recruitment_id, company_name, stage, days_in_stage, is_stalled, next_step, follow_up_date]
+      properties:
+        recruitment_id:
+          type: string
+        company_name:
+          type: string
+        stage:
+          type: string
+        days_in_stage:
+          type: integer
+        is_stalled:
+          type: boolean
+        next_step:
+          type: ["string", "null"]
+        follow_up_date:
+          type: ["string", "null"]
+
+    PamOverviewRecruitment:
+      type: object
+      description: Recruitments assigned to this PAM (partner_recruitments.assigned_user_id). A recruitment in the PAM's territory assigned to someone else, or to no one, is not theirs.
+      required: [active_count, stalled_count, priority_recruitments]
+      properties:
+        active_count:
+          type: integer
+        stalled_count:
+          type: integer
+        priority_recruitments:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamOverviewRecruitmentItem"
+          description: Bounded top-N, stalled-first then longest-in-stage first -- never a full-table dump.
+
+    PamOverviewActivity:
+      type: object
+      required: [recent]
+      properties:
+        recent:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamPortfolioActivityItem"
+
+    PamOverview:
+      type: object
+      required: [identity, portfolio, performance, druid_recorded_opportunities, recruitment, activity, availability]
+      properties:
+        identity:
+          $ref: "#/components/schemas/PamOverviewIdentity"
+        portfolio:
+          $ref: "#/components/schemas/PamOverviewPortfolio"
+        performance:
+          type: array
+          items:
+            $ref: "#/components/schemas/PamOverviewPerformanceRow"
+        druid_recorded_opportunities:
+          $ref: "#/components/schemas/PamOverviewDruidRecordedOpportunities"
+        recruitment:
+          $ref: "#/components/schemas/PamOverviewRecruitment"
+        activity:
+          $ref: "#/components/schemas/PamOverviewActivity"
+        availability:
+          type: array
+          items:
+            type: string
+          description: Plain-language notes about what could not be computed from canonical data (no owned territory, no target configured, needs_review relationships awaiting confirmation, HubSpot pipeline not included, no canonical stalled-opportunity rule, etc.) -- never silently omitted.
 
     # ---- Phase 7: weekly PAM reporting -----------------------------------
     # Mirrors lib/db/src/reporting/weeklyPamReportContract.ts's

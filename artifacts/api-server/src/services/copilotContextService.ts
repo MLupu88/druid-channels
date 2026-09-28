@@ -141,6 +141,16 @@ export async function getPriorityRecruitments(territoryId: string, limit = TOP_N
     .innerJoin(companiesTable, eq(partnerRecruitmentsTable.companyId, companiesTable.id))
     .where(eq(partnerRecruitmentsTable.territoryId, territoryId));
 
+  return toPriorityRecruitmentItems(rows, limit);
+}
+
+// The canonical active-stage filter + stalled-first priority ordering over
+// recruitment rows the caller already selected (by territory above, or by
+// partner_recruitments.assigned_user_id in pamOverviewService).
+export function toPriorityRecruitmentItems(
+  rows: Array<{ recruitment: typeof partnerRecruitmentsTable.$inferSelect; company: Pick<Company, "name"> }>,
+  limit = TOP_N,
+): RecruitmentAttentionItem[] {
   const active = rows
     .filter((r) => isActiveStage(r.recruitment.stage as RecruitmentStage))
     .map((r) => {
@@ -173,6 +183,16 @@ export async function getPartnersNeedingAttention(territoryId: string, limit = T
     .innerJoin(companiesTable, eq(partnerRelationshipsTable.companyId, companiesTable.id))
     .where(eq(partnerRelationshipsTable.territoryId, territoryId));
 
+  return toPortfolioAttentionItems(rows, limit);
+}
+
+// The canonical isNeedingAttention filter + attention ordering over
+// relationship rows the caller already selected (by territory above, or by
+// partner_relationships.assigned_user_id in pamOverviewService).
+export function toPortfolioAttentionItems(
+  rows: Array<{ relationship: typeof partnerRelationshipsTable.$inferSelect; company: Pick<Company, "name"> }>,
+  limit = TOP_N,
+): PortfolioAttentionItem[] {
   const attention = rows
     .filter((r) => isNeedingAttention(r.relationship))
     .map((r) => ({

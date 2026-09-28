@@ -67,6 +67,7 @@ import type {
   GetKpiDetailsParams,
   GetManagementReportSummaryParams,
   GetMyWeeklyReportParams,
+  GetPamOverviewParams,
   GetPamWeeklyReportParams,
   GetPortfolioSummaryParams,
   GetTerritoryPotentialParams,
@@ -104,6 +105,8 @@ import type {
   OpportunityInput,
   PamCopilotChatBody,
   PamCopilotChatResponse,
+  PamDirectoryEntry,
+  PamOverview,
   Partner,
   PartnerActivityItem,
   PartnerDetail,
@@ -4378,6 +4381,167 @@ export function useGetChannelChiefChanges<TData = Awaited<ReturnType<typeof getC
 
 
 
+export const getGetPamOverviewUrl = (params: GetPamOverviewParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/channel-chief/pam-overview?${stringifiedParams}` : `/api/channel-chief/pam-overview`
+}
+
+/**
+ * @summary Bounded, read-only overview of ONE named PAM -- identity (with every owned territory), portfolio (relationships assigned to the PAM via partner_relationships.assigned_user_id), per-territory performance, DRUID-recorded opportunities (not the complete HubSpot pipeline; HubSpot is never read by this endpoint), recruitment (assigned to the PAM via partner_recruitments.assigned_user_id), and recent activity -- assembled entirely from canonical DRUID data via the same service functions the rest of the app already uses (never a second scoring/performance engine). pam_name is resolved case-insensitively against canonical PAM users (exact full name, email, first name, or substring, most-specific match wins); ambiguous or unknown names are reported explicitly rather than guessed. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes -- never normal UI session auth.
+ */
+export const getPamOverview = async (params: GetPamOverviewParams, options?: Parameters<typeof customFetch>[1]): Promise<PamOverview> => {
+
+  return customFetch<PamOverview>(getGetPamOverviewUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPamOverviewQueryKey = (params?: GetPamOverviewParams,) => {
+    return [
+    `/api/channel-chief/pam-overview`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPamOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getPamOverview>>, TError = ErrorType<void>>(params: GetPamOverviewParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPamOverviewQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPamOverview>>> = ({ signal }) => getPamOverview(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPamOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPamOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getPamOverview>>>
+export type GetPamOverviewQueryError = ErrorType<void>
+
+
+/**
+ * @summary Bounded, read-only overview of ONE named PAM -- identity (with every owned territory), portfolio (relationships assigned to the PAM via partner_relationships.assigned_user_id), per-territory performance, DRUID-recorded opportunities (not the complete HubSpot pipeline; HubSpot is never read by this endpoint), recruitment (assigned to the PAM via partner_recruitments.assigned_user_id), and recent activity -- assembled entirely from canonical DRUID data via the same service functions the rest of the app already uses (never a second scoring/performance engine). pam_name is resolved case-insensitively against canonical PAM users (exact full name, email, first name, or substring, most-specific match wins); ambiguous or unknown names are reported explicitly rather than guessed. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes -- never normal UI session auth.
+ */
+
+export function useGetPamOverview<TData = Awaited<ReturnType<typeof getPamOverview>>, TError = ErrorType<void>>(
+ params: GetPamOverviewParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPamOverviewQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPamDirectoryUrl = () => {
+
+
+
+
+  return `/api/channel-chief/pam-directory`
+}
+
+/**
+ * @summary Read-only canonical PAM roster -- every active PAM's identity and every territory they own (possibly none). Sourced only from canonical DRUID users/territories data (role=pam, active=true); no hardcoded names. Exists so Aniri always knows who the PAMs are and which territories they own without needing a name up front (contrast get_pam_overview, which requires one) -- get_channel_snapshot carries no PAM identity at all. Deliberately identity-only -- no performance/portfolio/pipeline computation belongs here, see get_pam_overview for that once a specific PAM is known. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes.
+ */
+export const getPamDirectory = async ( options?: Parameters<typeof customFetch>[1]): Promise<PamDirectoryEntry[]> => {
+
+  return customFetch<PamDirectoryEntry[]>(getGetPamDirectoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPamDirectoryQueryKey = () => {
+    return [
+    `/api/channel-chief/pam-directory`
+    ] as const;
+    }
+
+
+export const getGetPamDirectoryQueryOptions = <TData = Awaited<ReturnType<typeof getPamDirectory>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamDirectory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPamDirectoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPamDirectory>>> = ({ signal }) => getPamDirectory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPamDirectory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPamDirectoryQueryResult = NonNullable<Awaited<ReturnType<typeof getPamDirectory>>>
+export type GetPamDirectoryQueryError = ErrorType<void>
+
+
+/**
+ * @summary Read-only canonical PAM roster -- every active PAM's identity and every territory they own (possibly none). Sourced only from canonical DRUID users/territories data (role=pam, active=true); no hardcoded names. Exists so Aniri always knows who the PAMs are and which territories they own without needing a name up front (contrast get_pam_overview, which requires one) -- get_channel_snapshot carries no PAM identity at all. Deliberately identity-only -- no performance/portfolio/pipeline computation belongs here, see get_pam_overview for that once a specific PAM is known. Requires Authorization Bearer CHANNEL_CHIEF_API_TOKEN, same dedicated service-token auth path as the other channel-chief routes.
+ */
+
+export function useGetPamDirectory<TData = Awaited<ReturnType<typeof getPamDirectory>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPamDirectory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPamDirectoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getListConnectionsUrl = () => {
 
 
@@ -7766,7 +7930,9 @@ export const getListPartnersUrl = (params?: ListPartnersParams,) => {
 }
 
 /**
- * @summary List existing partners (accepted/pushed-to-HubSpot prospects)
+ * Deprecated. Partners are defined only by Portfolio (partner_relationships); use GET /portfolio. This legacy view returns accepted/pushed_to_hubspot prospects ONLY when a CONFIRMED canonical relationship exists for the prospect's (company, territory), i.e. one whose status is active, dormant, or closed. A needs_review relationship (unconfirmed, e.g. inferred from opportunity evidence) does NOT qualify. Prospect status alone never makes a partner.
+ * @deprecated
+ * @summary Deprecated legacy view: prospects that have a CONFIRMED canonical Portfolio relationship (active, dormant, or closed; needs_review does not qualify)
  */
 export const listPartners = async (params?: ListPartnersParams, options?: Parameters<typeof customFetch>[1]): Promise<Partner[]> => {
 
@@ -7813,7 +7979,8 @@ export type ListPartnersQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List existing partners (accepted/pushed-to-HubSpot prospects)
+ * @deprecated
+ * @summary Deprecated legacy view: prospects that have a CONFIRMED canonical Portfolio relationship (active, dormant, or closed; needs_review does not qualify)
  */
 
 export function useListPartners<TData = Awaited<ReturnType<typeof listPartners>>, TError = ErrorType<unknown>>(
@@ -7843,7 +8010,8 @@ export const getGetPartnerUrl = (id: string,) => {
 }
 
 /**
- * @summary Get a partner research briefing
+ * @deprecated
+ * @summary Deprecated: get a partner research briefing (requires a CONFIRMED canonical Portfolio relationship: active, dormant, or closed; needs_review does not qualify)
  */
 export const getPartner = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PartnerDetail> => {
 
@@ -7890,7 +8058,8 @@ export type GetPartnerQueryError = ErrorType<void>
 
 
 /**
- * @summary Get a partner research briefing
+ * @deprecated
+ * @summary Deprecated: get a partner research briefing (requires a CONFIRMED canonical Portfolio relationship: active, dormant, or closed; needs_review does not qualify)
  */
 
 export function useGetPartner<TData = Awaited<ReturnType<typeof getPartner>>, TError = ErrorType<void>>(
@@ -7920,7 +8089,8 @@ export const getUpdatePartnerHelpNeededUrl = (id: string,) => {
 }
 
 /**
- * @summary Update what help a PAM needs to move a partner forward
+ * @deprecated
+ * @summary Deprecated: update what help a PAM needs to move a partner forward (requires a CONFIRMED canonical Portfolio relationship: active, dormant, or closed; needs_review does not qualify)
  */
 export const updatePartnerHelpNeeded = async (id: string,
     helpNeededInput: HelpNeededInput, options?: Parameters<typeof customFetch>[1]): Promise<Partner> => {
@@ -7970,7 +8140,8 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdatePartnerHelpNeededMutationError = ErrorType<void>
 
     /**
- * @summary Update what help a PAM needs to move a partner forward
+ * @deprecated
+ * @summary Deprecated: update what help a PAM needs to move a partner forward (requires a CONFIRMED canonical Portfolio relationship: active, dormant, or closed; needs_review does not qualify)
  */
 export const useUpdatePartnerHelpNeeded = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePartnerHelpNeeded>>, TError,{id: string;data: BodyType<HelpNeededInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

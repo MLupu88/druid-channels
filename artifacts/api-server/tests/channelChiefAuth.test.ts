@@ -127,6 +127,31 @@ test("routes/channel_chief.ts: GET /channel-chief/changes is registered with req
   assert.ok(!/from ["']\.\.\/middleware\/auth["']/.test(source), "the Channel Chief route file must never import human session auth (middleware/auth.ts)");
 });
 
+// Phase 12: GET /channel-chief/pam-overview must use the exact same
+// machine-to-machine auth as the other two Channel Chief routes -- a PAM-
+// scoped view is still leadership/Aniri-side tooling, never a human login.
+test("routes/channel_chief.ts: GET /channel-chief/pam-overview is registered with requireChannelChiefToken, not human session auth", () => {
+  const source = readFileSync(path.join(SRC_DIR, "routes/channel_chief.ts"), "utf8");
+  const routeMatch = source.match(/router\.get\(\s*["']\/channel-chief\/pam-overview["']\s*,\s*([^,]+),/);
+  assert.ok(routeMatch, "expected to find the GET /channel-chief/pam-overview route registration");
+  assert.equal(routeMatch![1].trim(), "requireChannelChiefToken");
+});
+
+test("services/pamOverviewService.ts never imports a DeepSeek/AI provider module (no LLM call involved -- DRUID owns facts, Aniri interprets)", () => {
+  const source = readFileSync(path.join(SRC_DIR, "services/pamOverviewService.ts"), "utf8");
+  assert.ok(!AI_PROVIDER_PATTERN.test(source), "get_pam_overview's data boundary must never call an AI provider itself.");
+});
+
+test("services/pamOverviewService.ts never touches HubSpot -- DRUID-recorded opportunities only", () => {
+  const source = readFileSync(path.join(SRC_DIR, "services/pamOverviewService.ts"), "utf8");
+  assert.ok(!/from\s+["'][^"']*hubspot[^"']*["']/i.test(source), "get_pam_overview must never import the HubSpot service or deal facts.");
+});
+
+test("services/pamOverviewService.ts is read-only: it never imports db.insert/update/delete", () => {
+  const source = readFileSync(path.join(SRC_DIR, "services/pamOverviewService.ts"), "utf8");
+  assert.ok(!/db\.(insert|update|delete)/.test(source), "get_pam_overview must be strictly read-only, matching the rest of the Channel Chief API.");
+});
+
 // The feed's write side (channelChangeEventsService.ts, targetService.ts,
 // routes/opportunities.ts) also has no notion of a human session -- actors
 // are recorded as plain user ids, and the read side never re-derives

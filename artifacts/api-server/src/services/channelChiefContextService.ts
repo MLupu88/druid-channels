@@ -26,7 +26,7 @@
 // fixed top-N list, regardless of which kind of DB read produced it.
 import { db } from "@workspace/db";
 import { companiesTable, territoriesTable, partnerRecruitmentsTable, partnerRelationshipsTable, prospectsTable, campaignsTable, RECRUITMENT_STAGES } from "@workspace/db";
-import { eq, and, inArray, isNull, desc, asc, count } from "drizzle-orm";
+import { eq, and, or, inArray, isNull, desc, asc, count } from "drizzle-orm";
 import { buildHeadOfChannelsData, type ResolvedTerritory } from "./kpiService";
 import { resolvePeriodRange } from "./kpiRegistry";
 import { computeDaysInStage, isStalled, isActiveStage } from "./partnerRecruitmentService";
@@ -199,11 +199,12 @@ async function getRecruitmentSnapshot(limit = RECRUITMENT_TOP_N): Promise<Channe
 
 // Global/company-wide portfolio view. active_partner_count comes from a
 // cheap DB-level aggregate count. The candidate read for needs-attention is
-// SCOPED (WHERE status="active" AND next_action IS NULL -- both exact,
-// unambiguous preconditions isNeedingAttention itself gates on first) but
-// NOT top-N-bounded: the real business rule (30-day/never-contacted
-// staleness) stays entirely inside isNeedingAttention, called below against
-// every row this scoped query returns -- never reimplemented in SQL.
+// SCOPED (WHERE (status="active" AND next_action IS NULL) OR
+// status="needs_review" -- exact, unambiguous preconditions isNeedingAttention
+// itself gates on first) but NOT top-N-bounded: the real business rule
+// (30-day/never-contacted staleness for active rows; unconditional for
+// needs_review rows) stays entirely inside isNeedingAttention, called below
+// against every row this scoped query returns -- never reimplemented in SQL.
 async function getPortfolioSnapshot(limit = PORTFOLIO_TOP_N): Promise<ChannelChiefSnapshot["portfolio"]> {
   const [activeCountRows, candidates] = await Promise.all([
     db.select({ value: count() }).from(partnerRelationshipsTable).where(eq(partnerRelationshipsTable.status, "active")),
@@ -219,7 +220,12 @@ async function getPortfolioSnapshot(limit = PORTFOLIO_TOP_N): Promise<ChannelChi
       .from(partnerRelationshipsTable)
       .innerJoin(companiesTable, eq(partnerRelationshipsTable.companyId, companiesTable.id))
       .innerJoin(territoriesTable, eq(partnerRelationshipsTable.territoryId, territoriesTable.id))
-      .where(and(eq(partnerRelationshipsTable.status, "active"), isNull(partnerRelationshipsTable.nextAction))),
+      .where(
+        or(
+          and(eq(partnerRelationshipsTable.status, "active"), isNull(partnerRelationshipsTable.nextAction)),
+          eq(partnerRelationshipsTable.status, "needs_review"),
+        ),
+      ),
   ]);
 
   const attention: ChannelChiefPortfolioItem[] = candidates
