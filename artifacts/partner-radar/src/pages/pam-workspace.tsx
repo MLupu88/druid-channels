@@ -140,6 +140,8 @@ export function PamWorkspace({ territoryId, pamName, pamUserId }: { territoryId?
                         <TableCell>
                           {row.status === 'no_target' ? (
                             <Badge variant="outline" className="font-normal text-muted-foreground">No target set for this period</Badge>
+                          ) : row.status === 'unavailable' ? (
+                            <Badge variant="outline" className="font-normal text-muted-foreground">Data unavailable</Badge>
                           ) : (
                             <Badge
                               variant="outline"

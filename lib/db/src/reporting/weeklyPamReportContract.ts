@@ -62,7 +62,10 @@ export interface WeeklyTargetProgress {
   target_value: number | null;
   period_actual_usd: number | null;
   progress_percent: number | null;
-  status: "ahead" | "behind" | "no_target";
+  // "unavailable": a valid target exists but the actual value is
+  // unavailable -- never interpreted as zero. Additive: snapshots frozen
+  // before this value existed remain valid as-is.
+  status: "ahead" | "behind" | "no_target" | "unavailable";
 }
 
 // Per-opportunity backing data behind the aggregate totals in

@@ -7,7 +7,7 @@
  */
 
 /**
- * no_target means no target has been configured for this metric/period -- never a fabricated attainment figure.
+ * no_target means no target has been configured for this metric/period -- never a fabricated attainment figure. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.
  */
 export type PamOverviewPerformanceRowStatus = typeof PamOverviewPerformanceRowStatus[keyof typeof PamOverviewPerformanceRowStatus];
 
@@ -16,4 +16,5 @@ export const PamOverviewPerformanceRowStatus = {
   ahead: 'ahead',
   behind: 'behind',
   no_target: 'no_target',
+  unavailable: 'unavailable',
 } as const;

@@ -2302,7 +2302,7 @@ export const GetPamOverviewResponse = zod.object({
   "target": zod.number().nullable(),
   "actual": zod.number().nullable(),
   "progress_percent": zod.number().nullable(),
-  "status": zod.enum(['ahead', 'behind', 'no_target']).describe('no_target means no target has been configured for this metric\/period -- never a fabricated attainment figure.')
+  "status": zod.enum(['ahead', 'behind', 'no_target', 'unavailable']).describe('no_target means no target has been configured for this metric\/period -- never a fabricated attainment figure. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.')
 })),
   "druid_recorded_opportunities": zod.object({
   "source": zod.enum(['druid_partner_opportunities']).describe('Provenance of every figure in this block -- DRUID\'s own partner_opportunities table only.'),
@@ -3246,7 +3246,7 @@ export const ListTeamTargetsResponseItem = zod.object({
   "target_id": zod.string().nullable().describe('Set when a target row already exists for this PAM\/territory\/metric\/period -- null means \"no target set\", used by Team Targets to offer create-vs-edit.'),
   "actual_value": zod.number().nullable().describe('From the same canonical KPI computation Overview uses -- never recomputed separately.'),
   "progress_percent": zod.number().nullable().describe('Null when there is no target to measure progress against -- never computed as if target were 0.'),
-  "status": zod.enum(['ahead', 'behind', 'no_target'])
+  "status": zod.enum(['ahead', 'behind', 'no_target', 'unavailable']).describe('no_target means no target has been configured for this metric\/period. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.')
 })
 export const ListTeamTargetsResponse = zod.array(ListTeamTargetsResponseItem)
 
@@ -4305,7 +4305,7 @@ export const GetMyWeeklyReportResponse = zod.object({
   "target_value": zod.number().nullable(),
   "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
   "progress_percent": zod.number().nullable(),
-  "status": zod.enum(['ahead', 'behind', 'no_target'])
+  "status": zod.enum(['ahead', 'behind', 'no_target', 'unavailable']).describe('no_target means no target has been configured for this territory\/period. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.')
 }).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
   "contributing_open_pipeline": zod.array(zod.object({
   "opportunity_id": zod.string(),
@@ -4443,7 +4443,7 @@ export const UpsertMyWeeklyCommentaryResponse = zod.object({
   "target_value": zod.number().nullable(),
   "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
   "progress_percent": zod.number().nullable(),
-  "status": zod.enum(['ahead', 'behind', 'no_target'])
+  "status": zod.enum(['ahead', 'behind', 'no_target', 'unavailable']).describe('no_target means no target has been configured for this territory\/period. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.')
 }).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
   "contributing_open_pipeline": zod.array(zod.object({
   "opportunity_id": zod.string(),
@@ -4561,7 +4561,7 @@ export const SubmitMyWeeklyReportResponse = zod.object({
   "target_value": zod.number().nullable(),
   "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
   "progress_percent": zod.number().nullable(),
-  "status": zod.enum(['ahead', 'behind', 'no_target'])
+  "status": zod.enum(['ahead', 'behind', 'no_target', 'unavailable']).describe('no_target means no target has been configured for this territory\/period. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.')
 }).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
   "contributing_open_pipeline": zod.array(zod.object({
   "opportunity_id": zod.string(),
@@ -4683,7 +4683,7 @@ export const GetPamWeeklyReportResponse = zod.object({
   "target_value": zod.number().nullable(),
   "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
   "progress_percent": zod.number().nullable(),
-  "status": zod.enum(['ahead', 'behind', 'no_target'])
+  "status": zod.enum(['ahead', 'behind', 'no_target', 'unavailable']).describe('no_target means no target has been configured for this territory\/period. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.')
 }).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
   "contributing_open_pipeline": zod.array(zod.object({
   "opportunity_id": zod.string(),
@@ -4852,7 +4852,7 @@ export const GetWeeklyTeamReportResponse = zod.object({
   "target_value": zod.number().nullable(),
   "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
   "progress_percent": zod.number().nullable(),
-  "status": zod.enum(['ahead', 'behind', 'no_target'])
+  "status": zod.enum(['ahead', 'behind', 'no_target', 'unavailable']).describe('no_target means no target has been configured for this territory\/period. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.')
 }).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
   "contributing_open_pipeline": zod.array(zod.object({
   "opportunity_id": zod.string(),
@@ -5060,7 +5060,7 @@ export const GetManagementReportSummaryResponse = zod.object({
   "target_value": zod.number().nullable(),
   "period_actual_usd": zod.number().nullable().describe('Quarter-to-date actual as of this reporting week\'s own end date (clamped to the quarter\'s own end) -- never \"as of today\", so a draft report about a past week shows what was true then.'),
   "progress_percent": zod.number().nullable(),
-  "status": zod.enum(['ahead', 'behind', 'no_target'])
+  "status": zod.enum(['ahead', 'behind', 'no_target', 'unavailable']).describe('no_target means no target has been configured for this territory\/period. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.')
 }).describe('One entry per territory the PAM canonically owns -- targets are genuinely per-territory in the existing target model, never a fabricated summed target for a multi-territory PAM.')),
   "contributing_open_pipeline": zod.array(zod.object({
   "opportunity_id": zod.string(),
@@ -5201,7 +5201,7 @@ export const GetManagementReportSummaryResponse = zod.object({
   "target_id": zod.string().nullable().describe('Set when a target row already exists for this PAM\/territory\/metric\/period -- null means \"no target set\", used by Team Targets to offer create-vs-edit.'),
   "actual_value": zod.number().nullable().describe('From the same canonical KPI computation Overview uses -- never recomputed separately.'),
   "progress_percent": zod.number().nullable().describe('Null when there is no target to measure progress against -- never computed as if target were 0.'),
-  "status": zod.enum(['ahead', 'behind', 'no_target'])
+  "status": zod.enum(['ahead', 'behind', 'no_target', 'unavailable']).describe('no_target means no target has been configured for this metric\/period. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.')
 })),
   "recruitment": zod.object({
   "current_state": zod.object({

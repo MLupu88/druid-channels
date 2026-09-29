@@ -272,6 +272,8 @@ export function WeeklyReport({ pamUserId, pamName, weekStartOverride }: { pamUse
                         <TableCell>
                           {t.status === 'no_target' ? (
                             <Badge variant="outline" className="font-normal text-muted-foreground">No target set</Badge>
+                          ) : t.status === 'unavailable' ? (
+                            <Badge variant="outline" className="font-normal text-muted-foreground">Data unavailable</Badge>
                           ) : (
                             <Badge
                               variant="outline"

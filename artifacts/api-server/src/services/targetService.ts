@@ -218,25 +218,31 @@ export interface TeamTargetRow {
   target_id: string | null;
   actual_value: number | null;
   progress_percent: number | null;
-  status: "ahead" | "behind" | "no_target";
+  status: TargetStatus;
 }
+
+// "unavailable": a valid target exists but the actual value is unavailable
+// -- never interpreted as zero, and never a performance status.
+export type TargetStatus = "ahead" | "behind" | "no_target" | "unavailable";
 
 export interface TargetProgress {
   progress_percent: number | null;
-  status: "ahead" | "behind" | "no_target";
+  status: TargetStatus;
 }
 
 // Pure, DB-free -- the exact boundary logic Team Targets/My Targets rely
 // on, split out so it's unit-testable without a live DB. null target ->
-// "no_target" (never treated as a target of 0); reaching or exceeding the
-// target is "ahead", anything else "behind"; progress_percent stays null
-// whenever there's no target to measure against (never computed as if
-// target were 0, which would divide by zero / be meaningless).
+// "no_target" (never treated as a target of 0); a target (including a real
+// target of 0) with a null actual -> "unavailable" (a missing actual is never
+// substituted with 0); otherwise reaching or exceeding the target is
+// "ahead", anything else "behind". progress_percent stays null whenever
+// there's no target or no actual to measure, and for a target of 0 (never
+// divides by zero).
 export function computeTargetProgress(actualValue: number | null, targetValue: number | null): TargetProgress {
   if (targetValue === null) return { progress_percent: null, status: "no_target" };
-  const progressPercent = targetValue > 0 && actualValue !== null ? Math.round((actualValue / targetValue) * 100) : null;
-  const status: TargetProgress["status"] = (actualValue ?? 0) >= targetValue ? "ahead" : "behind";
-  return { progress_percent: progressPercent, status };
+  if (actualValue === null) return { progress_percent: null, status: "unavailable" };
+  const progressPercent = targetValue > 0 ? Math.round((actualValue / targetValue) * 100) : null;
+  return { progress_percent: progressPercent, status: actualValue >= targetValue ? "ahead" : "behind" };
 }
 
 export interface TeamTargetsScope {

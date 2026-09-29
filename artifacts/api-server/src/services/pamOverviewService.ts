@@ -328,7 +328,7 @@ async function getPerformanceForPam(pamUserId: string, territories: PamTerritory
   return perTerritory.flat();
 }
 
-function buildAvailabilityNotes(overview: Omit<PamOverview, "availability">): string[] {
+export function buildAvailabilityNotes(overview: Omit<PamOverview, "availability">): string[] {
   const notes: string[] = [];
   const hasTerritory = overview.identity.territories.length > 0;
   if (!hasTerritory) {
@@ -338,6 +338,10 @@ function buildAvailabilityNotes(overview: Omit<PamOverview, "availability">): st
   }
   for (const p of overview.performance) {
     if (p.status === "no_target") notes.push(`No ${p.metric_label} target has been configured for ${p.territory_name} for this period.`);
+    if (p.status === "unavailable") {
+      const note = `Actual ${p.metric_label} for ${p.territory_name} is unavailable for this period, so target status cannot be determined.`;
+      if (!notes.includes(note)) notes.push(note);
+    }
   }
   if (overview.portfolio.assigned_partner_count === 0) {
     notes.push("No confirmed (active or dormant) Portfolio relationships are assigned to this PAM (partner_relationships.assigned_user_id).");

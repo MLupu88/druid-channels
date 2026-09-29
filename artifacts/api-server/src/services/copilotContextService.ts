@@ -21,7 +21,7 @@ import {
   type Company,
 } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
-import { getTeamTargets, type TeamTargetRow } from "./targetService";
+import { getTeamTargets, type TargetStatus, type TeamTargetRow } from "./targetService";
 import { resolvePeriodRange } from "./kpiRegistry";
 import { computeDaysInStage, isStalled, isActiveStage, type RecruitmentStage } from "./partnerRecruitmentService";
 import { isNeedingAttention } from "./partnerRelationshipService";
@@ -47,7 +47,7 @@ export interface PerformanceRow {
   target: number | null;
   actual: number | null;
   progress_percent: number | null;
-  status: "ahead" | "behind" | "no_target";
+  status: TargetStatus;
 }
 
 export interface RecruitmentAttentionItem {
@@ -259,10 +259,14 @@ async function getTopDiscoveryProspects(territoryId: string, pamUserId: string, 
   };
 }
 
-function buildDataQualityNotes(summary: Omit<PamWorkspaceSummary, "data_quality_notes">): string[] {
+export function buildDataQualityNotes(summary: Omit<PamWorkspaceSummary, "data_quality_notes">): string[] {
   const notes: string[] = [];
   for (const p of summary.performance) {
     if (p.status === "no_target") notes.push(`No ${p.metric_label} target has been configured for this period.`);
+    if (p.status === "unavailable") {
+      const note = `Actual ${p.metric_label} is unavailable for this period, so target status cannot be determined.`;
+      if (!notes.includes(note)) notes.push(note);
+    }
   }
   if (summary.portfolio.active_partner_count === 0) notes.push("No active Portfolio relationships in this territory.");
   if (summary.recruitment.active_count === 0) notes.push("No active recruitments in this territory.");

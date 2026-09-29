@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useGetWeeklyTeamReport } from '@workspace/api-client-react';
-import type { WeeklyTargetProgress } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,22 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { X, ChevronLeft, ChevronRight, AlertTriangle, Info } from 'lucide-react';
 import { getDefaultWeekStart, addWeeks, weekLabel } from '@/lib/period';
 import { WeeklyReport } from '@/pages/weekly-report';
+import { aggregateTargetLabel } from '@/components/weekly-team-target-label';
 
 function money(n: number | null | undefined) {
   if (n === null || n === undefined) return '—';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
-
-// Three states, not a boolean: a PAM with only no_target territories is
-// neither "ahead" nor "behind" -- that would be a fabricated status for a
-// territory nobody set a target for. Only an ACTIONABLE target (status
-// ahead/behind) can decide this; if none exist, the honest answer is "No
-// target".
-function aggregateTargetLabel(targets: WeeklyTargetProgress[]): 'no_target' | 'behind' | 'ahead' {
-  const actionable = targets.filter((t) => t.status !== 'no_target');
-  if (actionable.length === 0) return 'no_target';
-  if (actionable.some((t) => t.status === 'behind')) return 'behind';
-  return 'ahead';
 }
 
 function WeekSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -187,6 +175,8 @@ export function WeeklyTeamView({ initialWeekStart }: { initialWeekStart?: string
                             <TableCell>
                               {targetLabel === 'no_target' ? (
                                 <Badge variant="outline" className="font-normal text-muted-foreground">No target</Badge>
+                              ) : targetLabel === 'unavailable' ? (
+                                <Badge variant="outline" className="font-normal text-muted-foreground">Data unavailable</Badge>
                               ) : (
                                 <Badge
                                   variant="outline"

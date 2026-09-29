@@ -337,7 +337,11 @@ async function buildMarketingSection(pamUser: ActingUser, weekStart: string, wee
   };
 }
 
-function buildAttentionItems(recruitment: WeeklyRecruitmentSnapshot, targets: WeeklyTargetProgress[]): WeeklyAttentionItem[] {
+// Exported for DB-free unit tests only. A target_gap item is only ever
+// raised for a genuinely "behind" target -- never for "unavailable" (an
+// actual that isn't known cannot be claimed as behind), "no_target" or
+// "ahead" -- and its detail states only values that are actually known.
+export function buildAttentionItems(recruitment: WeeklyRecruitmentSnapshot, targets: WeeklyTargetProgress[]): WeeklyAttentionItem[] {
   const items: WeeklyAttentionItem[] = [];
   for (const s of recruitment.stalled_items) {
     items.push({
@@ -357,10 +361,12 @@ function buildAttentionItems(recruitment: WeeklyRecruitmentSnapshot, targets: We
   }
   for (const t of targets) {
     if (t.status === "behind") {
+      const amounts = t.period_actual_usd !== null ? `${Math.round(t.period_actual_usd)} of ${t.target_value}` : `Target ${t.target_value}`;
+      const progress = t.progress_percent !== null ? ` (${t.progress_percent}%)` : "";
       items.push({
         kind: "target_gap",
         label: `${t.territory_name}: closed revenue behind target`,
-        detail: `${Math.round(t.period_actual_usd ?? 0)} of ${t.target_value} (${t.progress_percent ?? 0}%)`,
+        detail: `${amounts}${progress}`,
         ref_id: t.territory_id,
       });
     }

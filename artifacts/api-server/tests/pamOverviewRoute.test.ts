@@ -132,13 +132,23 @@ test("GET /channel-chief/pam-overview: opportunities are labelled DRUID-recorded
 
 // ---- No fabricated performance --------------------------------------------------
 
-test("GET /channel-chief/pam-overview: performance rows are only ever ahead/behind/no_target -- never a fabricated score", async () => {
+test("GET /channel-chief/pam-overview: performance rows are only ever ahead/behind/no_target/unavailable -- never a fabricated score", async () => {
   const { status, body } = await getPamOverview({ token: VALID_TOKEN, pamName: "Denny" });
   assert.equal(status, 200, `expected 200, got ${status}: ${JSON.stringify(body)}`);
   for (const row of body.performance) {
-    assert.ok(["ahead", "behind", "no_target"].includes(row.status));
+    assert.ok(["ahead", "behind", "no_target", "unavailable"].includes(row.status));
     if (row.status === "no_target") {
       assert.equal(row.target, null);
+    }
+    // unavailable: a real target exists but the actual is unknown -- never
+    // a fabricated 0 actual or 0% progress.
+    if (row.status === "unavailable") {
+      assert.notEqual(row.target, null);
+      assert.equal(row.actual, null);
+      assert.equal(row.progress_percent, null);
+    }
+    if (row.status === "ahead" || row.status === "behind") {
+      assert.notEqual(row.actual, null);
     }
   }
 });

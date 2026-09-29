@@ -26,9 +26,35 @@ test("actual below target is behind, with rounded progress_percent", () => {
   assert.equal(result.progress_percent, 73);
 });
 
-test("null actual (no live data) is treated as zero for status, but progress_percent stays null", () => {
+// 5B.2: a missing actual is never substituted with 0 -- a valid target with
+// an unavailable actual is "unavailable", never a fabricated "behind".
+test("null actual + positive target -> unavailable, never behind; progress_percent stays null", () => {
   const result = computeTargetProgress(null, 5);
+  assert.equal(result.status, "unavailable");
+  assert.equal(result.progress_percent, null);
+});
+
+test("null actual + zero target -> unavailable (a target of 0 is still a real target), never ahead", () => {
+  const result = computeTargetProgress(null, 0);
+  assert.equal(result.status, "unavailable");
+  assert.equal(result.progress_percent, null);
+});
+
+test("null actual + null target -> no_target takes precedence", () => {
+  const result = computeTargetProgress(null, null);
+  assert.equal(result.status, "no_target");
+  assert.equal(result.progress_percent, null);
+});
+
+test("a real 0 actual against a positive target is a real behind at 0%", () => {
+  const result = computeTargetProgress(0, 5);
   assert.equal(result.status, "behind");
+  assert.equal(result.progress_percent, 0);
+});
+
+test("a real 0 actual against a zero target is ahead (0 >= 0), with no divide-by-zero percentage", () => {
+  const result = computeTargetProgress(0, 0);
+  assert.equal(result.status, "ahead");
   assert.equal(result.progress_percent, null);
 });
 

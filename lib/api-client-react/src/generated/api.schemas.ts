@@ -2099,6 +2099,9 @@ export interface MetricTargetInput {
   note?: string | null;
 }
 
+/**
+ * no_target means no target has been configured for this metric/period. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.
+ */
 export type TeamTargetStatus = typeof TeamTargetStatus[keyof typeof TeamTargetStatus];
 
 
@@ -2106,6 +2109,7 @@ export const TeamTargetStatus = {
   ahead: 'ahead',
   behind: 'behind',
   no_target: 'no_target',
+  unavailable: 'unavailable',
 } as const;
 
 export interface TeamTargetRow {
@@ -3037,7 +3041,7 @@ export interface PamOverviewIdentity {
 }
 
 /**
- * no_target means no target has been configured for this metric/period -- never a fabricated attainment figure.
+ * no_target means no target has been configured for this metric/period -- never a fabricated attainment figure. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.
  */
 export type PamOverviewPerformanceRowStatus = typeof PamOverviewPerformanceRowStatus[keyof typeof PamOverviewPerformanceRowStatus];
 
@@ -3046,6 +3050,7 @@ export const PamOverviewPerformanceRowStatus = {
   ahead: 'ahead',
   behind: 'behind',
   no_target: 'no_target',
+  unavailable: 'unavailable',
 } as const;
 
 export interface PamOverviewPerformanceRow {
@@ -3060,7 +3065,7 @@ export interface PamOverviewPerformanceRow {
   actual: number | null;
   /** @nullable */
   progress_percent: number | null;
-  /** no_target means no target has been configured for this metric/period -- never a fabricated attainment figure. */
+  /** no_target means no target has been configured for this metric/period -- never a fabricated attainment figure. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero. */
   status: PamOverviewPerformanceRowStatus;
 }
 
@@ -3219,6 +3224,9 @@ export interface WeeklySourcedInfluencedAmount {
   total: number;
 }
 
+/**
+ * no_target means no target has been configured for this territory/period. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero.
+ */
 export type WeeklyTargetProgressStatus = typeof WeeklyTargetProgressStatus[keyof typeof WeeklyTargetProgressStatus];
 
 
@@ -3226,6 +3234,7 @@ export const WeeklyTargetProgressStatus = {
   ahead: 'ahead',
   behind: 'behind',
   no_target: 'no_target',
+  unavailable: 'unavailable',
 } as const;
 
 /**

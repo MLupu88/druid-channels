@@ -37,6 +37,11 @@ function QuarterStatusBadge({ row }: { row: TeamTargetRow | undefined }) {
   if (!row || row.status === 'no_target') {
     return <Badge variant="outline" className="font-normal text-muted-foreground">No target</Badge>;
   }
+  // A target exists but its actual is unavailable -- neutral, same visual
+  // family as "No target", never the warning tone used for behind.
+  if (row.status === 'unavailable') {
+    return <Badge variant="outline" className="font-normal text-muted-foreground">Data unavailable</Badge>;
+  }
   const tone = row.status === 'ahead' ? statusTone('success') : statusTone('warning');
   const label = row.status === 'ahead' ? 'Ahead' : 'Behind';
   return (

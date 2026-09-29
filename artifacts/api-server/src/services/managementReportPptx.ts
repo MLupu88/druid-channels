@@ -21,6 +21,7 @@ import { getManagementReportSummary, type ManagementReportOptions } from "./mana
 import type { ManagementComparisons } from "./managementReportContract";
 import type { ActingUser } from "./authz";
 import { isMoneyMetric } from "./kpiRegistry";
+import type { TargetStatus } from "./targetService";
 
 // Subtitle under the "Won revenue (USD)" week tile. Only a real
 // completed-week comparison gets a signed delta and a green/red direction;
@@ -46,6 +47,14 @@ export function weekOverWeekRevenueSubtitle(
 // pptxLayout module (branding/formatting/slide-builder) the original
 // quarterly deck (pptxReport.ts) also uses, so both decks look like one
 // system.
+// Target-attainment Status cell. no_target/unavailable are neutral, never
+// performance exceptions -- not bold, and never given a behind/ahead colour.
+// Exported for DB-free unit tests only.
+export function targetStatusCell(status: TargetStatus): { text: string; color: string | undefined; bold: boolean } {
+  const neutral = status === "no_target" || status === "unavailable";
+  return { text: formatStatus(status), color: neutral ? undefined : (STATUS_COLOR[status] ?? undefined), bold: !neutral };
+}
+
 export async function buildManagementReportPptx(actingUser: ActingUser, options: ManagementReportOptions): Promise<Buffer> {
   const summary = await getManagementReportSummary(actingUser, options);
   const { report_context, weekly, quarter_to_date, comparisons, management_insights, data_quality } = summary;
@@ -136,7 +145,7 @@ export async function buildManagementReportPptx(actingUser: ActingUser, options:
       { header: "Target", cell: (r) => ({ text: formatValue(r.target_value, isMoneyMetric(r.metric_key), currency) }) },
       {
         header: "Status",
-        cell: (r) => ({ text: formatStatus(r.status), color: STATUS_COLOR[r.status] ?? undefined, bold: r.status !== "no_target" }),
+        cell: (r) => targetStatusCell(r.status),
       },
     ],
     quarter_to_date.targets,

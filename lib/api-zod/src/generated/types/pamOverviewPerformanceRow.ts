@@ -19,6 +19,6 @@ export interface PamOverviewPerformanceRow {
   actual: number | null;
   /** @nullable */
   progress_percent: number | null;
-  /** no_target means no target has been configured for this metric/period -- never a fabricated attainment figure. */
+  /** no_target means no target has been configured for this metric/period -- never a fabricated attainment figure. unavailable: A valid target exists but the actual value is unavailable; unavailable must never be interpreted as zero. */
   status: PamOverviewPerformanceRowStatus;
 }
