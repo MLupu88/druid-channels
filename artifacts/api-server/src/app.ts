@@ -1,10 +1,11 @@
 import express, { type Express } from "express";
-import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { apiSecurityHeaders, createCorsMiddleware } from "./lib/httpSecurity";
 
 const app: Express = express();
+app.disable("x-powered-by");
 
 app.use(
   pinoHttp({
@@ -25,12 +26,11 @@ app.use(
     },
   }),
 );
-// CORS_ALLOWED_ORIGIN locks the API to a single origin in production. Left
-// unset, cors() falls back to its permissive default so local development
-// (frontend and API on different dev-server ports/origins) keeps working
-// exactly as before.
-const corsAllowedOrigin = process.env.CORS_ALLOWED_ORIGIN;
-app.use(cors(corsAllowedOrigin ? { origin: corsAllowedOrigin } : undefined));
+app.use(apiSecurityHeaders);
+// CORS_ALLOWED_ORIGIN is a comma-separated origin allowlist. Unset in
+// production, no browser origin is granted cross-origin access; unset in
+// development, it stays permissive. See lib/httpSecurity.ts.
+app.use(createCorsMiddleware(process.env));
 // Stage 6 Portfolio import batches are client-parsed Excel/CSV rows sent as
 // one JSON body (no multipart/multer in this app) -- a book of a few
 // hundred rows comfortably exceeds express.json()'s default 100kb limit.
