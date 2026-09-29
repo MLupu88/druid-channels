@@ -72,6 +72,7 @@
     "test:companies-by-domain": "tsx --test tests/companiesByDomain.test.ts",
     "test:metric-mappings-upgrade": "tsx --test tests/metricMappingsUpgrade.test.ts",
     "test:channel-chief-auth": "tsx --test tests/channelChiefAuth.test.ts",
+    "test:human-session-auth": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/humanSessionAuth.test.ts",
     "test:channel-chief-snapshot": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder tsx --test tests/channelChiefSnapshot.test.ts",
     "test:channel-chief": "tsx --test tests/channelChief.test.ts",
     "test:reporting-comparison-truthfulness": "DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:59999/placeholder tsx --test tests/reportingComparisonTruthfulness.test.ts",

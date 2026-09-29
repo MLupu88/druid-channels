@@ -20,17 +20,17 @@ declare global {
   }
 }
 
-function extractToken(req: Request): string | null {
+// Session tokens are accepted ONLY via Authorization: Bearer. Never from the
+// query string: a token in a URL leaks into proxy access logs, browser
+// history, and copied/shared links, and stays usable until it expires. The
+// PPTX exports that once needed ?token= now fetch a blob through the
+// generated client, which sends the Bearer header.
+export function extractToken(req: Request): string | null {
   const header = req.headers.authorization;
   if (header) {
     const match = /^Bearer\s+(.+)$/i.exec(header);
     if (match) return match[1].trim();
   }
-  // Downloads triggered via window.open()/<a href> (e.g. the quarterly PPTX
-  // export) can't attach an Authorization header, so also accept the token
-  // as a query parameter on those GET requests.
-  const queryToken = req.query?.token;
-  if (typeof queryToken === "string" && queryToken.trim()) return queryToken.trim();
   return null;
 }
 

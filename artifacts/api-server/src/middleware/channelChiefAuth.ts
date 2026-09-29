@@ -7,9 +7,8 @@ import { timingSafeEqual } from "node:crypto";
 // populates req.actingUser -- there is no human identity behind this
 // request, only a trusted caller holding a shared service token. The token
 // is only ever accepted via Authorization: Bearer (never a query string, so
-// it can't leak into logs/proxies/browser history the way the PPTX export's
-// query-param token intentionally can -- see middleware/auth.ts's
-// extractToken comment for that different, human-download-triggered case).
+// it can't leak into logs/proxies/browser history). Human session tokens
+// follow the same Bearer-only rule -- see middleware/auth.ts's extractToken.
 function tokensMatch(provided: string, configured: string): boolean {
   const a = Buffer.from(provided);
   const b = Buffer.from(configured);
