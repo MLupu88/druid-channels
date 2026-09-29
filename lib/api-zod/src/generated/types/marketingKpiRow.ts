@@ -11,9 +11,15 @@ import type { MarketingKpiRowTrend } from './marketingKpiRowTrend';
 export interface MarketingKpiRow {
   metric_key: string;
   metric: string;
-  /** @nullable */
+  /**
+     * Historical field name, NOT a calendar (Monday-Sunday) week. For the live ACTIVITIES source it is the rolling last-7-days window (UTC, today minus 6 days through today, inclusive); data_source states the exact dates.
+     * @nullable
+     */
   this_week: number | null;
-  /** @nullable */
+  /**
+     * Historical field name, NOT the previous calendar week. For the live ACTIVITIES source it is the rolling previous-7-days window (UTC, today minus 13 days through today minus 7 days, inclusive).
+     * @nullable
+     */
   last_week?: number | null;
   /** @nullable */
   trend: MarketingKpiRowTrend;

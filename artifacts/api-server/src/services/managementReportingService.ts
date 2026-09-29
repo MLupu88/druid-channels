@@ -130,7 +130,9 @@ export function buildManagementInsights(
   ctx: Pick<ManagementReportContext, "week_start" | "quarter_to_date_period_label">,
   weeklyTeamReport: Awaited<ReturnType<typeof getTeamWeeklyReport>>,
   targets: Awaited<ReturnType<typeof getTeamTargets>>,
-  recruitmentPeriodTransitions: { signed_count: number },
+  // null when the signed_partners KPI source is unavailable -- the
+  // signed-partners sentence is then omitted, never phrased from a 0.
+  recruitmentPeriodTransitions: { signed_count: number | null },
   marketing: { won_revenue_usd: number },
   // null when no legitimate comparison exists (week in progress) -- the
   // commercial WoW insight is then omitted, never phrased from a partial week.
@@ -187,7 +189,7 @@ export function buildManagementInsights(
     });
   }
 
-  if (recruitmentPeriodTransitions.signed_count > 0) {
+  if (recruitmentPeriodTransitions.signed_count !== null && recruitmentPeriodTransitions.signed_count > 0) {
     insights.push({
       id: "recruitment-signed",
       category: "recruitment",
@@ -300,7 +302,10 @@ export async function getManagementReportSummary(actingUser: ActingUser, options
     buildKpiDetailWithFx("closed_revenue", qtdPeriodKey, target, fx),
   ]);
 
-  const recruitmentPeriodTransitions = { ...recruitmentPeriodTransitionsRaw, signed_count: signedMetric.current ?? 0 };
+  // signedMetric.current is null when the signed_partners source is
+  // unavailable (mapping disabled/not connected, no manual/demo value) --
+  // kept null, never turned into a factual-looking 0.
+  const recruitmentPeriodTransitions = { ...recruitmentPeriodTransitionsRaw, signed_count: signedMetric.current };
 
   const report_context: ManagementReportContext = {
     generated_at: new Date().toISOString(),

@@ -1727,9 +1727,15 @@ export const MarketingKpiRowTrend = {
 export interface MarketingKpiRow {
   metric_key: string;
   metric: string;
-  /** @nullable */
+  /**
+     * Historical field name, NOT a calendar (Monday-Sunday) week. For the live ACTIVITIES source it is the rolling last-7-days window (UTC, today minus 6 days through today, inclusive); data_source states the exact dates.
+     * @nullable
+     */
   this_week: number | null;
-  /** @nullable */
+  /**
+     * Historical field name, NOT the previous calendar week. For the live ACTIVITIES source it is the rolling previous-7-days window (UTC, today minus 13 days through today minus 7 days, inclusive).
+     * @nullable
+     */
   last_week?: number | null;
   /** @nullable */
   trend: MarketingKpiRowTrend;
@@ -3621,8 +3627,11 @@ export interface ManagementRecruitmentPeriodTransitions {
   new_recruitments_count: number;
   /** Genuine stage-to-stage movement events inside the window, excluding the initial creation event. */
   stage_transitions_count: number;
-  /** Reuses the canonical signed_partners metric (kpiService.computeMetric) for the same period/scope -- never recomputed from history independently. */
-  signed_count: number;
+  /**
+     * Reuses the canonical signed_partners metric (kpiService.computeMetric) for the same period/scope -- never recomputed from history independently. null means the underlying signed-partners KPI source is unavailable (mapping disabled or not connected, no manual/demo value); a real 0 is reported as 0.
+     * @nullable
+     */
+  signed_count: number | null;
 }
 
 export interface ManagementRecruitmentSection {

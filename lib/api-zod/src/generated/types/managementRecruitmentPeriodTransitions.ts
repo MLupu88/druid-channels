@@ -16,6 +16,9 @@ export interface ManagementRecruitmentPeriodTransitions {
   new_recruitments_count: number;
   /** Genuine stage-to-stage movement events inside the window, excluding the initial creation event. */
   stage_transitions_count: number;
-  /** Reuses the canonical signed_partners metric (kpiService.computeMetric) for the same period/scope -- never recomputed from history independently. */
-  signed_count: number;
+  /**
+     * Reuses the canonical signed_partners metric (kpiService.computeMetric) for the same period/scope -- never recomputed from history independently. null means the underlying signed-partners KPI source is unavailable (mapping disabled or not connected, no manual/demo value); a real 0 is reported as 0.
+     * @nullable
+     */
+  signed_count: number | null;
 }

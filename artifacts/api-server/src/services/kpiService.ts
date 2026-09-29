@@ -991,6 +991,12 @@ async function computePartnerRadar(metricKey: string, periodKey: string, target:
   }
 }
 
+// Rolling windows for the ACTIVITIES-sourced marketing KPIs -- NOT calendar
+// (Monday-Sunday) weeks. UTC, both ends inclusive, T = today:
+//   current:  T-6  .. T     (the last 7 days, including today)
+//   previous: T-13 .. T-7   (the 7 days before that)
+// The thisWeek*/lastWeek* names are historical; the API field names
+// (this_week/last_week) are kept for contract compatibility.
 function weekWindow(now: Date) {
   const startOfDay = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const thisWeekEnd = startOfDay(now);
@@ -1001,6 +1007,24 @@ function weekWindow(now: Date) {
   const lastWeekStart = new Date(lastWeekEnd);
   lastWeekStart.setUTCDate(lastWeekStart.getUTCDate() - 6);
   return { thisWeekStart, thisWeekEnd, lastWeekStart, lastWeekEnd };
+}
+
+// data_source/explanation copy for computeActivities -- states the actual
+// rolling windows (derived from weekWindow(now)), never "this week"/
+// "calendar week" wording.
+export function describeActivityWindows(
+  now: Date,
+  label: string,
+  territoryName: string,
+  currentValue: number,
+  previousValue: number,
+): { data_source: string; explanation: string } {
+  const windows = weekWindow(now);
+  const d = (x: Date) => x.toISOString().slice(0, 10);
+  return {
+    data_source: `Live: activities table, last 7 days (${d(windows.thisWeekStart)} to ${d(windows.thisWeekEnd)}, UTC) vs previous 7 days (${d(windows.lastWeekStart)} to ${d(windows.lastWeekEnd)})`,
+    explanation: `${currentValue} ${label.toLowerCase()} in the last 7 days for ${territoryName}, vs ${previousValue} in the previous 7 days.`,
+  };
 }
 
 const ACTIVITY_FIELD_BY_KEY: Record<string, { kind: "count"; type: string } | { kind: "sum"; field: "mqls" | "partnerReferrals" }> = {
@@ -1048,6 +1072,7 @@ async function computeActivities(metricKey: string, target: ResolvedTerritory): 
   const thisWeekValue = valueOf(scopedThisWeek);
   const lastWeekValue = valueOf(scopedLastWeek);
   const label = METRIC_BY_KEY.get(metricKey)!.label;
+  const copy = describeActivityWindows(now, label, target.territoryName, thisWeekValue, lastWeekValue);
 
   const records: KpiDetailRecord[] = scopedThisWeek
     .filter((r) => (field.kind === "count" ? r.type === field.type : true))
@@ -1065,11 +1090,11 @@ async function computeActivities(metricKey: string, target: ResolvedTerritory): 
     trend: trendOf(thisWeekValue, lastWeekValue),
     status: null,
     data_status: "CONNECTED",
-    data_source: `Live: activities table, calendar week ${toDateStr(thisWeekStart)} to ${toDateStr(thisWeekEnd)} vs prior week`,
+    data_source: copy.data_source,
     last_updated: now.toISOString(),
     last_updated_is_synthetic: true,
     what_changed: null,
-    explanation: `${thisWeekValue} ${label.toLowerCase()} this week for ${target.territoryName}, vs ${lastWeekValue} last week.`,
+    explanation: copy.explanation,
     by_territory: byTerritory,
     records,
   };

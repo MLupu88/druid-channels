@@ -281,12 +281,14 @@ test("buildQuarterlyReportPptx: commercial performance table includes Last week 
   }
 });
 
-test("buildQuarterlyReportPptx: channel marketing table is This week/Trend only -- never a Last week column (marketing metrics are never money)", async () => {
+test("buildQuarterlyReportPptx: channel marketing table is Current/Trend only -- never a comparison column or a week label (marketing metrics are never money)", async () => {
   const { slideXmls, allText } = await unzipDeck(await buildFixtureDeck({ hasDemoData: false }));
   const marketingSlide = slideXmls.find((xml) => xml.includes("Channel marketing"))!;
   assert.ok(marketingSlide, "expected a slide containing the Channel marketing heading");
   const marketingSlideText = extractSlideText(marketingSlide);
-  assert.ok(marketingSlideText.includes("This week"));
+  assert.ok(marketingSlideText.includes("Current"), "mixed-source rows get a neutral header");
+  assert.ok(!marketingSlideText.includes("This week"), "never a calendar-week label");
+  assert.ok(!marketingSlideText.includes("Last 7 days"), "DEMO/MANUAL rows are not rolling 7-day values");
   assert.ok(!marketingSlideText.includes("Last week"), "the Channel marketing table must never render a Last week column");
   assert.ok(allText.includes("Channel marketing")); // sanity: the heading itself is somewhere in the deck
 });

@@ -2038,8 +2038,8 @@ export const GetHeadOfChannelsKpisResponse = zod.object({
   "weekly_marketing": zod.array(zod.object({
   "metric_key": zod.string(),
   "metric": zod.string(),
-  "this_week": zod.number().nullable(),
-  "last_week": zod.number().nullish(),
+  "this_week": zod.number().nullable().describe('Historical field name, NOT a calendar (Monday-Sunday) week. For the live ACTIVITIES source it is the rolling last-7-days window (UTC, today minus 6 days through today, inclusive); data_source states the exact dates.'),
+  "last_week": zod.number().nullish().describe('Historical field name, NOT the previous calendar week. For the live ACTIVITIES source it is the rolling previous-7-days window (UTC, today minus 13 days through today minus 7 days, inclusive).'),
   "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullable(),
   "explanation": zod.string().nullish(),
   "data_source": zod.string().nullish(),
@@ -2158,8 +2158,8 @@ export const GetChannelChiefSnapshotResponse = zod.object({
   "weekly_marketing": zod.array(zod.object({
   "metric_key": zod.string(),
   "metric": zod.string(),
-  "this_week": zod.number().nullable(),
-  "last_week": zod.number().nullish(),
+  "this_week": zod.number().nullable().describe('Historical field name, NOT a calendar (Monday-Sunday) week. For the live ACTIVITIES source it is the rolling last-7-days window (UTC, today minus 6 days through today, inclusive); data_source states the exact dates.'),
+  "last_week": zod.number().nullish().describe('Historical field name, NOT the previous calendar week. For the live ACTIVITIES source it is the rolling previous-7-days window (UTC, today minus 13 days through today minus 7 days, inclusive).'),
   "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullable(),
   "explanation": zod.string().nullish(),
   "data_source": zod.string().nullish(),
@@ -5174,8 +5174,8 @@ export const GetManagementReportSummaryResponse = zod.object({
   "weeklyMarketing": zod.array(zod.object({
   "metric_key": zod.string(),
   "metric": zod.string(),
-  "this_week": zod.number().nullable(),
-  "last_week": zod.number().nullish(),
+  "this_week": zod.number().nullable().describe('Historical field name, NOT a calendar (Monday-Sunday) week. For the live ACTIVITIES source it is the rolling last-7-days window (UTC, today minus 6 days through today, inclusive); data_source states the exact dates.'),
+  "last_week": zod.number().nullish().describe('Historical field name, NOT the previous calendar week. For the live ACTIVITIES source it is the rolling previous-7-days window (UTC, today minus 13 days through today minus 7 days, inclusive).'),
   "trend": zod.union([zod.literal('up'),zod.literal('down'),zod.literal('flat'),zod.literal(null)]).nullable(),
   "explanation": zod.string().nullish(),
   "data_source": zod.string().nullish(),
@@ -5213,7 +5213,7 @@ export const GetManagementReportSummaryResponse = zod.object({
   "period_end_exclusive": zod.string(),
   "new_recruitments_count": zod.number().describe('Recruitments created (null -> accepted) inside the window.'),
   "stage_transitions_count": zod.number().describe('Genuine stage-to-stage movement events inside the window, excluding the initial creation event.'),
-  "signed_count": zod.number().describe('Reuses the canonical signed_partners metric (kpiService.computeMetric) for the same period\/scope -- never recomputed from history independently.')
+  "signed_count": zod.number().nullable().describe('Reuses the canonical signed_partners metric (kpiService.computeMetric) for the same period\/scope -- never recomputed from history independently. null means the underlying signed-partners KPI source is unavailable (mapping disabled or not connected, no manual\/demo value); a real 0 is reported as 0.')
 }).describe('Genuine stage-movement EVENTS sourced from partner_recruitment_history within the quarter-to-date window -- never the current stage distribution re-labeled as period activity.')
 }),
   "marketing": zod.object({

@@ -89,13 +89,14 @@ export interface ManagementRecruitmentCurrentState {
 // within the quarter-to-date window -- never the current stage distribution
 // re-labeled as period activity. signed_count reuses the canonical
 // signed_partners metric (kpiService.computeMetric) rather than being
-// recomputed independently from history.
+// recomputed independently from history; null means that metric's source
+// is unavailable (never a fabricated 0).
 export interface ManagementRecruitmentPeriodTransitions {
   period_start: string;
   period_end_exclusive: string;
   new_recruitments_count: number;
   stage_transitions_count: number;
-  signed_count: number;
+  signed_count: number | null;
 }
 
 export interface ManagementRecruitmentSection {

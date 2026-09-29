@@ -870,7 +870,7 @@ export default function Overview() {
                   </Table>
                 </div>
 
-                {/* Table 3: Weekly channel marketing -- This Week / Trend only, no visible Last Week (locked semantics) */}
+                {/* Table 3: Weekly channel marketing -- Current / Trend only, no visible comparison column (locked semantics). Neutral "Current" header: rows are mixed-source -- live ACTIVITIES rows are a rolling last-7-days window (never a calendar week; see kpiService.weekWindow), DEMO/MANUAL rows are quarterly values. The API field is still named this_week. */}
                 <div>
                   <div className="flex items-center gap-2 px-5 py-3">
                     <h3 className="text-sm font-medium text-foreground">Weekly channel marketing</h3>
@@ -880,7 +880,7 @@ export default function Overview() {
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
                         <TableHead className="w-[220px] font-medium text-muted-foreground">Metric</TableHead>
-                        <TableHead className="font-medium text-muted-foreground text-right">This Week</TableHead>
+                        <TableHead className="font-medium text-muted-foreground text-right">Current</TableHead>
                         <TableHead className="font-medium text-muted-foreground">Trend</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -980,11 +980,15 @@ export default function Overview() {
                     </div>
                   </div>
 
-                  {/* Last Week / Trend -- present only for metrics that carry them (commercial-shaped metrics) */}
+                  {/* Last Week / Trend -- present only for metrics that carry them. A CONNECTED
+                      weekly_marketing metric is the live ACTIVITIES source, whose comparison is the
+                      rolling previous 7 days (kpiService.weekWindow), not the previous calendar week. */}
                   {(detail.last_week !== null && detail.last_week !== undefined || detail.trend) && (
                     <div className="flex items-center gap-5 text-sm rounded-md border border-border/60 p-3">
                       <span className="text-muted-foreground">
-                        Last week: <span className="text-foreground font-medium tabular-nums">{formatMetricValue(detail.last_week, detail.metric_key, currency)}</span>
+                        {detail.data_status === 'CONNECTED' && kpis?.weekly_marketing.some((r) => r.metric_key === detail.metric_key)
+                          ? 'Previous 7 days'
+                          : 'Last week'}: <span className="text-foreground font-medium tabular-nums">{formatMetricValue(detail.last_week, detail.metric_key, currency)}</span>
                       </span>
                       <span className="flex items-center gap-1.5 text-muted-foreground">
                         Trend: <TrendIcon trend={detail.trend ?? null} /> <span className="capitalize text-foreground">{formatTrendLabel(detail.trend)}</span>

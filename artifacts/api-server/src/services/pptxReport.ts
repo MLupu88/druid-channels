@@ -174,14 +174,17 @@ export async function buildQuarterlyReportPptx({ periodKey, target, currency }: 
     weeklyCommercial,
   );
 
-  // 5. Channel marketing -- This week / Trend only. Last Week must not be
-  // visible here per the locked semantics (marketing metrics are never
-  // money, so plain counts throughout).
+  // 5. Channel marketing -- Current / Trend only. The comparison value must
+  // not be visible here per the locked semantics (marketing metrics are
+  // never money, so plain counts throughout). Neutral "Current" header:
+  // rows are mixed-source -- live ACTIVITIES rows are a rolling last-7-days
+  // window (never a calendar week; see kpiService.weekWindow), DEMO/MANUAL
+  // rows are quarterly values. The row field is still named this_week.
   addTableSlide(
     "Channel marketing",
     [
       { header: "Metric", cell: (r: (typeof weeklyMarketing)[number]) => ({ text: r.metric }) },
-      { header: "This week", cell: (r) => ({ text: formatCount(r.this_week) }) },
+      { header: "Current", cell: (r) => ({ text: formatCount(r.this_week) }) },
       { header: "Trend", cell: (r) => ({ text: formatTrend(r.trend) }) },
       { header: "Data status", cell: (r) => ({ text: dataStatusLabel(r.data_status), color: dataStatusColor(r.data_status) }) },
     ],
